@@ -78,6 +78,28 @@ bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
 	return true;
 }
 
+void EmitterInstance::Shutdown()
+{
+	m_EmitterUpdates.clear();
+	m_ParticleSpawns.clear();
+	m_ParticleUpdates.clear();
+	m_ParticleData = {};
+	m_EmitterData = {};
+	m_AliveFlags = {};
+	m_Capacity = m_Count = m_Frame = m_NewBegin = m_NewEnd = m_KilledLastTick = 0;
+}
+
+void EmitterInstance::SetModuleParamData(const std::vector<uint8_t>& data)
+{
+	assert(data.size() == m_CompiledEmitter.moduleParamData.size());
+	m_CompiledEmitter.moduleParamData = data;
+}
+
+void EmitterInstance::ReplaceCompiled(const CompiledEmitter& compiled)
+{
+	m_CompiledEmitter = compiled;
+}
+
 void EmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
 {
 	// -------------------

@@ -39,7 +39,20 @@ struct ParamDesc
     std::vector<uint8_t> value;     // Constant: T 1개 / RandomRange: Min, Max 순서로 T 2개
     ParamKind       kind = ParamKind::Constant;
     bool            perComponent = false;   // RandomRange: 성분마다 독립 랜덤
+
+    // ImGui 표시용 힌트
+    bool            uiColor = false;
+    bool            uiHasMin = false;
+    float           uiMin = 0.f;
+
+    ParamDesc& AsColor() { uiColor = true; return *this; }
+    ParamDesc& WithMin(float v) { uiHasMin = true; uiMin = v; return *this; }
 };
+
+inline bool IsFloatFamily(const TypeInfo* t)
+{
+    return t == &Types::Float || t == &Types::Float2 || t == &Types::Float3 || t == &Types::Float4;
+}
 
 // 하나의 입력값이 상수 버퍼에서 차지하는 슬롯 이름들 (컴파일러, 셰이더 생성기, CPU 가 공유)
 inline std::vector<std::string> ParamSlotNames(const std::string& name, ParamKind kind)

@@ -14,7 +14,7 @@ ModuleDesc SpawnRate(float rate)
 	m.stage = Stage::EmitterUpdate;
 	m.params =
 	{
-		MakeParam<float>("Rate", rate)
+		MakeParam<float>("Rate", rate).WithMin(0.f)
 	};
 	m.reads = 
 	{ 
@@ -33,12 +33,12 @@ const uint	n = (uint)want;
 e.SpawnRemainder = want - (float)n;
 e.SpawnCount += n;
 )";
-	m.execute = [rate](ModuleContext& ctx) 
+	m.execute = [](ModuleContext& ctx) 
 		{
 			float& remainder = ctx.Emitter<float>(Emitter::SpawnRemainder);
 			uint32_t& count = ctx.Emitter<uint32_t>(Emitter::SpawnCount);
 
-			const float want = rate * ctx.DeltaTime() + remainder;
+			const float want = ctx.Param<float>("Rate")(0) * ctx.DeltaTime() + remainder;
 			const uint32_t n = static_cast<uint32_t>(want);
 
 			remainder = want - static_cast<float>(n);
@@ -56,9 +56,9 @@ ModuleDesc InitializeParticle(Input<float> size, Input<float> lifeTime, Input<fl
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{
-		MakeParam<float>("Size", size),
-		MakeParam<float>("Lifetime", lifeTime),
-		MakeParam<float4>("Color", color)
+		MakeParam<float>("Size", size).WithMin(0.f),
+		MakeParam<float>("Lifetime", lifeTime).WithMin(0.f),
+		MakeParam<float4>("Color", color).AsColor()
 	};
 	m.reads =
 	{
@@ -120,8 +120,8 @@ ModuleDesc ShapeLocation(Input<float> radius, bool surfaceOnly)
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{
-		MakeParam<float>("Radius", radius),
-		MakeParam<uint32_t>("SurfaceOnly", surfaceOnly ? 1u : 0u)
+		MakeParam<float>("Radius", radius).WithMin(0.f),
+		MakeParam<NBool>("SurfaceOnly", NBool(surfaceOnly))
 	};
 	m.reads =
 	{
@@ -142,8 +142,9 @@ p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
 
 )";
 
-	m.execute = [surfaceOnly](ModuleContext& ctx)
+	m.execute = [](ModuleContext& ctx)
 		{
+			const bool surface = static_cast<bool>(ctx.Param<NBool>("SurfaceOnly")(0));
 			const float kTwoPi = 6.28318530f;
 			const auto radiusParam = ctx.Param<float>("Radius");
 
@@ -156,7 +157,7 @@ p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
 				const float r = std::sqrt(std::fmax(0.f, 1.f - z * z));
 
 				const float radiusValue = radiusParam(i);
-				const float dist = surfaceOnly ? radiusValue
+				const float dist = surface ? radiusValue
 					: radiusValue * std::cbrt(ctx.Random01(i, 2));
 
 				pos[i].x += r * std::cos(phi) * dist;
@@ -175,7 +176,7 @@ ModuleDesc ParticleState(bool killOnLifeTime)
 	m.stage = Stage::ParticleUpdate;
 	m.params =
 	{
-		MakeParam<uint32_t>("KillOnLifetime", killOnLifeTime ? 1u : 0u)
+		MakeParam<NBool>("KillOnLifetime", NBool(killOnLifeTime))
 	};
 	m.reads =
 	{
@@ -196,8 +197,9 @@ if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
 	KILL();
 )";
 
-	m.execute = [killOnLifeTime](ModuleContext& ctx)
+	m.execute = [](ModuleContext& ctx)
 		{
+			const bool killAtEnd = static_cast<bool>(ctx.Param<NBool>("KillOnLifetime")(0));
 			const float dt = ctx.DeltaTime();
 
 			auto age = ctx.Particles<float>(Particles::Age);
@@ -218,7 +220,7 @@ if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
 				if (hasNormalized)
 					nage[i] = (t < 1.f) ? t : 1.f;
 
-				if (killOnLifeTime && t >= 1.f)
+				if (killAtEnd && t >= 1.f)
 					ctx.Kill(i);
 			}
 		};

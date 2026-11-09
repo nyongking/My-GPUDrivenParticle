@@ -63,6 +63,8 @@
     <ClInclude Include="EmitterCompiler.h" />
     <ClInclude Include="EmitterGpuProgram.h" />
     <ClInclude Include="EmitterInstance.h" />
+    <ClInclude Include="EmitterRuntime.h" />
+    <ClInclude Include="ModuleStackPanel.h" />
     <ClInclude Include="GpuEmitterInstance.h" />
     <ClInclude Include="LayoutBuilder.h" />
     <ClInclude Include="ModuleContext.h" />
@@ -92,6 +94,8 @@
     <ClCompile Include="EmitterCompiler.cpp" />
     <ClCompile Include="EmitterGpuProgram.cpp" />
     <ClCompile Include="EmitterInstance.cpp" />
+    <ClCompile Include="EmitterRuntime.cpp" />
+    <ClCompile Include="ModuleStackPanel.cpp" />
     <ClCompile Include="GpuEmitterInstance.cpp" />
     <ClCompile Include="LayoutBuilder.cpp" />
     <ClCompile Include="ModuleContext.cpp" />
