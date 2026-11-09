@@ -1,0 +1,23 @@
+#pragma once
+namespace Engine
+{
+	constexpr const char* DeltaTime = "Engine.DeltaTime";
+	constexpr const char* OwnerPosition = "Engine.Owner.Position";
+};
+
+namespace Emitter
+{
+	constexpr const char* SpawnCount =		"Emitter.SpawnCount";
+	constexpr const char* SpawnRemainder =	"Emitter.SpawnRemainder";
+}
+
+namespace Particles
+{
+
+	constexpr const char* Position =		"Particles.Position";
+	constexpr const char* Lifetime =		"Particles.Lifetime";
+	constexpr const char* Age =				"Particles.Age";
+	constexpr const char* NormalizedAge =	"Particles.NormalizedAge";
+	constexpr const char* Color =			"Particles.Color";
+	constexpr const char* Size =			"Particles.Size";
+}

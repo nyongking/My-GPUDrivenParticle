@@ -1,0 +1,17 @@
+﻿<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Profile" />
+    <BuildType Name="Release" />
+    <Platform Name="Windows" />
+  </Configurations>
+  <Project Path="../Core/Core.vcxproj" Id="86a58508-0d6a-4786-a32f-01a301fdc6f3">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="../Model/Model.vcxproj" Id="5d3aeefb-8789-48e5-9bd9-09c667052d09">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="MyProject.vcxproj" Id="eda8edb5-ee9d-46ec-8a63-249592d4516c">
+    <Platform Project="x64" />
+  </Project>
+</Solution>

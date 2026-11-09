@@ -1,0 +1,254 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{06dcf987-d5c3-489b-aa0a-88d547a323d5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Particle">
+      <UniqueIdentifier>{349dcf7c-c64c-472e-9ffa-e5fd8fb9d6ab}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Particle\ParticleSystem">
+      <UniqueIdentifier>{94a6638d-6130-4cc6-ad10-a38e830304f5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Particle\ParticlePool">
+      <UniqueIdentifier>{7e1b45fc-c8f0-4aa3-a0b9-da682562ec11}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Particle\Util">
+      <UniqueIdentifier>{1b3707cd-baee-4a82-8d36-174935338845}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders\Particle">
+      <UniqueIdentifier>{71bedd0b-2814-4ac7-991f-2796dae0930c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Particle\Emitter">
+      <UniqueIdentifier>{1c2093a9-1b54-4860-a89e-ea0bac92f009}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Particle\Modules">
+      <UniqueIdentifier>{8d3d7f7f-f029-40b4-9bc1-1fa097ba2d8d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Particle\Renderer">
+      <UniqueIdentifier>{bf3b9357-519b-4096-9bbe-9a6a2d2b6a95}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Particle\Sorter">
+      <UniqueIdentifier>{6a5fff65-3e1b-41fe-bb3a-47baa08da9fd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Particle\Generator">
+      <UniqueIdentifier>{a4b9b30b-81a5-4103-9eba-36b3a99cccaf}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="DebugDraw.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TexturedQuad.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ParticleSystem.cpp">
+      <Filter>Particle\ParticleSystem</Filter>
+    </ClCompile>
+    <ClCompile Include="ParticlePool.cpp">
+      <Filter>Particle\ParticlePool</Filter>
+    </ClCompile>
+    <ClCompile Include="ParticleUtility.cpp">
+      <Filter>Particle\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="ParticleEmitter.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="ProfileRecorder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ParticleSettings.cpp">
+      <Filter>Particle\ParticleSystem</Filter>
+    </ClCompile>
+    <ClCompile Include="ModuleDesc.cpp">
+      <Filter>Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="AttributeKey.cpp">
+      <Filter>Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="AttributeType.cpp">
+      <Filter>Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="LayoutBuilder.cpp">
+      <Filter>Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="CompiledEmitter.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="EmitterCompiler.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="ModuleContext.cpp">
+      <Filter>Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="ModuleLibrary.cpp">
+      <Filter>Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="EmitterInstance.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="SpriteRenderer.cpp">
+      <Filter>Particle\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="ParticleSorter.cpp">
+      <Filter>Particle\Sorter</Filter>
+    </ClCompile>
+    <ClCompile Include="ShaderGenerator.cpp">
+      <Filter>Particle\Generator</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="DebugDraw.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TexturedQuad.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleSystem.h">
+      <Filter>Particle\ParticleSystem</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticlePool.h">
+      <Filter>Particle\ParticlePool</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleUtility.h">
+      <Filter>Particle\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleEmitter.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleTypes.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="ProfileRecorder.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleSettings.h">
+      <Filter>Particle\ParticleSystem</Filter>
+    </ClInclude>
+    <ClInclude Include="ModuleDesc.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="AttributeKey.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="AttributeType.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="LayoutBuilder.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleNamespace.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="CompiledEmitter.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="EmitterCompiler.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="ModuleContext.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="ModuleLibrary.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="EmitterInstance.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="SpriteRenderer.h">
+      <Filter>Particle\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleSorter.h">
+      <Filter>Particle\Sorter</Filter>
+    </ClInclude>
+    <ClInclude Include="TagLibrary.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="ShaderGenerator.h">
+      <Filter>Particle\Generator</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Logo.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Logo44.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="SmallLogo.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="SplashScreen.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="StoreLogo.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="WideLogo.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+    <None Include="Shaders\ParticleComputeCommon.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\ParticleCommon.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\ParticleDrawCommon.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\ModuleCommon.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\DebugLineVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\DebugLinePS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\TexturedQuadVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\TexturedQuadPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleDrawPS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleEmitAliveCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleAfterSimAliveCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleDrawAliveVS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticlePreSim.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleSimulateAliveWaveCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleSpriteVS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+  </ItemGroup>
+</Project>
