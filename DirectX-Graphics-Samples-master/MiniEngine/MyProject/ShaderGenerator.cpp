@@ -90,6 +90,28 @@ namespace
 		return t == &Types::Float || t == &Types::Float2 || t == &Types::Float3 || t == &Types::Float4;
 	}
 
+	// PARAM(n) 이 펼쳐질 식. Random01 은 (index, salt) 에 대해 결정적이라 여러 번 써도 같은 값
+	std::string ParamExpression(const std::string& scope, const CompiledParam& p)
+	{
+		const std::vector<std::string> slots = ParamSlotNames(p.name, p.kind);
+		const std::string minVar = scope + "_" + slots[0];
+		const std::string maxVar = scope + "_" + slots[1];
+		const uint32_t count = p.type->size / 4;
+
+		std::string t;
+		if (p.perComponent && count > 1)
+		{
+			t = ShaderNames::HlslType(p.type) + std::string("(");
+			for (uint32_t c = 0; c < count; ++c)
+				t += (c ? ", " : "") + std::string("Random01(index, ") + std::to_string(p.salt + c) + ")";
+			t += ")";
+		}
+		else
+			t = "Random01(index, " + std::to_string(p.salt) + ")";
+
+		return "(" + minVar + " + (" + maxVar + " - " + minVar + ") * " + t + ")";
+	}
+
 	std::string LoadN(const TypeInfo* t)
 	{
 		const uint32_t n = t->size / 4;
@@ -275,6 +297,9 @@ namespace
 		w.Line("    // ---- [" + index + "] " + AsciiOnly(m.name) + "----");
 		// 시작지점
 		w.Line("    {");
+		for (const CompiledParam& p : m.paramInfos)
+			if (p.kind != ParamKind::Constant)
+				w.Line("#define " + m.scope + "_" + p.name + " " + ParamExpression(m.scope, p));
 		w.Line("#define PARAM(n) " + m.scope + "_##n");
 		w.Line("#line 1 \"" + m.scope + "\"");
 		for (const std::string& l : SplitFragment(m.hlsl))
@@ -282,6 +307,9 @@ namespace
 		// #line N : 바로 다음 줄이 N 번째 줄. 지금 쓰는 줄이 NextLineNumber() 이므로 +1
 		w.Line("#line " + std::to_string(w.NextLineNumber() + 1) + " \"" + fileName + "\"");
 		w.Line("#undef PARAM");
+		for (const CompiledParam& p : m.paramInfos)
+			if (p.kind != ParamKind::Constant)
+				w.Line("#undef " + m.scope + "_" + p.name);
 		w.Line("    }");
 	}
 

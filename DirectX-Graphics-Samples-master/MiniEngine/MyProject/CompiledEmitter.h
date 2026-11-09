@@ -6,6 +6,16 @@
 #include <vector>
 
 // Shader Generator가 써내려갈 모듈 정보.
+// 입력값 하나의 평가 방법 (셰이더 생성기와 CPU ModuleContext 가 같이 사용)
+struct CompiledParam
+{
+    std::string     name;
+    const TypeInfo* type;
+    ParamKind       kind;
+    bool            perComponent;
+    uint32_t        salt;   // RandomRange 용. 모듈이 직접 쓰는 salt 와 겹치지 않는 대역
+};
+
 struct CompiledModule
 {
     std::string     name; // 예시 : "Shape Location"
@@ -15,6 +25,7 @@ struct CompiledModule
     std::vector<Usage> reads; // read
     std::vector<Usage> writes; // write
     std::vector<std::string> params; // param
+    std::vector<CompiledParam> paramInfos;
 };
 
 struct DeclaredAttribute

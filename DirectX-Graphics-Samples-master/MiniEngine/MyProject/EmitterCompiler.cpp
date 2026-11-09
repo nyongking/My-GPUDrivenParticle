@@ -81,25 +81,47 @@ namespace
             cm.hlsl = m.hlsl;
             cm.reads = m.reads;
             cm.writes = m.writes;
-            for (const ParamDesc& p : m.params) cm.params.push_back(p.name);
+            for (size_t pi = 0; pi < m.params.size(); ++pi)
+            {
+                // 모듈이 직접 쓰는 작은 salt(0, 1, 2 ...)와 겹치면 값들이 상관되므로 대역을 분리한다
+                static constexpr uint32_t kSaltBase = 0x10000u;
+                static constexpr uint32_t kSaltPerModule = 0x100u;
+                static constexpr uint32_t kSaltPerParam = 4u;      // float4 성분 수
+
+                const ParamDesc& p = m.params[pi];
+                cm.params.push_back(p.name);
+                cm.paramInfos.push_back({ p.name, p.type, p.kind, p.perComponent,
+                    kSaltBase + uint32_t(mi) * kSaltPerModule + uint32_t(pi) * kSaltPerParam });
+            }
             out.modules.push_back(cm);
 
             for (size_t pi = 0; pi < m.params.size(); ++pi)
             {
                 const ParamDesc& p = m.params[pi];
+                const std::vector<std::string> slotNames = ParamSlotNames(p.name, p.kind);
                 const std::string who = m.name + " 입력값 '" + p.name + "'";
 
                 if (p.type == nullptr) { out.errors.push_back(who + ": 타입이 지정되지 않음"); continue; }
-                if (p.value.size() != p.type->size) { out.errors.push_back(who + ": 처음 값 크기(" + std::to_string(p.value.size()) + ")가 타입 크기와 다름"); continue; }
+                if (p.value.size() != size_t(p.type->size) * slotNames.size()) { out.errors.push_back(who + ": 처음 값 크기(" + std::to_string(p.value.size()) + ")가 타입 크기와 다름"); continue; }
+
+                if (p.kind == ParamKind::RandomRange)
+                {
+                    const bool isFloat = p.type == &Types::Float || p.type == &Types::Float2 || p.type == &Types::Float3 || p.type == &Types::Float4;
+                    if (!isFloat) { out.errors.push_back(who + ": RandomRange 는 float 계열 타입만 지원"); continue; }
+                    if (m.stage != Stage::ParticleSpawn) { out.errors.push_back(who + ": RandomRange 는 ParticleSpawn 단계에서만 사용 가능 (" + StageName(m.stage) + ")"); continue; }
+                }
 
                 std::string why;
                 if (!Types::IsGpuCompatible(*p.type, &why)) { out.errors.push_back(who + ": GPU 상수 버퍼에 못 넣는 타입 (" + why + ")"); continue; }
 
                 bool dup = false;
-                for (size_t k = 0; k < pi; ++k) dup |= (m.params[k].name == p.name);
+                for (size_t k = 0; k < pi; ++k)
+                    for (const std::string& other : ParamSlotNames(m.params[k].name, m.params[k].kind))
+                        dup |= std::find(slotNames.begin(), slotNames.end(), other) != slotNames.end();
                 if (dup) { out.errors.push_back(who + ": 같은 모듈 안에 같은 이름이 또 있음"); continue; }
 
-                out.moduleParams.Add(AttributeKey::Parse("Module." + scope + "." + p.name), p.type);
+                for (const std::string& slotName : slotNames)
+                    out.moduleParams.Add(AttributeKey::Parse("Module." + scope + "." + slotName), p.type);
             }
         }
 
@@ -107,9 +129,13 @@ namespace
         out.moduleParamData.assign(out.moduleParams.ConstantBufferSize(), 0);
         for (size_t mi = 0; mi < modules.size(); ++mi)
             for (const ParamDesc& p : modules[mi].params)
-                if (const Slot* s = out.moduleParams.Find("Module." + out.moduleScopes[mi] + "." + p.name))
-                    if (p.value.size() == s->type->size)
-                        std::memcpy(out.moduleParamData.data() + s->offset, p.value.data(), p.value.size());
+            {
+                const std::vector<std::string> slotNames = ParamSlotNames(p.name, p.kind);
+                for (size_t si = 0; si < slotNames.size(); ++si)
+                    if (const Slot* s = out.moduleParams.Find("Module." + out.moduleScopes[mi] + "." + slotNames[si]))
+                        if (p.value.size() == size_t(s->type->size) * slotNames.size())
+                            std::memcpy(out.moduleParamData.data() + s->offset, p.value.data() + si * s->type->size, s->type->size);
+            }
     }
 }
 

@@ -48,7 +48,7 @@ e.SpawnCount += n;
 	return m;
 }
 
-ModuleDesc InitializeParticle(float size, float lifeTime, float4 color)
+ModuleDesc InitializeParticle(Input<float> size, Input<float> lifeTime, Input<float4> color)
 {
 	ModuleDesc m;
 
@@ -80,9 +80,13 @@ p.Lifetime = PARAM(Lifetime);
 p.Age = 0.f;
 )";
 
-	m.execute = [size, lifeTime, color](ModuleContext& ctx)
+	m.execute = [](ModuleContext& ctx)
 		{
 			const float3 origin = ctx.OwnerPosition();
+
+			const auto sizeParam = ctx.Param<float>("Size");
+			const auto lifeParam = ctx.Param<float>("Lifetime");
+			const auto colorParam = ctx.Param<float4>("Color");
 
 			auto pos = ctx.Particles<float3>(Particles::Position);
 			auto col = ctx.Particles<float4>(Particles::Color);
@@ -98,9 +102,9 @@ p.Age = 0.f;
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
 				pos[i] = origin;
-				col[i] = color;
-				sizes[i] = size;
-				if (hasLife) life[i] = lifeTime;
+				col[i] = colorParam(i);
+				sizes[i] = sizeParam(i);
+				if (hasLife) life[i] = lifeParam(i);
 				if (hasAge)  age[i] = 0.f;
 			}
 		};
@@ -109,7 +113,7 @@ p.Age = 0.f;
 
 }
 
-ModuleDesc ShapeLocation(float radius, bool surfaceOnly)
+ModuleDesc ShapeLocation(Input<float> radius, bool surfaceOnly)
 {
 	ModuleDesc m;
 	m.name = "Shape Location";
@@ -138,9 +142,10 @@ p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
 
 )";
 
-	m.execute = [radius, surfaceOnly](ModuleContext& ctx)
+	m.execute = [surfaceOnly](ModuleContext& ctx)
 		{
 			const float kTwoPi = 6.28318530f;
+			const auto radiusParam = ctx.Param<float>("Radius");
 
 			auto pos = ctx.Particles<float3>(Particles::Position);
 			
@@ -150,8 +155,9 @@ p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
 				const float phi = ctx.Random01(i, 1) * kTwoPi;
 				const float r = std::sqrt(std::fmax(0.f, 1.f - z * z));
 
-				const float dist = surfaceOnly ? radius
-					: radius * std::cbrt(ctx.Random01(i, 2));
+				const float radiusValue = radiusParam(i);
+				const float dist = surfaceOnly ? radiusValue
+					: radiusValue * std::cbrt(ctx.Random01(i, 2));
 
 				pos[i].x += r * std::cos(phi) * dist;
 				pos[i].y += r * std::sin(phi) * dist;

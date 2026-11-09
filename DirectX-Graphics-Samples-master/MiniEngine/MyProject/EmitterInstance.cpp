@@ -29,8 +29,10 @@ bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
 	m_Log.clear();
 #endif
 	EmitterCompiler compiler;
-	for (auto& mod : modules)
+	for (size_t moduleIndex = 0; moduleIndex < modules.size(); ++moduleIndex)
 	{
+		ModuleDesc mod = modules[moduleIndex];
+		mod.compiledIndex = static_cast<int>(moduleIndex);
 		compiler.Add(mod);
 
 		switch (mod.stage)
@@ -142,7 +144,10 @@ void EmitterInstance::RunModules(std::vector<ModuleDesc>& modules, uint32_t begi
 
 	for (ModuleDesc& m : modules)
 		if (m.execute)          // 본문이 없는 모듈은 건너뛴다
+		{
+			ctx.BeginModule(m.compiledIndex);
 			m.execute(ctx);
+		}
 }
 
 void EmitterInstance::ZeroRange(uint32_t begin, uint32_t end)
