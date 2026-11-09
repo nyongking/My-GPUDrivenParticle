@@ -28,7 +28,7 @@ ModuleDesc SpawnRate(float rate)
 		{Emitter::SpawnRemainder, &Types::Float}
 	};
 	m.hlsl = R"(
-const float want = PARAM(rate) * DeltaTime * e.SpawnRemainder;
+const float want = PARAM(Rate) * DeltaTime + e.SpawnRemainder;
 const uint	n = (uint)want;
 e.SpawnRemainder = want - (float)n;
 e.SpawnCount += n;
@@ -76,7 +76,7 @@ ModuleDesc InitializeParticle(float size, float lifeTime, float4 color)
 p.Position = OwnerPosition;
 p.Color = PARAM(Color);
 p.Size = PARAM(Size);
-p.Lifetime = PARAM(lifetime);
+p.Lifetime = PARAM(Lifetime);
 p.Age = 0.f;
 )";
 

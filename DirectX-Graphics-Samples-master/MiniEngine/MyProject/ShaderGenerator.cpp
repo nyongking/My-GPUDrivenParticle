@@ -468,7 +468,7 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 			}
 		};
 
-	w.Line("void EmitterUpdate(inout EmitterState e");
+	w.Line("void EmitterUpdate(inout EmitterState e)");
 	w.Line("{");
 	writeStage(Stage::EmitterUpdate);
 	w.Line("}");
@@ -481,7 +481,7 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 	w.Line("}");
 	w.Line();
 
-	w.Line("void ParticleUpdate(inout Particle p, uint index, intout bool alive");
+	w.Line("void ParticleUpdate(inout Particle p, uint index, intout bool alive)");
 	w.Line("{");
 	WriteCopies(w, compiled.copyAtUpdateStart, "Previous"); // update 이전 값이 previous
 	writeStage(Stage::ParticleUpdate);

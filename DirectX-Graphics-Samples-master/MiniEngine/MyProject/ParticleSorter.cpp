@@ -14,7 +14,7 @@ void SortBackToFront(const float3* positions, uint32_t count, const float3& came
 		const float dy = positions[i].y - cameraPosition.y;
 		const float dz = positions[i].z - cameraPosition.z;
 
-		scratch.items[i].key = dx * cameraPosition.x + dy * cameraPosition.y + dz * cameraPosition.z;
+		scratch.items[i].key = dx * cameraForward.x + dy * cameraForward.y + dz * cameraForward.z;
 		scratch.items[i].index = i;
 	}
 
