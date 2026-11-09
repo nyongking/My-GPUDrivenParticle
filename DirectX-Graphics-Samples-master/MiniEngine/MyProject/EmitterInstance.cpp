@@ -5,6 +5,8 @@
 
 #include "TagLibrary.h"
 
+#include <algorithm>
+
 namespace
 {
 	uint32_t HashFrame(uint32_t x)
@@ -16,8 +18,8 @@ namespace
 	}
 }
 
-bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules, 
-	const std::vector<RendererDesc>& renders, 
+bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
+	const std::vector<RendererDesc>& renders,
 	uint32_t capacity)
 {
 	m_EmitterUpdates.clear();
@@ -54,7 +56,7 @@ bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
 	{
 		compiler.Add(mod);
 	}
-	
+
 	m_CompiledEmitter = compiler.Compile();
 
 #ifndef RELEASE
@@ -62,7 +64,7 @@ bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
 #endif	
 	if (!m_CompiledEmitter.Ok())
 		return false;
-	
+
 	m_Capacity = capacity;
 	const size_t bytes = size_t(m_CompiledEmitter.particles.Stride()) * capacity;
 	m_ParticleData.assign((bytes + 15) / 16 * 16, 0);	// RoundUp16
@@ -70,7 +72,7 @@ bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
 	m_AliveFlags.assign(capacity, 1);
 
 
-	m_Count = m_Frame = m_NewBegin = m_NewEnd = m_KilledLastTick= 0;
+	m_Count = m_Frame = m_NewBegin = m_NewEnd = m_KilledLastTick = 0;
 	return true;
 }
 
@@ -79,9 +81,9 @@ void EmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
 	// -------------------
 	//		Tick
 	// -------------------
-	
+
 	// [1] EngineValues
-	m_EngineValues.DeltaTime = deltaTime;
+	m_EngineValues.DeltaTime = min(max(deltaTime, 0.f), float(kMaxDeltaTime));	// 멈췄다 돌아온 프레임에서 한 번에 너무 많이 생성되지 않게
 	m_EngineValues.OwnerPosition = ownerPosition;
 	m_EngineValues.RandomSeed = HashFrame(m_Frame + 1);
 
@@ -135,7 +137,7 @@ void EmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
 void EmitterInstance::RunModules(std::vector<ModuleDesc>& modules, uint32_t begin, uint32_t end,
 	uint8_t* aliveFlags)
 {
-	ModuleContext ctx(m_CompiledEmitter, m_ParticleData.data(), m_EmitterData.data(), 
+	ModuleContext ctx(m_CompiledEmitter, m_ParticleData.data(), m_EmitterData.data(),
 		m_EngineValues, m_Capacity, begin, end, aliveFlags);
 
 	for (ModuleDesc& m : modules)
@@ -157,8 +159,8 @@ void EmitterInstance::ApplyCopyOps(const std::vector<CopyOp>& ops, uint32_t begi
 {
 	for (const CopyOp& op : ops)
 	{
-		const uint8_t* src	= m_ParticleData.data() + size_t(op.srcOffset) * m_Capacity + size_t(begin) * op.size;
-		uint8_t* dst		= m_ParticleData.data() + size_t(op.dstOffset) * m_Capacity + size_t(begin) * op.size;
+		const uint8_t* src = m_ParticleData.data() + size_t(op.srcOffset) * m_Capacity + size_t(begin) * op.size;
+		uint8_t* dst = m_ParticleData.data() + size_t(op.dstOffset) * m_Capacity + size_t(begin) * op.size;
 		std::memcpy(dst, src, size_t(end - begin) * op.size);
 	}
 }

@@ -63,6 +63,7 @@
     <ClInclude Include="EmitterCompiler.h" />
     <ClInclude Include="EmitterGpuProgram.h" />
     <ClInclude Include="EmitterInstance.h" />
+    <ClInclude Include="GpuEmitterInstance.h" />
     <ClInclude Include="LayoutBuilder.h" />
     <ClInclude Include="ModuleContext.h" />
     <ClInclude Include="ModuleDesc.h" />
@@ -91,6 +92,7 @@
     <ClCompile Include="EmitterCompiler.cpp" />
     <ClCompile Include="EmitterGpuProgram.cpp" />
     <ClCompile Include="EmitterInstance.cpp" />
+    <ClCompile Include="GpuEmitterInstance.cpp" />
     <ClCompile Include="LayoutBuilder.cpp" />
     <ClCompile Include="ModuleContext.cpp" />
     <ClCompile Include="ModuleDesc.cpp" />
@@ -146,6 +148,14 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\EmitterFinalizeCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
     </FxCompile>
     <FxCompile Include="Shaders\ParticleAfterSimAliveCS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>

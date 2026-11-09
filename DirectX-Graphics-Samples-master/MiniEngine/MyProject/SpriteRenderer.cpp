@@ -2,6 +2,7 @@
 #include "SpriteRenderer.h"
 
 #include "EmitterInstance.h"
+#include "GpuEmitterInstance.h"
 
 #include "GraphicsCore.h"
 #include "GraphicsCommon.h"
@@ -82,7 +83,7 @@ namespace
 RendererDesc SpriteRenderer::Desc()
 {
 	RendererDesc desc = {};
-	
+
 	desc.name = "Sprite Renderer";
 	desc.reads =
 	{
@@ -99,29 +100,9 @@ bool SpriteRenderer::Initialize(const EmitterInstance& emitter)
 	m_Log.clear();
 	m_Ready = false;
 
-	const Block& layout = emitter.Compiled().particles;
-	const Slot* pos = layout.Find(Particles::Position);
-	const Slot* col = layout.Find(Particles::Color);
-	const Slot* siz = layout.Find(Particles::Size);
-
-	if (!pos || !col || !siz)
-	{
-		m_Log = "[SpriteRenderer] Position/Color/Size 중 레이아웃에 없는 값이 있음. "
-			"EmitterInstance::Initialize 에 SpriteRenderer::Desc() 를 넣었는지 확인\n";
+	if (!ReadLayout(emitter.Compiled().particles, emitter.Capacity()))
 		return false;
-	}
-	if (pos->type != &Types::Float3 || col->type != &Types::Float4 || siz->type != &Types::Float)
-	{
-		m_Log = "[SpriteRenderer] Position(float3) / Color(float4) / Size(float) 타입이 다름\n";
-		return false;
-	
-	}
 
-	m_PositionOffset = pos->offset;
-	m_ColorOffset = col->offset;
-	m_SizeOffset = siz->offset;
-	m_Capacity = emitter.Capacity();
-	
 	m_BufferBytes = static_cast<uint32_t>(emitter.ParticleDataBytes());
 	m_ParticleBuffer.Create(L"Sprite Render Buffer", m_BufferBytes / 4, 4);
 
@@ -138,6 +119,51 @@ bool SpriteRenderer::Initialize(const EmitterInstance& emitter)
 	return true;
 }
 
+
+bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity)
+{
+	const Slot* pos = layout.Find(Particles::Position);
+	const Slot* col = layout.Find(Particles::Color);
+	const Slot* siz = layout.Find(Particles::Size);
+
+	if (!pos || !col || !siz)
+	{
+		m_Log = "[SpriteRenderer] Position/Color/Size 중 레이아웃에 없는 값이 있음. "
+			"EmitterInstance::Initialize 에 SpriteRenderer::Desc() 를 넣었는지 확인\n";
+		return false;
+	}
+	if (pos->type != &Types::Float3 || col->type != &Types::Float4 || siz->type != &Types::Float)
+	{
+		m_Log = "[SpriteRenderer] Position(float3) / Color(float4) / Size(float) 타입이 다름\n";
+		return false;
+	}
+
+	m_PositionOffset = pos->offset;
+	m_ColorOffset = col->offset;
+	m_SizeOffset = siz->offset;
+	m_Capacity = capacity;
+	return true;
+}
+
+bool SpriteRenderer::InitializeGpu(const GpuEmitterInstance& emitter)
+{
+	m_Log.clear();
+	m_Ready = false;
+
+	if (!emitter.Ready() || !ReadLayout(emitter.Compiled().particles, emitter.Capacity()))
+		return false;
+
+	// 파티클 버퍼는 GPU 이미터 것을 쓰므로 만들지 않는다.
+	// t1 은 정렬을 끈 상태라 읽지 않지만, SRV 테이블을 채우려고 작은 버퍼를 하나 둔다 (G3 에서 정렬 결과로 바뀜)
+	const uint32_t dummy[4] = { 0, 1, 2, 3 };
+	m_SortedIndexBuffer.Create(L"Sorted Index Buffer (GPU, unused)", 4, sizeof(uint32_t), dummy);
+	m_BufferBytes = 0;
+
+	InitializePipeline();
+
+	m_Ready = true;
+	return true;
+}
 
 void SpriteRenderer::Shutdown()
 {
@@ -166,7 +192,31 @@ void SpriteRenderer::Render(GraphicsContext& gfx, const Math::Camera& camera, co
 	else
 		gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
 
-	// 3) 상수 버퍼
+	// 3) 상수 버퍼 / 파이프라인 / SRV
+	BindForDraw(gfx, camera, m_ParticleBuffer, m_SortMode == SortMode::ViewDepth);
+
+	// 4) 그리기: 파티클 하나 = 사각형(정점 6개), 인스턴스 = 파티클 수
+	gfx.DrawInstanced(6, emitter.Count());
+}
+
+void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter)
+{
+	if (!m_Ready || !emitter.Ready())
+		return;
+
+	// GPU 이미터의 Tick 이 이미 전환해 두지만, 비교(CompareWithCpu) 등으로 상태가 바뀌었을 수 있어 한 번 더
+	gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	gfx.TransitionResource(emitter.DrawArgs(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+	gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
+
+	BindForDraw(gfx, camera, emitter.ParticleBuffer(), false);
+
+	// 개수는 Finalize 가 Draw 인자 (6, alive, 0, 0) 로 써 둔 것. CPU 는 개수를 몰라도 된다
+	gfx.DrawIndirect(emitter.DrawArgs());
+}
+
+void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camera, ByteAddressBuffer& particles, bool sorted)
+{
 	SpriteConstants sc = {};
 	DirectX::XMStoreFloat4x4(&sc.viewProj, camera.GetViewProjMatrix());
 	DirectX::XMStoreFloat4(&sc.camRight, camera.GetRightVec());
@@ -177,18 +227,15 @@ void SpriteRenderer::Render(GraphicsContext& gfx, const Math::Camera& camera, co
 	sc.colorOffset = m_ColorOffset;
 	sc.sizeOffset = m_SizeOffset;
 	sc.capacity = m_Capacity;
-	sc.sortEnabled = uint32_t(m_SortMode);
+	sc.sortEnabled = sorted ? 1u : 0u;
 
-	// 3) 그리기: 파티클 하나 = 사각형(정점 6개), 인스턴스 = 파티클 수
 	gfx.SetRootSignature(s_RootSig);
 	gfx.SetPipelineState(s_PSO);
 	gfx.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	gfx.SetDynamicConstantBufferView(kRootCBV, sizeof(sc), &sc);
 
-	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { m_ParticleBuffer.GetSRV(), m_SortedIndexBuffer.GetSRV()};
+	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), m_SortedIndexBuffer.GetSRV() };
 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
-
-	gfx.DrawInstanced(6, emitter.Count());
 }
 
 void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camera& camera, const EmitterInstance& emitter)

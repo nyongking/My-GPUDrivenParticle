@@ -114,6 +114,9 @@
     <ClCompile Include="EmitterGpuProgram.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
+    <ClCompile Include="GpuEmitterInstance.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -192,6 +195,9 @@
     <ClInclude Include="EmitterGpuProgram.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
+    <ClInclude Include="GpuEmitterInstance.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="Logo.png">
@@ -260,6 +266,9 @@
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\ParticleSpriteVS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\EmitterFinalizeCS.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
   </ItemGroup>
