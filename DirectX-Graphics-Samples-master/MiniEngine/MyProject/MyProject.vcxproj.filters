@@ -108,6 +108,12 @@
     <ClCompile Include="ShaderGenerator.cpp">
       <Filter>Particle\Generator</Filter>
     </ClCompile>
+    <ClCompile Include="ShaderCompiler.cpp">
+      <Filter>Particle\Generator</Filter>
+    </ClCompile>
+    <ClCompile Include="EmitterGpuProgram.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -179,6 +185,12 @@
     </ClInclude>
     <ClInclude Include="ShaderGenerator.h">
       <Filter>Particle\Generator</Filter>
+    </ClInclude>
+    <ClInclude Include="ShaderCompiler.h">
+      <Filter>Particle\Generator</Filter>
+    </ClInclude>
+    <ClInclude Include="EmitterGpuProgram.h">
+      <Filter>Particle\Emitter</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

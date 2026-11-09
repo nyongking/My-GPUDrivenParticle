@@ -28,8 +28,6 @@ struct GeneratedShader
 // [5] 각 단계별 모듈 함수 : 모듈 조각들을 순서대로 이어 붙인다.
 // [6] 각 단계의 내용 고정
 
-
-
 GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled,
 	const std::string& fileName = "Emitter.generated.hlsl");
 

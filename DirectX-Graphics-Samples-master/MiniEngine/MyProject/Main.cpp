@@ -103,7 +103,6 @@ void MyProject::Startup( void )
     //L"Particle Draw" });
 
     InitializeEmitter();
-
 }
 
 void MyProject::Cleanup( void )
