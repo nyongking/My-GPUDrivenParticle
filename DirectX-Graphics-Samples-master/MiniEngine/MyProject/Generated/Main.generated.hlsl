@@ -28,8 +28,9 @@ static const uint OFS_Emitter_SpawnRemainder           = 4;   // float
 cbuffer ModuleParams : register(b1)
 {
     float  M0_SpawnRate_Rate;                      // 0
-    float  M1_InitializeParticle_Size;             // 4
-    float  M1_InitializeParticle_Lifetime;         // 8
+    float  M1_InitializeParticle_Size_Min;         // 4
+    float  M1_InitializeParticle_Size_Max;         // 8
+    float  M1_InitializeParticle_Lifetime;         // 12
     float4 M1_InitializeParticle_Color;            // 16
     float  M2_SphereLocation_Radius;               // 32
     uint   M2_SphereLocation_SurfaceOnly;          // 36
@@ -105,7 +106,7 @@ void EmitterUpdate(inout EmitterState e)
         const uint	n = (uint)want;
         e.SpawnRemainder = want - (float)n;
         e.SpawnCount += n;
-#line 109 "Main.generated.hlsl"
+#line 110 "Main.generated.hlsl"
 #undef PARAM
     }
 }
@@ -114,6 +115,7 @@ void ParticleSpawn(inout Particle p, uint index)
 {
     // ---- [M1] Initialize Particle----
     {
+#define M1_InitializeParticle_Size (M1_InitializeParticle_Size_Min + (M1_InitializeParticle_Size_Max - M1_InitializeParticle_Size_Min) * Random01(index, 65792))
 #define PARAM(n) M1_InitializeParticle_##n
 #line 1 "M1_InitializeParticle"
         p.Position = OwnerPosition;
@@ -121,8 +123,9 @@ void ParticleSpawn(inout Particle p, uint index)
         p.Size = PARAM(Size);
         p.Lifetime = PARAM(Lifetime);
         p.Age = 0.f;
-#line 125 "Main.generated.hlsl"
+#line 127 "Main.generated.hlsl"
 #undef PARAM
+#undef M1_InitializeParticle_Size
     }
     // ---- [M2] Sphere Location----
     {
@@ -135,7 +138,7 @@ void ParticleSpawn(inout Particle p, uint index)
         const float dist = (PARAM(SurfaceOnly) != 0) ? PARAM(Radius) : 
         		PARAM(Radius) * pow(Random01(index, 2), 1.f / 3.f);
         p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
-#line 139 "Main.generated.hlsl"
+#line 142 "Main.generated.hlsl"
 #undef PARAM
     }
     // ---- [Initialcopy] none ----
@@ -153,7 +156,7 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
         p.NormalizedAge = min(t, 1.f);
         if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
         	KILL();
-#line 157 "Main.generated.hlsl"
+#line 160 "Main.generated.hlsl"
 #undef PARAM
     }
 }

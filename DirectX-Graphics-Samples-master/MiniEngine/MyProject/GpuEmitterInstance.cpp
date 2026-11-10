@@ -155,9 +155,8 @@ void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 	ec.deltaTime = min(max(deltaTime, 0.f), float(kMaxDeltaTime));
 	ec.capacity = m_Capacity;
 	ec.randomSeed = HashFrame(m_Frame + 1);
-	ec.ownerVelocity = ComputeOwnerVelocity(t.position, &m_PrevOwnerPosition, deltaTime);
+	ec.ownerVelocity = ComputeOwnerVelocity(t.position, m_HasPrevOwner ? &m_PrevOwnerPosition : nullptr, deltaTime);
 	ec.ownerLocalToWorld = MakeLocalToWorld(t);
-
 	m_PrevOwnerPosition = t.position;
 	m_HasPrevOwner = true;
 
@@ -190,10 +189,17 @@ void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 	ctx.SetPipelineState(m_Program->PSO(EmitterGpuProgram::kEmitterUpdate));
 	ctx.Dispatch(1, 1, 1);
 
-	// --------- 2. Particle Spawn ---------
+	// --------- 2. Particle Update: In[0..ALIVE_IN) -> 살아남은 것만 Out[cursor++] ---------
+//   그룹 수 = 지난 프레임 Finalize 가 m_FrameArgs[16..] 에 써 둔 값
+	ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+	ctx.SetPipelineState(m_Program->PSO(EmitterGpuProgram::kParticleUpdate));
+	ctx.DispatchIndirect(m_FrameArgs, kFrameArgsUpdate);
+
+	// --------- 3. Particle Spawn ---------
 	ctx.TransitionResource(m_SpawnArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
 	ctx.InsertUAVBarrier(m_Counters);
 	ctx.InsertUAVBarrier(m_EmitterData);
+	ctx.InsertUAVBarrier(particlesOut);     // Update 가 Out 에 다 쓴 뒤에 (같은 버퍼에 이어 쓰므로)
 	ctx.SetPipelineState(m_Program->PSO(EmitterGpuProgram::kParticleSpawn));
 	ctx.DispatchIndirect(m_SpawnArgs);
 
