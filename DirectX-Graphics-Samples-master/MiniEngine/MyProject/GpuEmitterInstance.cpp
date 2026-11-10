@@ -50,6 +50,11 @@ namespace
 	const uint32_t kCounterSpawnRequest = 8;
 	const uint32_t kCounterBytes = 16;
 
+	// m_FrameArgs 안의 위치 (EmitterFinalizeCS.hlsl 의 FRAME_ARGS_* 와 같게)
+	const uint32_t kFrameArgsDraw = 0;
+	const uint32_t kFrameArgsUpdate = 16;
+	const uint32_t kFrameArgsBytes = 28;
+
 	// Finalize 는 모듈과 관계없는 고정 커널이라 빌드할 때 컴파일된 것을 쓴다
 	bool       s_FinalizeReady = false;
 	ComputePSO s_FinalizePSO(L"Emitter Finalize PSO");
@@ -86,10 +91,14 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	m_Program = &program;
 	m_Capacity = capacity;
 
-	alignas(16) const uint32_t zeros[4] = {};
+	alignas(16) const uint32_t zeros[8] = {};
 
 	const uint32_t particleBytes = RoundUp16(max(m_Compiled.particles.Stride(), 4u) * capacity);
-	m_Particles.Create(L"GPU Emitter Particles", particleBytes / 4, 4);
+	
+	m_Particles[0].Create(L"GPU Emitter Particles A", particleBytes / 4, 4);
+	m_Particles[1].Create(L"GPU Emitter Particles B", particleBytes / 4, 4);
+	m_Current = 0;
+
 	m_Counters.Create(L"GPU Emitter Counters", kCounterBytes / 4, 4, zeros);
 
 	const uint32_t emitterBytes = RoundUp16(max(m_Compiled.emitterParams.Stride(), 4u));
@@ -97,7 +106,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	m_EmitterData.Create(L"GPU Emitter Data", emitterBytes / 4, 4, emitterInit.data());
 
 	m_SpawnArgs.Create(L"GPU Emitter Spawn Args", 3, 4, zeros);
-	m_DrawArgs.Create(L"GPU Emitter Draw Args", 4, 4, zeros);
+	m_FrameArgs.Create(L"GPU Emitter Frame Args", kFrameArgsBytes / 4, 4, zeros);
 
 	for (uint32_t i = 0; i < kReadbackSlots; ++i) // Latency에 따른 3개의 슬롯
 	{
@@ -122,11 +131,12 @@ void GpuEmitterInstance::Shutdown()
 	for (uint32_t i = 0; i < kReadbackSlots; ++i)
 		m_Readback[i].Destroy();
 
-	m_DrawArgs.Destroy();
+	m_FrameArgs.Destroy();
 	m_SpawnArgs.Destroy();
 	m_EmitterData.Destroy();
 	m_Counters.Destroy();
-	m_Particles.Destroy();
+	for (uint32_t i = 0 ; i < 2; ++i)
+		m_Particles[i].Destroy();
 
 	m_ModuleParams.clear();
 	m_Program = nullptr;
@@ -139,18 +149,6 @@ void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 		return;
 
 	ReadCountersIfReady();
-
-	//struct alignas(16) EngineConstants
-	//{
-	//	float3   ownerPosition;       // 0
-	//	float    deltaTime;           // 12
-	//	uint32_t capacity;            // 16
-	//	uint32_t randomSeed;          // 20
-	//	uint32_t _pad[2];             // 24
-	//	float3   ownerVelocity;       // 32
-	//	float    _pad;					// 44
-	//	float4x4 ownerLocalToWorld;   // 48 (HLSL 은 row_major)
-	//};
 
 	EngineConstants ec = {};
 	ec.ownerPosition = t.position;
@@ -169,15 +167,19 @@ void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootEngineCB, sizeof(ec), &ec);
 	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootModuleCB, m_ModuleParams.size() * sizeof(Chunk16), m_ModuleParams.data());
 
-	ctx.TransitionResource(m_Particles, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	ByteAddressBuffer& particlesIn = m_Particles[m_Current];
+	ByteAddressBuffer& particlesOut = m_Particles[1 - m_Current];
+
+	ctx.TransitionResource(particlesIn, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	ctx.TransitionResource(particlesOut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	ctx.TransitionResource(m_Counters, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	ctx.TransitionResource(m_EmitterData, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	ctx.TransitionResource(m_SpawnArgs, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 	D3D12_CPU_DESCRIPTOR_HANDLE uavs[EmitterGpuProgram::kNumUAVs] =
 	{
-		m_Particles.GetUAV(),
-		m_Particles.GetUAV(),
+		particlesIn.GetUAV(),
+		particlesOut.GetUAV(),
 		m_Counters.GetUAV(),
 		m_EmitterData.GetUAV(),
 		m_SpawnArgs.GetUAV()
@@ -197,8 +199,8 @@ void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 
 	// --------- 3. Finalize (스레드 1개) ---------
 	ctx.InsertUAVBarrier(m_Counters);
-	ctx.TransitionResource(m_DrawArgs, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	uavs[4] = m_DrawArgs.GetUAV(); // uav 4번에 드로우 인자로 교체
+	ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	uavs[4] = m_FrameArgs.GetUAV(); // uav 4번에 드로우 인자로 교체
 	ctx.SetDynamicDescriptors(EmitterGpuProgram::kRootUAVs, 0, EmitterGpuProgram::kNumUAVs, uavs);
 	ctx.SetPipelineState(s_FinalizePSO);
 	ctx.Dispatch(1, 1, 1);
@@ -208,10 +210,11 @@ void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 	ctx.TransitionResource(m_Counters, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	ctx.CopyBufferRegion(m_Readback[slot], 0, m_Counters, 0, kCounterBytes);
 
-	// ---------- 5. 그리기 준비 ----------
-	ctx.TransitionResource(m_Particles, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	ctx.TransitionResource(m_DrawArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, true);
+	// ---------- 5. 그리기 준비 + 교체 ----------
+	ctx.TransitionResource(particlesOut, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, true);
 
+	m_Current = 1 - m_Current;
 	m_ReadbackFence[slot] = ctx.Finish();
 	++m_Frame;
 }

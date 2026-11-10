@@ -2,12 +2,15 @@
 
 cbuffer EngineConstants : register(b0)
 {
-    float3  OwnerPosition;
-    float   DeltaTime;
-    uint    Capacity;
-    uint    RandomSeed;
-    uint2   _pad;
-};
+    float3 OwnerPosition;
+    float DeltaTime;
+    uint Capacity;
+    uint RandomSeed;
+    uint2 _pad;
+    float3 OwnerVelocity;
+    float _pad1;
+    row_major float4x4 OwnerLocalToWorld;
+}; 
 
 RWByteAddressBuffer ParticlesIn : register(u0);
 RWByteAddressBuffer ParticlesOut : register(u1);

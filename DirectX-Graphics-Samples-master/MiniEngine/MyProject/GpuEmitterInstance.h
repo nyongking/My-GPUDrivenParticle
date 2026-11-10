@@ -33,8 +33,8 @@ public:
 	uint32_t	Capacity() const { return m_Capacity; }
 	const CompiledEmitter& Compiled() const { return m_Compiled; }
 
-	ByteAddressBuffer& ParticleBuffer() { return m_Particles; }
-	IndirectArgsBuffer& DrawArgs() { return m_DrawArgs; }
+	ByteAddressBuffer& ParticleBuffer() { return m_Particles[m_Current]; }
+	IndirectArgsBuffer& DrawArgs() { return m_FrameArgs; }
 
 	// readback으로 받은 값
 	uint32_t	ReadbackAlive() const { return m_ReadbackAlive; }
@@ -47,19 +47,20 @@ public:
 
 
 private:
-	static const uint32_t kReadbackSlots = 3;
-
 	void ReadCountersIfReady();
 	void LoadModuleParams();
 
+	static const uint32_t kReadbackSlots = 3;
+	
 	CompiledEmitter          m_Compiled;
 	const EmitterGpuProgram* m_Program = nullptr;
 
-	ByteAddressBuffer        m_Particles;      // Particle 버퍼, 추후 In/Out 형태로 바꿀 예정
+	ByteAddressBuffer        m_Particles[2];      // Particle 버퍼, In/Out 형태의 버퍼 구성
 	ByteAddressBuffer        m_Counters;       // ALIVE_IN, WRITE_CURSOR, SPAWN_REQUEST, (pad)의 정보 저장
 	ByteAddressBuffer        m_EmitterData;    // Emitter.* 의 데이터 저장
 	IndirectArgsBuffer       m_SpawnArgs;      // DispatchIndirect (x, y, z)
-	IndirectArgsBuffer       m_DrawArgs;       // DrawIndirect (vertex, instance, 0, 0)
+	IndirectArgsBuffer       m_FrameArgs;      // [0 - 15] : DrawIndirect 인자 (6, AliveCount, 0, 0) / [16 - 27] : DispatchIndirect 인자 (다음 프레임의 ParticleUpdate 그룹 수, 1, 1)
+
 
 	// b1 ModuleParams: ConstantBufferSize 만큼, 16 바이트 정렬 (SetDynamicConstantBufferView 조건)
 	struct alignas(16) Chunk16 { uint8_t bytes[16]; };
@@ -76,6 +77,7 @@ private:
 	bool                     m_HasPrevOwner = false;
 	bool                     m_Ready = false;
 
+	uint32_t				 m_Current = 0;
 
 #ifndef RELEASE
 	std::string              m_Log;
