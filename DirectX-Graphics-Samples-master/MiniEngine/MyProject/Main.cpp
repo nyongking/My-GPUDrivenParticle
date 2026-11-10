@@ -23,13 +23,9 @@
 
 #include "ProfileRecorder.h"
 
-#include "EmitterInstance.h"
-#include "SpriteRenderer.h"
 #include "ModuleLibrary.h"
-
-#include "ShaderCompiler.h"
-#include "EmitterGpuProgram.h"
-#include "GpuEmitterInstance.h"
+#include "EmitterRuntime.h"
+#include "ModuleStackPanel.h"
 
 using namespace GameCore;
 using namespace Graphics;
@@ -63,22 +59,8 @@ private:
     std::unique_ptr<CameraController> m_CameraController;
 
     // -----------
-    EmitterInstance m_ModuleEmitter;
-    SpriteRenderer  m_ModuleRenderer;
-    bool            m_ModuleReady = false;
-    float3          m_ModuleEmitterPos = { 3.f, 0.f, 0.f };     // 기존 이미터(0,0,0)와 떨어뜨림
-
-    // ----------- GPU (H5): 같은 모듈 구성을 GPU 에서
-    ShaderCompiler      m_ShaderCompiler;
-    EmitterGpuProgram   m_GpuProgram;
-    GpuEmitterInstance  m_GpuEmitter;
-    SpriteRenderer      m_GpuRenderer;
-    bool                m_GpuReady = false;
-    float3              m_GpuEmitterPos = { -3.f, 0.f, 0.f };    // CPU 이미터 반대편
-
-    uint32_t            m_FrameIndex = 0;
-    uint32_t            m_CompareAtFrame = 10;   // 이 프레임에 CPU/GPU 를 한 번 비교 (0 = 안 함). dt 최대 0.1 이라 수명 1초 전에 끝남
-    std::string         m_CompareReport;
+    EmitterRuntime  m_Runtime;
+    float3          m_EmitterPos = { 0.f, 0.f, 0.f };
 
 
 };
@@ -125,13 +107,7 @@ void MyProject::Cleanup(void)
 {
     // Free up resources in an orderly fashion
 
-    Graphics::g_CommandManager.IdleGPU();   // GPU 가 버퍼를 다 쓴 뒤 지운다
-    m_ModuleRenderer.Shutdown();
-
-    m_GpuRenderer.Shutdown();
-    m_GpuEmitter.Shutdown();
-    m_GpuProgram.Shutdown();
-    m_ShaderCompiler.Shutdown();
+    m_Runtime.Shutdown();
 
     //m_Particles.Shutdown();
 
@@ -164,27 +140,15 @@ void MyProject::Update(float deltaT)
             m_RecordTag, stat.maxParticles);
     }*/
 
-    //if (m_ModuleReady)
-    //    m_ModuleEmitter.Tick(deltaT, m_ModuleEmitterPos);
-
-    // GPU 이미터: CPU 와 같은 dt 로 같은 프레임에 (그래야 비교가 맞음)
-    if (m_GpuReady)
-        m_GpuEmitter.Tick(deltaT, m_GpuEmitterPos);
-
-    ++m_FrameIndex;
-    //if (m_GpuReady && m_ModuleReady && m_FrameIndex == m_CompareAtFrame)
-    //{
-    //    //m_CompareReport = m_GpuEmitter.CompareWithCpu(m_ModuleEmitter);
-    //    //Utility::Print(m_CompareReport.c_str());
-    //}
-
+    m_Runtime.ApplyPending();     // UI 가 지난 프레임에 남긴 변경을 Tick 전에 적용
+    m_Runtime.Tick(deltaT, m_EmitterPos);
 
     UpdateImGui(deltaT);
 }
 
 void MyProject::InitializeEmitter()
 {
-    std::vector<ModuleDesc> modules =
+    const std::vector<ModuleDesc> modules =
     {
         SpawnRate(1000.f),
         InitializeParticle(0.05f, 1.f, float4{ 1.f, 0.6f, 0.2f, 1.f }),   // size, lifeTime, color
@@ -192,34 +156,8 @@ void MyProject::InitializeEmitter()
         ParticleState(true)
     };
 
-    m_ModuleReady = m_ModuleEmitter.Initialize(modules, { SpriteRenderer::Desc() }, 100'000);
-    Utility::Print(m_ModuleEmitter.Log().c_str());       // 컴파일 결과 (출력 창)
-
-    if (m_ModuleReady)
-    {
-        m_ModuleReady = m_ModuleRenderer.Initialize(m_ModuleEmitter);
-        if (!m_ModuleReady)
-            Utility::Print(m_ModuleRenderer.Log().c_str());
-    }
-
-    // ---------- GPU: 모듈 구성 -> 셰이더 문자열 -> 컴파일 -> PSO -> 버퍼 ----------
-    if (m_ModuleReady && m_ShaderCompiler.Initialize(ShaderCompiler::FindIncludeDir(L"ModuleCommon.hlsli")))
-    {
-        m_GpuReady = m_GpuProgram.Build(m_ModuleEmitter.Compiled(), m_ShaderCompiler, "Main");
-        Utility::Print(m_GpuProgram.Log().c_str());
-
-        if (m_GpuReady)
-            m_GpuReady = m_GpuEmitter.Initialize(m_ModuleEmitter.Compiled(), m_GpuProgram, m_ModuleEmitter.Capacity());
-        if (m_GpuReady)
-            m_GpuReady = m_GpuRenderer.InitializeGpu(m_GpuEmitter);
-
-        if (!m_GpuReady)
-        {
-            Utility::Print(m_GpuEmitter.Log().c_str());
-            Utility::Print(m_GpuRenderer.Log().c_str());
-        }
-    }
-    Utility::Print(m_ShaderCompiler.Log().c_str());
+    if (!m_Runtime.Initialize(modules, 100'000, EmitterBackend::Gpu))
+        Utility::Print(m_Runtime.LastError().c_str());
 }
 
 void MyProject::UpdateImGui(float deltaT)
@@ -233,19 +171,7 @@ void MyProject::UpdateImGui(float deltaT)
 
     ImGui::Begin("Particle");
 
-    ImGui::SeparatorText("Module Emitter");
-    ImGui::Text("CPU alive : %u / %u", m_ModuleEmitter.Count(), m_ModuleEmitter.Capacity());
-    if (m_GpuReady)
-    {
-        ImGui::Text("GPU alive : %u / %u  (readback, 3 frames late)", m_GpuEmitter.ReadbackAlive(), m_GpuEmitter.Capacity());
-        ImGui::Text("GPU spawn request : %u", m_GpuEmitter.ReadbackRequest());
-        if (ImGui::Button("Compare CPU / GPU"))
-            //m_CompareReport = m_GpuEmitter.CompareWithCpu(m_ModuleEmitter);
-        if (!m_CompareReport.empty())
-            ImGui::TextUnformatted(m_CompareReport.c_str());
-    }
-    else
-        ImGui::TextDisabled("GPU emitter not ready (see Output window)");
+    DrawModuleStackPanel(m_Runtime);
 
     //const Particles::ParticleStat stat = m_Particles.GetParticleStat();
 
@@ -375,11 +301,7 @@ void MyProject::RenderScene(void)
     DebugDraw::Render(gfxContext, m_Camera.GetViewProjMatrix());
     QuadRenderer::BeginDraw(gfxContext, m_Camera.GetViewProjMatrix());
 
-    if (m_ModuleReady)
-        m_ModuleRenderer.Render(gfxContext, m_Camera, m_ModuleEmitter);
-
-    if (m_GpuReady)
-        m_GpuRenderer.RenderGpu(gfxContext, m_Camera, m_GpuEmitter);
+    m_Runtime.Render(gfxContext, m_Camera);
 
 
     // Finish

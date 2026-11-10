@@ -13,6 +13,12 @@ public:
 		uint32_t capacity);
 
 	void Tick(float deltaTime, const float3& ownerPosition);
+	void Shutdown();
+
+	// 입력값 바이트만 교체 (레이아웃 동일)
+	void SetModuleParamData(const std::vector<uint8_t>& data);
+	// 파티클 레이아웃이 같은 컴파일 결과로 교체 (살아 있는 파티클 유지)
+	void ReplaceCompiled(const CompiledEmitter& compiled);
 
 	uint32_t				Count() const { return m_Count; }
 	uint32_t				Capacity() const { return m_Capacity; }

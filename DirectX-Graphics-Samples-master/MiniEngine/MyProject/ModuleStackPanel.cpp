@@ -1,0 +1,166 @@
+﻿#include "pch.h"
+#include "ModuleStackPanel.h"
+
+#include "EmitterRuntime.h"
+#include "imgui.h"
+
+#include <algorithm>
+#include <cmath>
+
+namespace
+{
+	bool DrawFloats(const char* label, float* v, uint32_t count, const ParamDesc& p)
+	{
+		const float speed = (std::max)(std::fabs(v[0]) * 0.01f, 0.01f);
+
+		bool changed = false;
+		switch (count)
+		{
+		case 1: changed = ImGui::DragFloat(label, v, speed); break;
+		case 2: changed = ImGui::DragFloat2(label, v, speed); break;
+		case 3: changed = ImGui::DragFloat3(label, v, speed); break;
+		case 4: changed = ImGui::DragFloat4(label, v, speed); break;
+		default: break;
+		}
+
+		if (changed && p.uiHasMin)
+			for (uint32_t i = 0; i < count; ++i)
+				v[i] = (std::max)(v[i], p.uiMin);
+		return changed;
+	}
+
+	bool DrawValue(const char* label, const ParamDesc& p, uint8_t* data)
+	{
+		if (p.type == &Types::Bool)
+		{
+			int32_t& stored = *reinterpret_cast<int32_t*>(data);
+			bool enabled = stored != 0;
+			if (!ImGui::Checkbox(label, &enabled))
+				return false;
+			stored = enabled ? 1 : 0;
+			return true;
+		}
+		if (p.type == &Types::Int32 || p.type == &Types::UInt32)
+			return ImGui::DragInt(label, reinterpret_cast<int*>(data));
+		if (p.uiColor && p.type == &Types::Float4)
+			return ImGui::ColorEdit4(label, reinterpret_cast<float*>(data), ImGuiColorEditFlags_Float);
+
+		return DrawFloats(label, reinterpret_cast<float*>(data), p.type->size / sizeof(float), p);
+	}
+
+	void DrawParam(EmitterRuntime& runtime, size_t moduleIndex, size_t paramIndex)
+	{
+		ModuleDesc& module = runtime.EditModules()[moduleIndex];
+		ParamDesc& p = module.params[paramIndex];
+
+		ImGui::PushID(static_cast<int>(paramIndex));
+		ImGui::TextUnformatted(p.name.c_str());
+
+		if (module.stage == Stage::ParticleSpawn && IsFloatFamily(p.type))
+		{
+			static const char* const kKinds[] = { "Constant", "Random Range" };
+			int kind = static_cast<int>(p.kind);
+
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(130.f);
+			if (ImGui::Combo("##kind", &kind, kKinds, IM_ARRAYSIZE(kKinds)))
+				runtime.SetParamKind(moduleIndex, paramIndex, static_cast<ParamKind>(kind));
+		}
+
+		bool changed = false;
+		if (p.kind == ParamKind::Constant)
+		{
+			changed = DrawValue("##value", p, p.value.data());
+		}
+		else
+		{
+			changed |= DrawValue("Min", p, p.value.data());
+			changed |= DrawValue("Max", p, p.value.data() + p.type->size);
+
+			if (p.type->size > sizeof(float))
+			{
+				bool perComponent = p.perComponent;
+				if (ImGui::Checkbox("Per Component", &perComponent))
+					runtime.SetPerComponent(moduleIndex, paramIndex, perComponent);
+			}
+		}
+
+		if (changed)
+			runtime.NotifyValuesChanged();
+		ImGui::PopID();
+	}
+}
+
+void DrawModuleStackPanel(EmitterRuntime& runtime)
+{
+	ImGui::SeparatorText("Backend");
+
+	const EmitterBackend backend = runtime.Backend();
+	if (ImGui::RadioButton("CPU", backend == EmitterBackend::Cpu))
+		runtime.SetBackend(EmitterBackend::Cpu);
+	ImGui::SameLine();
+	if (ImGui::RadioButton("GPU", backend == EmitterBackend::Gpu))
+		runtime.SetBackend(EmitterBackend::Gpu);
+	ImGui::SameLine();
+	if (ImGui::Button("Restart"))
+		runtime.Restart();
+
+	if (runtime.Backend() == EmitterBackend::Gpu)
+		ImGui::Text("Alive : %u / %u  (readback, 3 frames late)", runtime.AliveCount(), runtime.Capacity());
+	else
+		ImGui::Text("Alive : %u / %u", runtime.AliveCount(), runtime.Capacity());
+
+	if (!runtime.LastError().empty())
+		ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "%s", runtime.LastError().c_str());
+	for (const std::string& warning : runtime.Warnings())
+		ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f), "%s", warning.c_str());
+
+	// 순서 변경은 목록을 다 그린 뒤 적용한다
+	int moveIndex = -1;
+	int moveDirection = 0;
+
+	static const Stage kStages[] = { Stage::EmitterUpdate, Stage::ParticleSpawn, Stage::ParticleUpdate };
+	for (Stage stage : kStages)
+	{
+		ImGui::SeparatorText(StageName(stage));
+
+		std::vector<ModuleDesc>& modules = runtime.EditModules();
+		for (size_t i = 0; i < modules.size(); ++i)
+		{
+			if (modules[i].stage != stage)
+				continue;
+
+			ImGui::PushID(static_cast<int>(i));
+
+			ImGui::BeginDisabled(!runtime.CanMoveModule(i, -1));
+			if (ImGui::ArrowButton("##up", ImGuiDir_Up))
+			{
+				moveIndex = static_cast<int>(i);
+				moveDirection = -1;
+			}
+			ImGui::EndDisabled();
+
+			ImGui::SameLine();
+			ImGui::BeginDisabled(!runtime.CanMoveModule(i, 1));
+			if (ImGui::ArrowButton("##down", ImGuiDir_Down))
+			{
+				moveIndex = static_cast<int>(i);
+				moveDirection = 1;
+			}
+			ImGui::EndDisabled();
+
+			ImGui::SameLine();
+			if (ImGui::TreeNodeEx(modules[i].name.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				for (size_t p = 0; p < modules[i].params.size(); ++p)
+					DrawParam(runtime, i, p);
+				ImGui::TreePop();
+			}
+
+			ImGui::PopID();
+		}
+	}
+
+	if (moveIndex >= 0)
+		runtime.MoveModule(static_cast<size_t>(moveIndex), moveDirection);
+}

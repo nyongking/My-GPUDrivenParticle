@@ -14,7 +14,7 @@ ModuleDesc SpawnRate(float rate)
 	m.stage = Stage::EmitterUpdate;
 	m.params =
 	{
-		MakeParam<float>("Rate", rate)
+		MakeParam<float>("Rate", rate).WithMin(0.f)
 	};
 	m.reads = 
 	{ 
@@ -33,12 +33,12 @@ const uint	n = (uint)want;
 e.SpawnRemainder = want - (float)n;
 e.SpawnCount += n;
 )";
-	m.execute = [rate](ModuleContext& ctx) 
+	m.execute = [](ModuleContext& ctx) 
 		{
 			float& remainder = ctx.Emitter<float>(Emitter::SpawnRemainder);
 			uint32_t& count = ctx.Emitter<uint32_t>(Emitter::SpawnCount);
 
-			const float want = rate * ctx.DeltaTime() + remainder;
+			const float want = ctx.Param<float>("Rate")(0) * ctx.DeltaTime() + remainder;
 			const uint32_t n = static_cast<uint32_t>(want);
 
 			remainder = want - static_cast<float>(n);
@@ -48,7 +48,7 @@ e.SpawnCount += n;
 	return m;
 }
 
-ModuleDesc InitializeParticle(float size, float lifeTime, float4 color)
+ModuleDesc InitializeParticle(Input<float> size, Input<float> lifeTime, Input<float4> color)
 {
 	ModuleDesc m;
 
@@ -56,9 +56,9 @@ ModuleDesc InitializeParticle(float size, float lifeTime, float4 color)
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{
-		MakeParam<float>("Size", size),
-		MakeParam<float>("Lifetime", lifeTime),
-		MakeParam<float4>("Color", color)
+		MakeParam<float>("Size", size).WithMin(0.f),
+		MakeParam<float>("Lifetime", lifeTime).WithMin(0.f),
+		MakeParam<float4>("Color", color).AsColor()
 	};
 	m.reads =
 	{
@@ -80,9 +80,13 @@ p.Lifetime = PARAM(Lifetime);
 p.Age = 0.f;
 )";
 
-	m.execute = [size, lifeTime, color](ModuleContext& ctx)
+	m.execute = [](ModuleContext& ctx)
 		{
 			const float3 origin = ctx.OwnerPosition();
+
+			const auto sizeParam = ctx.Param<float>("Size");
+			const auto lifeParam = ctx.Param<float>("Lifetime");
+			const auto colorParam = ctx.Param<float4>("Color");
 
 			auto pos = ctx.Particles<float3>(Particles::Position);
 			auto col = ctx.Particles<float4>(Particles::Color);
@@ -98,9 +102,9 @@ p.Age = 0.f;
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
 				pos[i] = origin;
-				col[i] = color;
-				sizes[i] = size;
-				if (hasLife) life[i] = lifeTime;
+				col[i] = colorParam(i);
+				sizes[i] = sizeParam(i);
+				if (hasLife) life[i] = lifeParam(i);
 				if (hasAge)  age[i] = 0.f;
 			}
 		};
@@ -109,15 +113,15 @@ p.Age = 0.f;
 
 }
 
-ModuleDesc ShapeLocation(float radius, bool surfaceOnly)
+ModuleDesc ShapeLocation(Input<float> radius, bool surfaceOnly)
 {
 	ModuleDesc m;
 	m.name = "Shape Location";
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{
-		MakeParam<float>("Radius", radius),
-		MakeParam<uint32_t>("SurfaceOnly", surfaceOnly ? 1u : 0u)
+		MakeParam<float>("Radius", radius).WithMin(0.f),
+		MakeParam<NBool>("SurfaceOnly", NBool(surfaceOnly))
 	};
 	m.reads =
 	{
@@ -138,9 +142,11 @@ p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
 
 )";
 
-	m.execute = [radius, surfaceOnly](ModuleContext& ctx)
+	m.execute = [](ModuleContext& ctx)
 		{
+			const bool surface = static_cast<bool>(ctx.Param<NBool>("SurfaceOnly")(0));
 			const float kTwoPi = 6.28318530f;
+			const auto radiusParam = ctx.Param<float>("Radius");
 
 			auto pos = ctx.Particles<float3>(Particles::Position);
 			
@@ -150,8 +156,9 @@ p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
 				const float phi = ctx.Random01(i, 1) * kTwoPi;
 				const float r = std::sqrt(std::fmax(0.f, 1.f - z * z));
 
-				const float dist = surfaceOnly ? radius
-					: radius * std::cbrt(ctx.Random01(i, 2));
+				const float radiusValue = radiusParam(i);
+				const float dist = surface ? radiusValue
+					: radiusValue * std::cbrt(ctx.Random01(i, 2));
 
 				pos[i].x += r * std::cos(phi) * dist;
 				pos[i].y += r * std::sin(phi) * dist;
@@ -169,7 +176,7 @@ ModuleDesc ParticleState(bool killOnLifeTime)
 	m.stage = Stage::ParticleUpdate;
 	m.params =
 	{
-		MakeParam<uint32_t>("KillOnLifetime", killOnLifeTime ? 1u : 0u)
+		MakeParam<NBool>("KillOnLifetime", NBool(killOnLifeTime))
 	};
 	m.reads =
 	{
@@ -190,8 +197,9 @@ if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
 	KILL();
 )";
 
-	m.execute = [killOnLifeTime](ModuleContext& ctx)
+	m.execute = [](ModuleContext& ctx)
 		{
+			const bool killAtEnd = static_cast<bool>(ctx.Param<NBool>("KillOnLifetime")(0));
 			const float dt = ctx.DeltaTime();
 
 			auto age = ctx.Particles<float>(Particles::Age);
@@ -212,7 +220,7 @@ if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
 				if (hasNormalized)
 					nage[i] = (t < 1.f) ? t : 1.f;
 
-				if (killOnLifeTime && t >= 1.f)
+				if (killAtEnd && t >= 1.f)
 					ctx.Kill(i);
 			}
 		};

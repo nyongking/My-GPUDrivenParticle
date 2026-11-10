@@ -4,6 +4,9 @@
 
 std::string ModuleScope(size_t moduleIndex, const std::string& moduleName);
 
+// 레이아웃은 그대로 두고 modules 의 입력값만 compiled.moduleParamData 에 다시 채운다
+void FillModuleParamData(const std::vector<ModuleDesc>& modules, CompiledEmitter& compiled);
+
 
 class EmitterCompiler
 {

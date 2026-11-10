@@ -99,6 +99,12 @@
     <ClCompile Include="EmitterInstance.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
+    <ClCompile Include="EmitterRuntime.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="ModuleStackPanel.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
     <ClCompile Include="SpriteRenderer.cpp">
       <Filter>Particle\Renderer</Filter>
     </ClCompile>
@@ -175,6 +181,12 @@
       <Filter>Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="EmitterInstance.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="EmitterRuntime.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="ModuleStackPanel.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
     <ClInclude Include="SpriteRenderer.h">

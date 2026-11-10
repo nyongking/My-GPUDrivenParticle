@@ -29,8 +29,10 @@ bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
 	m_Log.clear();
 #endif
 	EmitterCompiler compiler;
-	for (auto& mod : modules)
+	for (size_t moduleIndex = 0; moduleIndex < modules.size(); ++moduleIndex)
 	{
+		ModuleDesc mod = modules[moduleIndex];
+		mod.compiledIndex = static_cast<int>(moduleIndex);
 		compiler.Add(mod);
 
 		switch (mod.stage)
@@ -74,6 +76,28 @@ bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
 
 	m_Count = m_Frame = m_NewBegin = m_NewEnd = m_KilledLastTick = 0;
 	return true;
+}
+
+void EmitterInstance::Shutdown()
+{
+	m_EmitterUpdates.clear();
+	m_ParticleSpawns.clear();
+	m_ParticleUpdates.clear();
+	m_ParticleData = {};
+	m_EmitterData = {};
+	m_AliveFlags = {};
+	m_Capacity = m_Count = m_Frame = m_NewBegin = m_NewEnd = m_KilledLastTick = 0;
+}
+
+void EmitterInstance::SetModuleParamData(const std::vector<uint8_t>& data)
+{
+	assert(data.size() == m_CompiledEmitter.moduleParamData.size());
+	m_CompiledEmitter.moduleParamData = data;
+}
+
+void EmitterInstance::ReplaceCompiled(const CompiledEmitter& compiled)
+{
+	m_CompiledEmitter = compiled;
 }
 
 void EmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
@@ -142,7 +166,10 @@ void EmitterInstance::RunModules(std::vector<ModuleDesc>& modules, uint32_t begi
 
 	for (ModuleDesc& m : modules)
 		if (m.execute)          // 본문이 없는 모듈은 건너뛴다
+		{
+			ctx.BeginModule(m.compiledIndex);
 			m.execute(ctx);
+		}
 }
 
 void EmitterInstance::ZeroRange(uint32_t begin, uint32_t end)

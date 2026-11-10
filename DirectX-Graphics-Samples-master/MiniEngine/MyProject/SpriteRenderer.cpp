@@ -155,7 +155,7 @@ bool SpriteRenderer::InitializeGpu(const GpuEmitterInstance& emitter)
 
 	// 파티클 버퍼는 GPU 이미터 것을 쓰므로 만들지 않는다.
 	// t1 은 정렬을 끈 상태라 읽지 않지만, SRV 테이블을 채우려고 작은 버퍼를 하나 둔다 (G3 에서 정렬 결과로 바뀜)
-	const uint32_t dummy[4] = { 0, 1, 2, 3 };
+	alignas(16) const uint32_t dummy[4] = { 0, 1, 2, 3 };
 	m_SortedIndexBuffer.Create(L"Sorted Index Buffer (GPU, unused)", 4, sizeof(uint32_t), dummy);
 	m_BufferBytes = 0;
 

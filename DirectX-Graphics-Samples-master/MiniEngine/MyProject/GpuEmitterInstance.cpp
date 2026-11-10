@@ -83,7 +83,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	m_Program = &program;
 	m_Capacity = capacity;
 
-	const uint32_t zeros[4] = {};
+	alignas(16) const uint32_t zeros[4] = {};
 
 	const uint32_t particleBytes = RoundUp16(max(m_Compiled.particles.Stride(), 4u) * capacity);
 	m_Particles.Create(L"GPU Emitter Particles", particleBytes / 4, 4);
@@ -103,12 +103,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	}
 
 	// 16바이트 단위로 정렬된 cbuffer
-	const uint32_t cbBytes = max(m_Compiled.moduleParams.ConstantBufferSize(), 16u);
-	m_ModuleParams.assign(cbBytes / 16, Chunk16());
-	std::memset(m_ModuleParams.data(), 0, cbBytes);
-	if (!m_Compiled.moduleParamData.empty())
-		std::memcpy(m_ModuleParams.data(), m_Compiled.moduleParamData.data(),
-			std::min<size_t>(m_Compiled.moduleParamData.size(), cbBytes));
+	LoadModuleParams();
 
 	InitializeFinalizePSO();
 
@@ -116,6 +111,29 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	m_ReadbackAlive = m_ReadbackRequest = 0;
 	m_Ready = true;
 	return true;
+}
+
+void GpuEmitterInstance::LoadModuleParams()
+{
+	const uint32_t cbBytes = max(m_Compiled.moduleParams.ConstantBufferSize(), 16u);
+	m_ModuleParams.assign(cbBytes / 16, Chunk16());
+	std::memset(m_ModuleParams.data(), 0, cbBytes);
+	if (!m_Compiled.moduleParamData.empty())
+		std::memcpy(m_ModuleParams.data(), m_Compiled.moduleParamData.data(),
+			std::min<size_t>(m_Compiled.moduleParamData.size(), cbBytes));
+}
+
+void GpuEmitterInstance::SetModuleParamData(const std::vector<uint8_t>& data)
+{
+	m_Compiled.moduleParamData = data;
+	LoadModuleParams();
+}
+
+void GpuEmitterInstance::Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram& program)
+{
+	m_Compiled = compiled;
+	m_Program = &program;
+	LoadModuleParams();
 }
 
 void GpuEmitterInstance::Shutdown()
