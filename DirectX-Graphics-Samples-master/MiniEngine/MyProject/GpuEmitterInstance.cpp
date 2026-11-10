@@ -83,7 +83,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	m_Program = &program;
 	m_Capacity = capacity;
 
-	const uint32_t zeros[4] = {};
+	alignas(16) const uint32_t zeros[4] = {};
 
 	const uint32_t particleBytes = RoundUp16(max(m_Compiled.particles.Stride(), 4u) * capacity);
 	m_Particles.Create(L"GPU Emitter Particles", particleBytes / 4, 4);

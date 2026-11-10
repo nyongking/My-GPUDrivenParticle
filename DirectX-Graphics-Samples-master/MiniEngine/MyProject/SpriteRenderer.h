@@ -10,7 +10,7 @@
 class GraphicsContext;
 class EmitterInstance;
 class GpuEmitterInstance;
-struct Block;
+class Block;
 namespace Math { class Camera; }
 
 class SpriteRenderer
