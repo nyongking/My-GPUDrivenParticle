@@ -68,6 +68,8 @@ void EmitterRuntime::Shutdown()
 {
 	Graphics::g_CommandManager.IdleGPU();     // GPU 가 버퍼를 다 쓴 뒤 지운다
 	ShutdownActive();
+	m_CpuRenderer.ReleaseTextures();
+	m_GpuRenderer.ReleaseTextures();
 	m_ShaderCompiler.Shutdown();
 	m_Ready = false;
 }
@@ -215,6 +217,17 @@ void EmitterRuntime::SetBindingDefault(size_t bindingIndex, const std::vector<ui
 	// 상수 버퍼 값이라 바로 반영 (실행 중이 아닌 쪽도 같이 맞춰 둔다)
 	m_CpuRenderer.SetDefaults(m_SpriteDesc);
 	m_GpuRenderer.SetDefaults(m_SpriteDesc);
+}
+
+bool EmitterRuntime::SetSpriteTexture(const std::string& path)
+{
+	m_SpriteTexture = path;
+
+	// 텍스처는 레이아웃과 무관 -> 재시작 없이 두 렌더러에 바로 (실행 중이 아닌 쪽도 맞춰 둔다)
+	const std::wstring wpath = Utility::UTF8ToWideString(path);
+	const bool cpuOk = m_CpuRenderer.SetTexture(wpath);
+	const bool gpuOk = m_GpuRenderer.SetTexture(wpath);
+	return cpuOk && gpuOk;
 }
 
 std::vector<std::string> EmitterRuntime::BindableAttributes(const TypeInfo* type) const

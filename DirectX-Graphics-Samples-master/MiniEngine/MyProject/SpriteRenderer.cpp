@@ -11,14 +11,17 @@
 #include "RootSignature.h"
 #include "PipelineState.h"
 #include "Camera.h"
+#include "TextureManager.h"
+#include "TextureConvert.h"
 
 #include "TagLibrary.h"
 
-#include "CompiledShaders/ParticleDrawPS.h"
+#include "CompiledShaders/ParticleSpritePS.h"
 #include "CompiledShaders/ParticleSpriteVS.h"
 
 #include <DirectXMath.h>
 #include <numeric>
+#include <algorithm>
 
 using namespace Graphics;
 
@@ -41,20 +44,50 @@ namespace
 		float               defaultSize;     // 140
 
 		uint32_t            sortEnabled;     // 144
-		uint32_t            _pad[3];
+		uint32_t            subImageOffset;  // 148  (T2) Particles.SubImageIndex
+		float               defaultSubImage; // 152
+		uint32_t            subUVBlend;      // 156
+
+		float               subImageSize[2]; // 160  (가로 칸, 세로 칸)
+		float               _pad[2];         // 168
 	};
-	static_assert(sizeof(SpriteConstants) == 160, "HLSL cbuffer SpriteConstants(160 B)와 일치해야 함");
+	static_assert(sizeof(SpriteConstants) == 176, "HLSL cbuffer SpriteConstants(160 B)와 일치해야 함");
 	static_assert(offsetof(SpriteConstants, defaultColor) == 112, "DefaultColor offset 112");
 	static_assert(offsetof(SpriteConstants, defaultPosition) == 128, "DefaultPosition offset 128");
 	static_assert(offsetof(SpriteConstants, sortEnabled) == 144, "SortEnabled offset 144");
+	static_assert(offsetof(SpriteConstants, subImageOffset) == 148, "SubImageOffset offset 148");
+	static_assert(offsetof(SpriteConstants, subImageSize) == 160, "SubImageSize offset 160");
 
-	enum RootParams { kRootCBV, kRootSRVs, kNumRootParams };
+
+	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kNumRootParams };
 	static const uint32_t kNumSRVs = 2;
 
 	// 루트 시그니처 / PSO 는 모든 SpriteRenderer 가 같이 쓴다 (한 번만 만든다)
 	bool          s_PipelineReady = false;
 	RootSignature s_RootSig;
 	GraphicsPSO   s_PSO(L"Particle Sprite PSO");
+
+	// 텍스처를 고르지 않았을 때 쓰는 기본 원형 (예전 PS 의 falloff 를 텍스처로 구운 것)
+	Texture       s_SoftCircle;
+
+	void CreateSoftCircle()
+	{
+		const uint32_t kSize = 64;
+		std::vector<uint32_t> texels(kSize * kSize);
+		for (uint32_t y = 0; y < kSize; ++y)
+		{
+			for (uint32_t x = 0; x < kSize; ++x)
+			{
+				// 텍셀 중심을 [-1, 1] 로: 예전 PS 의 uv(corner) 와 같은 공간
+				const float u = (x + 0.5f) / kSize * 2.f - 1.f;
+				const float v = (y + 0.5f) / kSize * 2.f - 1.f;
+				const float falloff = (std::max)(0.f, 1.f - (u * u + v * v));    // 가장자리 = 0, 중심 = 1
+				const uint32_t a = static_cast<uint32_t>(falloff * falloff * 255.f + 0.5f);
+				texels[y * kSize + x] = 0x00FFFFFFu | (a << 24);                 // RGBA8: 흰색 + alpha
+			}
+		}
+		s_SoftCircle.Create2D(kSize * sizeof(uint32_t), kSize, kSize, DXGI_FORMAT_R8G8B8A8_UNORM, texels.data());
+	}
 
 	uint32_t	RoundUp4(uint32_t v) { return (v + 3u) & ~3u; } // 4단위로 끊는다.
 	float3		ToFloat3(const Math::Vector3& v) { return { float(v.GetX()), float(v.GetY()), float(v.GetZ()) }; }
@@ -64,9 +97,12 @@ namespace
 		if (s_PipelineReady)
 			return;
 
-		s_RootSig.Reset(kNumRootParams, 0);
+		s_RootSig.Reset(kNumRootParams, 1);
 		s_RootSig[kRootCBV].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
 		s_RootSig[kRootSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, kNumSRVs, D3D12_SHADER_VISIBILITY_VERTEX);
+		// T1: PS 텍스처 t2 + 샘플러 s0 (uv 0~1 안에서만 쓰므로 Clamp: 반대편 가장자리가 번지지 않게)
+		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig.InitStaticSampler(0, SamplerLinearClampDesc, D3D12_SHADER_VISIBILITY_PIXEL);
 		s_RootSig.Finalize(L"Particle Sprite RootSig");
 
 		s_PSO.SetRootSignature(s_RootSig);
@@ -74,13 +110,15 @@ namespace
 
 		s_PSO.SetBlendState(BlendPreMultiplied);
 
-		s_PSO.SetDepthStencilState(DepthStateDisabled);
-		s_PSO.SetRenderTargetFormat(g_SceneColorBuffer.GetFormat(), DXGI_FORMAT_UNKNOWN);
+		s_PSO.SetDepthStencilState(DepthStateReadOnly);
+		s_PSO.SetRenderTargetFormat(g_SceneColorBuffer.GetFormat(), g_SceneDepthBuffer.GetFormat());
 
 		s_PSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
 		s_PSO.SetVertexShader(g_pParticleSpriteVS, sizeof(g_pParticleSpriteVS));
-		s_PSO.SetPixelShader(g_pParticleDrawPS, sizeof(g_pParticleDrawPS));
+		s_PSO.SetPixelShader(g_pParticleSpritePS, sizeof(g_pParticleSpritePS));
 		s_PSO.Finalize();
+
+		CreateSoftCircle();
 
 		s_PipelineReady = true;
 	}
@@ -162,7 +200,7 @@ void SpriteRenderer::Render(GraphicsContext& gfx, const Math::Camera& camera, co
 
 
 bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity, const RendererDesc& desc)
-{	
+{
 	// Desc() 와 같은 칸 구성인지 (칸 순서 = 셰이더 cbuffer 순서)
 	static const TypeInfo* kSlotTypes[kNumSlots] = { &Types::Float3, &Types::Float4, &Types::Float };
 	if (desc.bindings.size() != kNumSlots)
@@ -265,6 +303,7 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 
 	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), m_SortedIndexBuffer.GetSRV() };
 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
+	gfx.SetDynamicDescriptor(kRootTexture, 0, TextureSRV());
 }
 
 void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camera& camera, const EmitterInstance& emitter)
@@ -284,4 +323,47 @@ void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camer
 	gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
 
 
+}
+
+bool SpriteRenderer::SetTexture(const std::wstring& path)
+{
+	m_Texture = nullptr;
+	if (path.empty())
+		return true;    // 기본 원형
+
+	auto it = m_Textures.find(path);
+	if (it == m_Textures.end())
+	{
+		// PNG 등은 처음 한 번 옆에 DDS 로 변환해 둔다 (원본이 더 새로우면 다시 변환)
+		// 색 텍스처라 sRGB, 파티클은 알파가 중요하므로 4채널 유지
+		CompileTextureOnDemand(path, TextureOptions(true, true));
+		const std::wstring ddsPath = Utility::RemoveExtension(path) + L".dds";
+
+		// 실패해도 magenta 로 그려져서 바로 눈에 띈다
+		it = m_Textures.emplace(path, TextureManager::LoadDDSFromFile(ddsPath, Graphics::kMagenta2D, true)).first;
+	}
+
+	m_Texture = &it->second;
+	if (!m_Texture->IsValid())
+	{
+		Utility::Printf(L"[SpriteRenderer] Texture load failed : %ws\n", path.c_str());
+		return false;
+	}
+	return true;
+}
+
+void SpriteRenderer::ReleaseTextures()
+{
+	// 프레임이 아직 쓰고 있을 수 있으므로 GPU idle 뒤에만 부른다
+	m_Texture = nullptr;
+	m_Textures.clear();
+}
+
+void SpriteRenderer::SetSettings(const SpriteSettings& settings)
+{
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE SpriteRenderer::TextureSRV() const
+{
+	return m_Texture ? m_Texture->GetSRV() : s_SoftCircle.GetSRV();
 }

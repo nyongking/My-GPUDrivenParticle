@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 
 namespace
 {
@@ -48,11 +49,81 @@ namespace
 		return DrawFloats(label, reinterpret_cast<float*>(data), p.type->size / sizeof(float), p);
 	}
 
+	// ---- 스프라이트 텍스처 (T1) ----
+	const char* const kTextureDir = "Assets/Textures/";
+
+	std::string LowerExtension(const std::string& name)
+	{
+		const size_t dot = name.find_last_of('.');
+		std::string ext = (dot == std::string::npos) ? std::string() : name.substr(dot);
+		for (char& c : ext)
+			c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		return ext;
+	}
+
+	// 폴더의 이미지 파일 목록. .dds 는 변환 결과라서 원본(png 등)이 없을 때만 보여 준다
+	std::vector<std::string> ListTextureFiles()
+	{
+		std::vector<std::string> sources, dds;
+
+		WIN32_FIND_DATAA fd;
+		HANDLE h = FindFirstFileA((std::string(kTextureDir) + "*").c_str(), &fd);
+		if (h == INVALID_HANDLE_VALUE)
+			return sources;
+		do
+		{
+			if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				continue;
+			const std::string name = fd.cFileName;
+			const std::string ext = LowerExtension(name);
+			if (ext == ".dds")
+				dds.push_back(name);
+			else if (ext == ".png" || ext == ".tga" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp")
+				sources.push_back(name);
+		} while (FindNextFileA(h, &fd));
+		FindClose(h);
+
+		auto stem = [](const std::string& n) { return n.substr(0, n.find_last_of('.')); };
+		for (const std::string& d : dds)
+		{
+			const bool hasSource = std::any_of(sources.begin(), sources.end(),
+				[&](const std::string& s) { return stem(s) == stem(d); });
+			if (!hasSource)
+				sources.push_back(d);
+		}
+
+		std::sort(sources.begin(), sources.end());
+		for (std::string& s : sources)
+			s = kTextureDir + s;
+		return sources;
+	}
+
+	void DrawTexture(EmitterRuntime& runtime)
+	{
+		const std::string& current = runtime.SpriteTexture();
+		const std::string preview = current.empty() ? std::string("(soft circle)") : current;
+
+		ImGui::SetNextItemWidth(300.f);
+		if (ImGui::BeginCombo("Texture", preview.c_str()))
+		{
+			if (ImGui::Selectable("(soft circle)", current.empty()))
+				runtime.SetSpriteTexture(std::string());
+
+			// 펼칠 때마다 다시 읽는다 (파일을 추가해도 재실행 필요 없음)
+			for (const std::string& path : ListTextureFiles())
+				if (ImGui::Selectable(path.c_str(), path == current))
+					runtime.SetSpriteTexture(path);
+			ImGui::EndCombo();
+		}
+	}
+
 	// 렌더러 바인딩 (R1): 칸마다 [연결할 속성 콤보] + [기본값]
 	void DrawBindings(EmitterRuntime& runtime)
 	{
 		const RendererDesc& desc = runtime.SpriteBindings();
 		ImGui::SeparatorText(desc.name.c_str());
+
+		DrawTexture(runtime);
 
 		for (size_t i = 0; i < desc.bindings.size(); ++i)
 		{

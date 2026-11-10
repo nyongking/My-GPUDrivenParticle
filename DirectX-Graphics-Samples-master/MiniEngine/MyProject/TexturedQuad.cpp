@@ -144,6 +144,16 @@ void TexturedQuad::SetTransform(const Math::Vector3& position, float rotationY, 
 	UpdateWorldMatrix();
 }
 
+void TexturedQuad::SetFloor(const Math::Vector3& center, float size)
+{
+	// 크기 조절 -> X축 90도 회전 (기존 코드와 같은 Rot * Scale 순서)
+	const Matrix3 basis = Matrix3::MakeXRotation(XM_PIDIV2) * Matrix3::MakeScale(size, size, 1.f);
+
+	// 정점의 y 범위가 0~1이라 중심이 (0, 0.5, 0)에 있다 -> 회전 후 그 점이 center에 오도록 이동
+	const Vector3 localCenter = basis * Vector3(0.f, 0.5f, 0.f);
+	m_World = Matrix4(basis, center - localCenter);
+}
+
 void TexturedQuad::Draw(GraphicsContext& context) const
 {
 	// world 
@@ -152,7 +162,9 @@ void TexturedQuad::Draw(GraphicsContext& context) const
 	// tint
 	context.SetConstants(kTintConstants, m_Tint.R(), m_Tint.G(), m_Tint.B(), m_Tint.A());
 
-	context.SetDynamicDescriptor(kTextureSRV, 0, m_Texture.GetSRV());
+	context.SetDynamicDescriptor(kTextureSRV, 0,
+		m_Texture.IsValid() ? m_Texture.GetSRV()
+		: Graphics::GetDefaultTexture(Graphics::kWhiteOpaque2D));
 
 	context.DrawIndexed(6);
 }

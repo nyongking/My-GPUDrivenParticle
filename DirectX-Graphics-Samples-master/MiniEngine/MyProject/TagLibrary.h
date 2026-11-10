@@ -26,4 +26,5 @@ namespace Particles
 	constexpr const char* Velocity =		"Particles.Velocity";
 	constexpr const char* Mass =			"Particles.Mass";
 	constexpr const char* Acceleration	=	"Particles.Acceleration";
+	constexpr const char* SubImageIndex =	"Particles.SubImageIndex";
 }

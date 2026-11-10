@@ -292,5 +292,8 @@
     <FxCompile Include="Shaders\EmitterFinalizeCS.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\ParticleSpritePS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

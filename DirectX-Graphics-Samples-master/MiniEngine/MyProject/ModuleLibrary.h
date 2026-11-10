@@ -14,3 +14,4 @@ ModuleDesc SphereLocation(Input<float> radius, bool surfaceOnly = false);
 ModuleDesc ParticleState(bool killOnLifeTime = true);
 ModuleDesc SolveForceAndVelocity(Input<float> speedLimit, Input<float> accelLimit);
 ModuleDesc GravityForce(float3 gravity);
+ModuleDesc SubUVAnimation(float startFrame, float endFrame, bool loop = false, float framePerSecond = 30.f);

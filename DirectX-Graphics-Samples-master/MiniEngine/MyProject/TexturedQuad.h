@@ -23,8 +23,9 @@ public:
 	void SetTransform(const Math::Vector3& position, float rotationY = 0.f, float height = 1.f);
 	void SetTint(const Color& tint) { m_Tint = tint; }
 
+	void SetFloor(const Math::Vector3& center, float size);
+
 	void Draw(GraphicsContext& context) const;
-	
 
 private:
 	void UpdateWorldMatrix();

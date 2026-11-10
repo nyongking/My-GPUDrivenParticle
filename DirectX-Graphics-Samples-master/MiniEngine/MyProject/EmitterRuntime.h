@@ -45,6 +45,11 @@ public:
 	// 이 칸에 연결할 수 있는 속성 목록 (적용된 모듈이 쓰는 같은 타입의 Particles 속성 + Previous / Initial)
 	std::vector<std::string> BindableAttributes(const TypeInfo* type) const;
 
+	// -------- 스프라이트 텍스처 (T1) -------
+	// 빈 문자열 = 기본 원형. 재컴파일 / 재시작 없이 바로 반영. 실패하면 magenta 로 그려지고 false
+	bool SetSpriteTexture(const std::string& path);
+	const std::string& SpriteTexture() const { return m_SpriteTexture; }
+
 	bool CanMoveModule(size_t moduleIndex, int direction) const;    // 같은 Stage 안에서만 이동
 	void MoveModule(size_t moduleIndex, int direction);             // 재시작
 
@@ -75,6 +80,7 @@ private:
 	RendererDesc            m_SpriteDesc = SpriteRenderer::Desc();   // 렌더러 바인딩 (UI 가 편집)
 	RendererDesc            m_AppliedSpriteDesc = SpriteRenderer::Desc();
 	CompiledEmitter         m_Compiled;         // m_AppliedModules 의 컴파일 결과
+	std::string             m_SpriteTexture;    // 렌더러가 재시작해도 유지 (렌더러 쪽 캐시)
 
 	EmitterBackend          m_Backend = EmitterBackend::Gpu;        // 요청된 백엔드
 	EmitterBackend          m_ActiveBackend = EmitterBackend::Gpu;  // 실제로 실행 중인 백엔드

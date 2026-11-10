@@ -368,4 +368,67 @@ p.Acceleration += PARAM(Gravity) / p.Mass;
 	return m;
 }
 
+ModuleDesc SubUVAnimation(float startFrame, float endFrame, bool loop, float framePerSecond)
+{
+	ModuleDesc m;
+
+	m.name = "SubUV Animation";
+	m.stage = Stage::ParticleUpdate;
+	m.params =
+	{
+		MakeParam<float>("StartFrame", startFrame).WithMin(0.f),
+		MakeParam<float>("EndFrame", endFrame).WithMin(0.f),
+		MakeParam<NBool>("Loop", NBool(loop)),
+		MakeParam<float>("FramesPerSecond", framePerSecond).WithMin(0.f)
+	};
+	m.reads =
+	{
+		{Particles::Age, &Types::Float},
+		{Particles::NormalizedAge, &Types::Float}
+	};
+	m.writes =
+	{
+		{Particles::SubImageIndex, &Types::Float}
+	};
+	m.hlsl = R"(
+const float count = max(PARAM(EndFrame) - PARAM(StartFrame) + 1.f, 1.f);
+float t;
+if (PARAM(Loop) != 0)
+	t = frac(p.Age * PARAM(FramesPerSecond) / count) * count;
+else
+	t = min(p.NormalizedAge * count, count - 0.001f);
+p.SubImageIndex = PARAM(StartFrame) + t;
+)";	
+
+	m.execute = [](ModuleContext& ctx)
+		{
+			const float start = ctx.Param<float>("StartFrame")(0);
+			const float end = ctx.Param<float>("EndFrame")(0);
+			const bool loop = static_cast<bool>(ctx.Param<NBool>("Loop")(0));
+			const float fps = ctx.Param<float>("FramesPerSecond")(0);
+			const float count = std::fmax(end - start + 1.f, 1.f);
+
+			auto age = ctx.Particles<float>(Particles::Age);
+			auto nage = ctx.Particles<float>(Particles::NormalizedAge);
+			auto index = ctx.Particles<float>(Particles::SubImageIndex);
+
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+			{
+				float t;
+				if (loop)
+				{
+					const float cycles = age[i] * fps / count;
+					t = (cycles - std::floor(cycles)) * count;
+				}
+				else
+				{
+					t = std::fmin(nage[i] * count, count - 0.001f);
+				}
+				index[i] = start + t;
+			}
+		};
+
+	return m;
+}
+
 
