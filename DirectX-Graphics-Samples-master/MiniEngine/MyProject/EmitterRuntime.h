@@ -24,9 +24,10 @@ public:
 	bool Initialize(const std::vector<ModuleDesc>& modules, uint32_t capacity, EmitterBackend backend);
 	void Shutdown();
 
-	void ApplyPending();
+	void Tick(float deltaTime, const OwnerTransform& owner);
 	void Tick(float deltaTime, const float3& ownerPosition);
 	void Render(GraphicsContext& gfx, const Math::Camera& camera);
+	void ApplyPending();
 
 	// ---------- 편집 ----------
 	std::vector<ModuleDesc>& EditModules() { return m_Modules; }

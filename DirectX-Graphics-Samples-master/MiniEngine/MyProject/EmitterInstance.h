@@ -2,6 +2,7 @@
 #include "ModuleDesc.h"
 #include "ModuleContext.h"
 #include "CompiledEmitter.h"
+#include "OwnerTransform.h"
 
 #include <vector>
 
@@ -13,6 +14,7 @@ public:
 		uint32_t capacity);
 
 	void Tick(float deltaTime, const float3& ownerPosition);
+	void Tick(float deltaTime, const OwnerTransform& t);
 	void Shutdown();
 
 	// 입력값 바이트만 교체 (레이아웃 동일)
@@ -55,6 +57,8 @@ private:
 	std::vector<uint8_t>    m_EmitterData;
 	std::vector<uint8_t>	m_AliveFlags;
 	EngineValues			m_EngineValues;
+	float3					m_PrevOwnerPosition = { 0.f, 0.f, 0.f };
+	bool					m_HasPrevOwner = false;
 
 	uint32_t				m_Capacity = 0;
 	uint32_t				m_Count = 0;

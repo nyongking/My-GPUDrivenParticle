@@ -70,6 +70,7 @@
     <ClInclude Include="ModuleContext.h" />
     <ClInclude Include="ModuleDesc.h" />
     <ClInclude Include="ModuleLibrary.h" />
+    <ClInclude Include="OwnerTransform.h" />
     <ClInclude Include="ParticleEmitter.h" />
     <ClInclude Include="ParticleNamespace.h" />
     <ClInclude Include="ParticlePool.h" />
@@ -101,6 +102,7 @@
     <ClCompile Include="ModuleContext.cpp" />
     <ClCompile Include="ModuleDesc.cpp" />
     <ClCompile Include="ModuleLibrary.cpp" />
+    <ClCompile Include="OwnerTransform.cpp" />
     <ClCompile Include="ParticleEmitter.cpp" />
     <ClCompile Include="ParticlePool.cpp" />
     <ClCompile Include="Main.cpp" />

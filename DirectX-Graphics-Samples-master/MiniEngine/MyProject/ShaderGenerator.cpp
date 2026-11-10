@@ -61,6 +61,8 @@ namespace ShaderNames
 			return "uint";
 		if (type == &Types::Bool)
 			return "uint";
+		if (type == &Types::Float4x4)
+			return "float4x4"; //
 		return nullptr;
 	}
 
@@ -72,6 +74,14 @@ namespace
 	std::string Pad(const std::string& s, size_t width)
 	{
 		return s.size() >= width ? s : s + std::string(width - s.size(), ' ');
+	}
+
+	// 상수 버퍼 안의 타입 이름, float4x4의 경우 row_major로 설정
+	std::string CbufferType(const TypeInfo* t)
+	{
+		if (t == &Types::Float4x4) 
+			return "row_major float4x4";
+		return ShaderNames::HlslType(t);
 	}
 
 	const char* LoadSuffix(const TypeInfo* t)
@@ -152,7 +162,7 @@ namespace
 		std::string l;
 		while (std::getline(ss, l))
 		{
-			if (!l.empty() && l.back() == '\r') 
+			if (!l.empty() && l.back() == '\r')
 				l.pop_back();
 			lines.push_back(l);
 		}
@@ -229,8 +239,6 @@ namespace
 		static const std::regex reParam(R"(\bPARAM\s*\(\s*(\w+)\s*\))");
 		static const std::regex reKill(R"(\bKILL\s*\()");
 		static const std::regex reIndex(R"(\bindex\b)");
-		static const std::regex reDt(R"(\bDeltaTime\b)");
-		static const std::regex reOwner(R"(\bOwnerPosition\b)");
 
 		const std::set<std::string> usedP = FindAll(src, reP);
 		const std::set<std::string> usedE = FindAll(src, reE);
@@ -261,10 +269,21 @@ namespace
 				out.warnings.push_back(who + ": 입력값 '" + n + "' 를 조각에서 쓰지 않음");
 
 		// 엔진 값은 선언하지 않아도 동작은 하지만, CPU 와 선언을 맞추라는 뜻으로 경고
-		if (std::regex_search(src, reDt) && !declEngine.count("Engine.DeltaTime"))
-			out.warnings.push_back(who + ": DeltaTime 을 쓰는데 reads 에 Engine.DeltaTime 선언이 없음");
-		if (std::regex_search(src, reOwner) && !declEngine.count("Engine.Owner.Position"))
-			out.warnings.push_back(who + ": OwnerPosition 을 쓰는데 reads 에 Engine.Owner.Position 선언이 없음");
+		//   HLSL 이름 -> 선언 이름. ModuleCommon.hlsli 의 cbuffer EngineConstants / #define 과 같이 맞출 것
+		static const struct { const char* hlsl; const char* full; } kEngineNames[] =
+		{
+			{ "DeltaTime",           "Engine.DeltaTime" },
+			{ "OwnerPosition",       "Engine.Owner.Position" },
+			{ "OwnerVelocity",       "Engine.Owner.Velocity" },
+			{ "OwnerLocalToWorld",   "Engine.Owner.LocalToWorld" },
+			{ "EmitterNumParticles", "Engine.Emitter.NumParticles" },
+		};
+		for (const auto& n : kEngineNames)
+		{
+			const std::regex re(std::string("\\b") + n.hlsl + "\\b");
+			if (std::regex_search(src, re) && !declEngine.count(n.full))
+				out.warnings.push_back(who + ": " + n.hlsl + " 을 쓰는데 reads 에 " + n.full + " 선언이 없음");
+		}
 
 		// 단계별 규칙 (단계 함수의 인자에 없는 것은 쓸 수 없다)
 		switch (m.stage)
@@ -350,6 +369,15 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 		};
 	for (const DeclaredAttribute& d : compiled.declaredParticles) checkType(d.key, d.type);
 	for (const DeclaredAttribute& d : compiled.declaredEmitter)   checkType(d.key, d.type);
+
+	// 행렬은 상수 버퍼(Engine / 모듈 입력값) 전용. 파티클 / Emitter 버퍼에는 Load/Store 함수가 없다
+	auto noMatrix = [&](const AttributeKey& k, const TypeInfo* t)
+		{
+			if (t == &Types::Float4x4)
+				out.errors.push_back("'" + k.Full() + "' float4x4 는 파티클 / Emitter 속성으로 쓸 수 없음 (Engine / 모듈 입력값만)");
+		};
+	for (const DeclaredAttribute& d : compiled.declaredParticles) noMatrix(d.key, d.type);
+	for (const DeclaredAttribute& d : compiled.declaredEmitter)   noMatrix(d.key, d.type);
 	for (const Slot& s : compiled.moduleParams.Slots())           checkType(s.key, s.type);
 
 	for (const CompiledModule& m : compiled.modules)
@@ -375,7 +403,7 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 	if (!spawnCount)
 		out.warnings.push_back("Emitter.SpawnCount 를 쓰는 모듈이 없음 -> 파티클이 생기지 않음");
 
-	if (!out.Ok()) 
+	if (!out.Ok())
 		return out;
 
 
@@ -416,7 +444,7 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 	if (compiled.moduleParams.Slots().empty())
 		w.Line("    uint _NoModuleParams;");
 	for (const Slot& s : compiled.moduleParams.Slots())
-		w.Line("    " + Pad(ShaderNames::HlslType(s.type), 7) + Pad(ShaderNames::Param(s.key) + ";", 40) + "// " + std::to_string(s.offset));
+		w.Line("    " + Pad(CbufferType(s.type) + " ", 7) + Pad(ShaderNames::Param(s.key) + ";", 40) + "// " + std::to_string(s.offset));
 	w.Line("};");
 	w.Line();
 
@@ -520,7 +548,7 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 	w.Line(bar);
 	w.Line("// 6. Fixed shape function");
 	w.Line(bar);
-	
+
 	// ----- Emitter Update -----
 	w.Line("[numthreads(1, 1, 1)]");
 	w.Line("void EmitterUpdateMain()");

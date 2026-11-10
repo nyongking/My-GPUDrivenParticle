@@ -113,10 +113,10 @@ p.Age = 0.f;
 
 }
 
-ModuleDesc ShapeLocation(Input<float> radius, bool surfaceOnly)
+ModuleDesc SphereLocation(Input<float> radius, bool surfaceOnly)
 {
 	ModuleDesc m;
-	m.name = "Shape Location";
+	m.name = "Sphere Location";
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{

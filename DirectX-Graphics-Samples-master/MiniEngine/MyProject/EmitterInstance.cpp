@@ -75,6 +75,7 @@ bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
 
 
 	m_Count = m_Frame = m_NewBegin = m_NewEnd = m_KilledLastTick = 0;
+	m_HasPrevOwner = false;
 	return true;
 }
 
@@ -102,14 +103,26 @@ void EmitterInstance::ReplaceCompiled(const CompiledEmitter& compiled)
 
 void EmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
 {
+	OwnerTransform t;
+	t.position = ownerPosition;
+	Tick(deltaTime, t);
+}
+
+void EmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
+{
 	// -------------------
 	//		Tick
 	// -------------------
 
 	// [1] EngineValues
 	m_EngineValues.DeltaTime = min(max(deltaTime, 0.f), float(kMaxDeltaTime));	// 멈췄다 돌아온 프레임에서 한 번에 너무 많이 생성되지 않게
-	m_EngineValues.OwnerPosition = ownerPosition;
+	m_EngineValues.OwnerPosition = t.position;
 	m_EngineValues.RandomSeed = HashFrame(m_Frame + 1);
+	m_EngineValues.OwnerVelocity = ComputeOwnerVelocity(t.position, m_HasPrevOwner ? &m_PrevOwnerPosition : nullptr, deltaTime);
+	m_EngineValues.OwnerLocalToWorld = MakeLocalToWorld(t);
+	m_EngineValues.NumParticles = m_Count;   // 이번 프레임 시작 때의 수 (GPU 의 ALIVE_IN 과 같은 뜻)
+	m_PrevOwnerPosition = t.position;
+	m_HasPrevOwner = true;
 
 	// [2] Check SpawnCount
 	uint32_t* spawnCount = nullptr;
@@ -156,6 +169,7 @@ void EmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
 	m_NewBegin = begin;
 	m_NewEnd = end;
 	++m_Frame;
+
 }
 
 void EmitterInstance::RunModules(std::vector<ModuleDesc>& modules, uint32_t begin, uint32_t end,

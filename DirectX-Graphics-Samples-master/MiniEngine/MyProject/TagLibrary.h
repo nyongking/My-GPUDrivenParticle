@@ -3,6 +3,9 @@ namespace Engine
 {
 	constexpr const char* DeltaTime = "Engine.DeltaTime";
 	constexpr const char* OwnerPosition = "Engine.Owner.Position";
+	constexpr const char* OwnerVelocity = "Engine.Owner.Velocity";
+	constexpr const char* OwnerLocalToWorld = "Engine.Owner.LocalToWorld";
+	constexpr const char* NumParticles = "Engine.Emitter.NumParticles";
 };
 
 namespace Emitter
@@ -20,4 +23,6 @@ namespace Particles
 	constexpr const char* NormalizedAge =	"Particles.NormalizedAge";
 	constexpr const char* Color =			"Particles.Color";
 	constexpr const char* Size =			"Particles.Size";
+	constexpr const char* Velocity =		"Particles.Velocity";
+
 }

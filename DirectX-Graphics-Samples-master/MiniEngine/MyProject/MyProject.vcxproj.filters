@@ -42,6 +42,9 @@
     <Filter Include="Particle\Generator">
       <UniqueIdentifier>{a4b9b30b-81a5-4103-9eba-36b3a99cccaf}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Particle\Params">
+      <UniqueIdentifier>{cf976fb2-627a-44a0-ab61-4ce1fcd07b22}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -122,6 +125,9 @@
     </ClCompile>
     <ClCompile Include="GpuEmitterInstance.cpp">
       <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="OwnerTransform.cpp">
+      <Filter>Particle\Params</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -209,6 +215,9 @@
     </ClInclude>
     <ClInclude Include="GpuEmitterInstance.h">
       <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="OwnerTransform.h">
+      <Filter>Particle\Params</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

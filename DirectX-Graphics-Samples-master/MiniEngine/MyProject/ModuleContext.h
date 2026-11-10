@@ -2,12 +2,18 @@
 
 #include "AttributeType.h"
 #include "CompiledEmitter.h"
+#include "OwnerTransform.h"
 
-struct EngineValues // Temp
+struct EngineValues
 {
 	float  DeltaTime = 0.f;
 	float3 OwnerPosition = { 0.f, 0.f, 0.f };
 	uint32_t RandomSeed = 0; // 프레임마다 달라지는 랜덤시드
+
+	// 엔진 값 후보 추가 (GPU 쪽은 GpuEmitterInstance.cpp 의 EngineConstants / ModuleCommon.hlsli 와 같이 맞출 것)
+	float3   OwnerVelocity = { 0.f, 0.f, 0.f };
+	float4x4 OwnerLocalToWorld = Identity4x4();
+	uint32_t NumParticles = 0;   // 이번 프레임 시작 때 살아 있던 수 (GPU 는 Counters 의 ALIVE_IN)
 };
 
 template<typename T>
@@ -64,6 +70,9 @@ public:
 
 	float         DeltaTime()     const { return m_Engine.DeltaTime; }
 	const float3& OwnerPosition() const { return m_Engine.OwnerPosition; }
+	const float3&   OwnerVelocity()     const { return m_Engine.OwnerVelocity; }
+	const float4x4& OwnerLocalToWorld() const { return m_Engine.OwnerLocalToWorld; }
+	uint32_t        NumParticles()      const { return m_Engine.NumParticles; }
 
 	float			Random01(uint32_t particleIndex, uint32_t salt) const;
 

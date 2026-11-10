@@ -30,16 +30,19 @@ namespace
 
 	uint32_t RoundUp16(uint32_t v) { return (v + 15u) & ~15u; }
 
-	// ModuleCommon.hlsli 의 cbuffer EngineConstants (b0) 와 같은 배치 (32 바이트)
+	// ModuleCommon.hlsli 의 cbuffer EngineConstants (b0) 와 같은 배치 (112 바이트)
 	struct alignas(16) EngineConstants
 	{
-		float3   ownerPosition;
-		float    deltaTime;
-		uint32_t capacity;
-		uint32_t randomSeed;
-		uint32_t _pad[2];
+		float3   ownerPosition;       // 0
+		float    deltaTime;           // 12
+		uint32_t capacity;            // 16
+		uint32_t randomSeed;          // 20
+		uint32_t _pad[2];             // 24
+		float3   ownerVelocity;       // 32
+		float    _pad2;					// 44
+		float4x4 ownerLocalToWorld;   // 48 (HLSL 은 row_major)
 	};
-	static_assert(sizeof(EngineConstants) == 32, "HLSL cbuffer EngineConstants(32 B) 와 일치해야 함");
+	static_assert(sizeof(EngineConstants) == 112, "HLSL cbuffer EngineConstants(112 B) 와 일치해야 함");
 	static constexpr float kMaxDeltaTime = 0.1f;
 
 	// Counters 안의 위치 (ModuleCommon.hlsli 의 COUNTER_* 와 같게)
@@ -96,7 +99,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	m_SpawnArgs.Create(L"GPU Emitter Spawn Args", 3, 4, zeros);
 	m_DrawArgs.Create(L"GPU Emitter Draw Args", 4, 4, zeros);
 
-	for (uint32_t i = 0; i < kReadbackSlots; ++i) // Latency에 따른 3개의 슬ㄹ롯
+	for (uint32_t i = 0; i < kReadbackSlots; ++i) // Latency에 따른 3개의 슬롯
 	{
 		m_Readback[i].Create(L"GPU Emitter Counters Readback", kCounterBytes / 4, 4);
 		m_ReadbackFence[i] = 0;
@@ -108,32 +111,10 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	InitializeFinalizePSO();
 
 	m_Frame = 0;
+	m_HasPrevOwner = false;
 	m_ReadbackAlive = m_ReadbackRequest = 0;
 	m_Ready = true;
 	return true;
-}
-
-void GpuEmitterInstance::LoadModuleParams()
-{
-	const uint32_t cbBytes = max(m_Compiled.moduleParams.ConstantBufferSize(), 16u);
-	m_ModuleParams.assign(cbBytes / 16, Chunk16());
-	std::memset(m_ModuleParams.data(), 0, cbBytes);
-	if (!m_Compiled.moduleParamData.empty())
-		std::memcpy(m_ModuleParams.data(), m_Compiled.moduleParamData.data(),
-			std::min<size_t>(m_Compiled.moduleParamData.size(), cbBytes));
-}
-
-void GpuEmitterInstance::SetModuleParamData(const std::vector<uint8_t>& data)
-{
-	m_Compiled.moduleParamData = data;
-	LoadModuleParams();
-}
-
-void GpuEmitterInstance::Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram& program)
-{
-	m_Compiled = compiled;
-	m_Program = &program;
-	LoadModuleParams();
 }
 
 void GpuEmitterInstance::Shutdown()
@@ -152,18 +133,35 @@ void GpuEmitterInstance::Shutdown()
 	m_Ready = false;
 }
 
-void GpuEmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
+void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 {
 	if (!m_Ready)
 		return;
 
 	ReadCountersIfReady();
 
+	//struct alignas(16) EngineConstants
+	//{
+	//	float3   ownerPosition;       // 0
+	//	float    deltaTime;           // 12
+	//	uint32_t capacity;            // 16
+	//	uint32_t randomSeed;          // 20
+	//	uint32_t _pad[2];             // 24
+	//	float3   ownerVelocity;       // 32
+	//	float    _pad;					// 44
+	//	float4x4 ownerLocalToWorld;   // 48 (HLSL 은 row_major)
+	//};
+
 	EngineConstants ec = {};
+	ec.ownerPosition = t.position;
 	ec.deltaTime = min(max(deltaTime, 0.f), float(kMaxDeltaTime));
-	ec.ownerPosition = ownerPosition;
 	ec.capacity = m_Capacity;
 	ec.randomSeed = HashFrame(m_Frame + 1);
+	ec.ownerVelocity = ComputeOwnerVelocity(t.position, &m_PrevOwnerPosition, deltaTime);
+	ec.ownerLocalToWorld = MakeLocalToWorld(t);
+
+	m_PrevOwnerPosition = t.position;
+	m_HasPrevOwner = true;
 
 	ComputeContext& ctx = ComputeContext::Begin(L"Gpu Emitter");
 
@@ -216,6 +214,37 @@ void GpuEmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
 
 	m_ReadbackFence[slot] = ctx.Finish();
 	++m_Frame;
+}
+
+void GpuEmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
+{
+	OwnerTransform t;
+	t.position = ownerPosition;
+	Tick(deltaTime, t);
+}
+
+void GpuEmitterInstance::LoadModuleParams()
+{
+	const uint32_t cbBytes = max(m_Compiled.moduleParams.ConstantBufferSize(), 16u);
+	m_ModuleParams.assign(cbBytes / 16, Chunk16());
+	std::memset(m_ModuleParams.data(), 0, cbBytes);
+
+	if (!m_Compiled.moduleParamData.empty())
+		std::memcpy(m_ModuleParams.data(), m_Compiled.moduleParamData.data(),
+			std::min<size_t>(m_Compiled.moduleParamData.size(), cbBytes));
+}
+
+void GpuEmitterInstance::SetModuleParamData(const std::vector<uint8_t>& data)
+{
+	m_Compiled.moduleParamData = data;
+	LoadModuleParams();
+}
+
+void GpuEmitterInstance::Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram& program)
+{
+	m_Compiled = compiled;
+	m_Program = &program;
+	LoadModuleParams();
 }
 
 void GpuEmitterInstance::ReadCountersIfReady()

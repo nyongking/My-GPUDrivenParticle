@@ -4,6 +4,7 @@
 
 #include "GpuBuffer.h"
 #include "ReadbackBuffer.h"
+#include "OwnerTransform.h"
 
 #include <cstdint>
 #include <string>
@@ -20,6 +21,7 @@ public:
 		uint32_t capacity);
 	void Shutdown();
 
+	void Tick(float deltaTime, const OwnerTransform& t);
 	void Tick(float deltaTime, const float3& ownerPosition);
 
 	// 입력값 바이트만 교체 (레이아웃 동일). 다음 Tick 부터 반영
@@ -70,6 +72,8 @@ private:
 
 	uint32_t                 m_Capacity = 0;
 	uint32_t                 m_Frame = 0;
+	float3                   m_PrevOwnerPosition = { 0.f, 0.f, 0.f };
+	bool                     m_HasPrevOwner = false;
 	bool                     m_Ready = false;
 
 

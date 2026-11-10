@@ -71,6 +71,35 @@ void EmitterRuntime::Shutdown()
 	m_Ready = false;
 }
 
+void EmitterRuntime::Tick(float deltaTime, const OwnerTransform& owner)
+{
+	if (!m_Ready)
+		return;
+
+	if (m_ActiveBackend == EmitterBackend::Cpu)
+		m_Cpu.Tick(deltaTime, owner);
+	else
+		m_Gpu.Tick(deltaTime, owner);
+}
+
+void EmitterRuntime::Tick(float deltaTime, const float3& ownerPosition)
+{
+	OwnerTransform owner;
+	owner.position = ownerPosition;
+	Tick(deltaTime, owner);
+}
+
+void EmitterRuntime::Render(GraphicsContext& gfx, const Math::Camera& camera)
+{
+	if (!m_Ready)
+		return;
+
+	if (m_ActiveBackend == EmitterBackend::Cpu)
+		m_CpuRenderer.Render(gfx, camera, m_Cpu);
+	else
+		m_GpuRenderer.RenderGpu(gfx, camera, m_Gpu);
+}
+
 void EmitterRuntime::ShutdownActive()
 {
 	m_CpuRenderer.Shutdown();
@@ -200,6 +229,7 @@ void EmitterRuntime::ApplyPending()
 	}
 }
 
+
 bool EmitterRuntime::BuildProgram(const CompiledEmitter& compiled, std::unique_ptr<EmitterGpuProgram>& out)
 {
 	if (!m_ShaderCompiler.Ready() && !m_ShaderCompiler.Initialize(ShaderCompiler::FindIncludeDir(L"ModuleCommon.hlsli")))
@@ -289,27 +319,6 @@ bool EmitterRuntime::RebuildRestart()
 	return m_Ready;
 }
 
-void EmitterRuntime::Tick(float deltaTime, const float3& ownerPosition)
-{
-	if (!m_Ready)
-		return;
-
-	if (m_ActiveBackend == EmitterBackend::Cpu)
-		m_Cpu.Tick(deltaTime, ownerPosition);
-	else
-		m_Gpu.Tick(deltaTime, ownerPosition);
-}
-
-void EmitterRuntime::Render(GraphicsContext& gfx, const Math::Camera& camera)
-{
-	if (!m_Ready)
-		return;
-
-	if (m_ActiveBackend == EmitterBackend::Cpu)
-		m_CpuRenderer.Render(gfx, camera, m_Cpu);
-	else
-		m_GpuRenderer.RenderGpu(gfx, camera, m_Gpu);
-}
 
 uint32_t EmitterRuntime::AliveCount() const
 {

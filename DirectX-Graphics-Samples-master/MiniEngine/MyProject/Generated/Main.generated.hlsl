@@ -3,7 +3,7 @@
 //   modules:
 //     M0_SpawnRate                EmitterUpdate   
 //     M1_InitializeParticle       ParticleSpawn   
-//     M2_ShapeLocation            ParticleSpawn   
+//     M2_SphereLocation           ParticleSpawn   
 //     M3_ParticleState            ParticleUpdate  
 // =====================================================================
 
@@ -31,8 +31,8 @@ cbuffer ModuleParams : register(b1)
     float  M1_InitializeParticle_Size;             // 4
     float  M1_InitializeParticle_Lifetime;         // 8
     float4 M1_InitializeParticle_Color;            // 16
-    float  M2_ShapeLocation_Radius;                // 32
-    uint   M2_ShapeLocation_SurfaceOnly;           // 36
+    float  M2_SphereLocation_Radius;               // 32
+    uint   M2_SphereLocation_SurfaceOnly;          // 36
     uint   M3_ParticleState_KillOnLifetime;        // 40
 };
 
@@ -124,10 +124,10 @@ void ParticleSpawn(inout Particle p, uint index)
 #line 125 "Main.generated.hlsl"
 #undef PARAM
     }
-    // ---- [M2] Shape Location----
+    // ---- [M2] Sphere Location----
     {
-#define PARAM(n) M2_ShapeLocation_##n
-#line 1 "M2_ShapeLocation"
+#define PARAM(n) M2_SphereLocation_##n
+#line 1 "M2_SphereLocation"
         const float kTwoPi = 6.28318530f;
         const float z = Random01(index, 0) * 2.f - 1.f;
         const float phi = Random01(index, 1) * kTwoPi;

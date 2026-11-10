@@ -6,6 +6,7 @@ static_assert(sizeof(float2) == 8, "float2 must be 8 bytes");
 static_assert(sizeof(float3) == 12, "float3 must be 12 bytes");
 static_assert(sizeof(float4) == 16, "float4 must be 16 bytes");
 static_assert(sizeof(NBool) == 4, "NBool must be 4 bytes");
+static_assert(sizeof(float4x4) == 64, "float4x4 must be 64 bytes");
 
 namespace Types
 {
@@ -16,6 +17,7 @@ namespace Types
     const TypeInfo Int32{ "int",       4,  4 };
     const TypeInfo UInt32{ "uint",      4,  4 };
     const TypeInfo Bool{ "bool",      4,  4 };
+    const TypeInfo Float4x4{ "float4x4", 64, 4 };
 
     bool IsGpuCompatible(const TypeInfo& t, std::string* whyNot)
     {
@@ -40,3 +42,4 @@ template <> const TypeInfo& TypeOf<float4>() { return Types::Float4; }
 template <> const TypeInfo& TypeOf<int32_t>() { return Types::Int32; }
 template <> const TypeInfo& TypeOf<uint32_t>() { return Types::UInt32; }
 template <> const TypeInfo& TypeOf<NBool>() { return Types::Bool; }
+template <> const TypeInfo& TypeOf<float4x4>() { return Types::Float4x4; }

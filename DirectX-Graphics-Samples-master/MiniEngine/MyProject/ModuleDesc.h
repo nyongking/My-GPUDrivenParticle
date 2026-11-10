@@ -5,14 +5,14 @@
 #include <string>
 #include <functional>
 
-enum class Stage 
-{ 
-    SystemSpawn, 
-    SystemUpdate, 
-    EmitterSpawn, 
-    EmitterUpdate, 
-    ParticleSpawn, 
-    ParticleUpdate 
+enum class Stage
+{
+    SystemSpawn,
+    SystemUpdate,
+    EmitterSpawn,
+    EmitterUpdate,
+    ParticleSpawn,
+    ParticleUpdate
 };
 
 int         StageLevel(Stage s);   // 0 = System, 1 = Emitter, 2 = Particle
@@ -147,5 +147,5 @@ struct RendererDesc
     //   - 파티클 값   : p.Position, p.Previous_Position ...   (reads/writes 에 선언한 것만)
     //   - Emitter 값  : e.SpawnCount ...                       (EmitterUpdate 단계)
     //   - 입력값      : PARAM(Radius)                          (params 에 선언한 것만)
-    //   - 엔진 값     : DeltaTime, OwnerPosition
+    //   - 엔진 값     : DeltaTime, OwnerPosition ...
     //   - 그 외       : index, Random01(index, salt), KILL()

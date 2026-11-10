@@ -5,5 +5,5 @@
 
 ModuleDesc SpawnRate(float rate); // Rate에 따라 Spawn 개수를 계산하는 Module
 ModuleDesc InitializeParticle(Input<float> size, Input<float> lifeTime, Input<float4> color); // Particle의 입자
-ModuleDesc ShapeLocation(Input<float> radius, bool surfaceOnly = false);
+ModuleDesc SphereLocation(Input<float> radius, bool surfaceOnly = false);
 ModuleDesc ParticleState(bool killOnLifeTime = true);
