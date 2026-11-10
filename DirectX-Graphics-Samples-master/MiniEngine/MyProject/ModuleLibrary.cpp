@@ -48,7 +48,7 @@ e.SpawnCount += n;
 	return m;
 }
 
-ModuleDesc InitializeParticle(Input<float> size, Input<float> lifeTime, Input<float4> color)
+ModuleDesc InitializeParticle(Input<float> size, Input<float> mass, Input<float> lifeTime, Input<float4> color)
 {
 	ModuleDesc m;
 
@@ -57,6 +57,7 @@ ModuleDesc InitializeParticle(Input<float> size, Input<float> lifeTime, Input<fl
 	m.params =
 	{
 		MakeParam<float>("Size", size).WithMin(0.f),
+		MakeParam<float>("Mass", mass).WithMin(0.001f),
 		MakeParam<float>("Lifetime", lifeTime).WithMin(0.f),
 		MakeParam<float4>("Color", color).AsColor()
 	};
@@ -70,10 +71,12 @@ ModuleDesc InitializeParticle(Input<float> size, Input<float> lifeTime, Input<fl
 		{Particles::Color, &Types::Float4},
 		{Particles::Size, &Types::Float},
 		{Particles::Lifetime, &Types::Float},
-		{Particles::Age, &Types::Float}
+		{Particles::Age, &Types::Float},
+		{Particles::Mass, &Types::Float}
 	};
 	m.hlsl = R"(
 p.Position = OwnerPosition;
+p.Mass = PARAM(Mass);
 p.Color = PARAM(Color);
 p.Size = PARAM(Size);
 p.Lifetime = PARAM(Lifetime);
@@ -87,11 +90,13 @@ p.Age = 0.f;
 			const auto sizeParam = ctx.Param<float>("Size");
 			const auto lifeParam = ctx.Param<float>("Lifetime");
 			const auto colorParam = ctx.Param<float4>("Color");
+			const auto massParam = ctx.Param<float>("Mass");
 
 			auto pos = ctx.Particles<float3>(Particles::Position);
 			auto col = ctx.Particles<float4>(Particles::Color);
 			auto sizes = ctx.Particles<float>(Particles::Size);
-		
+			auto masses = ctx.Particles<float>(Particles::Mass);
+
 			const bool hasLife = ctx.HasParticle(Particles::Lifetime);
 			const bool hasAge = ctx.HasParticle(Particles::Age);
 			StridedView<float> life = {};
@@ -104,6 +109,7 @@ p.Age = 0.f;
 				pos[i] = origin;
 				col[i] = colorParam(i);
 				sizes[i] = sizeParam(i);
+				masses[i] = massParam(i);
 				if (hasLife) life[i] = lifeParam(i);
 				if (hasAge)  age[i] = 0.f;
 			}
@@ -223,6 +229,132 @@ if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
 				if (killAtEnd && t >= 1.f)
 					ctx.Kill(i);
 			}
+		};
+
+	return m;
+}
+
+ModuleDesc SolveForceAndVelocity(Input<float> speedLimit, Input<float> accelLimit)
+{
+	ModuleDesc m;
+	m.name = "Solve Force and Velocity";
+	m.stage = Stage::ParticleUpdate;
+	m.params =
+	{
+		MakeParam<float>("AccelLimit", accelLimit).WithMin(0.f),
+		MakeParam<float>("SpeedLimit", speedLimit).WithMin(0.f)
+	};
+	m.reads =
+	{
+		{Engine::DeltaTime, &Types::Float},
+		{Particles::Position, &Types::Float3},
+		{Particles::Velocity, &Types::Float3},
+		{Particles::Acceleration, &Types::Float3},
+	};
+
+	m.writes =
+	{
+		{Particles::Position, &Types::Float3},
+		{Particles::Velocity, &Types::Float3},
+		{Particles::Acceleration, &Types::Float3}
+	};
+	m.hlsl = R"(
+float3 accel = p.Acceleration;
+const float aLen = length(accel);
+if (PARAM(AccelLimit) > 0.f && aLen > PARAM(AccelLimit))
+	accel *= PARAM(AccelLimit) / aLen;
+
+p.Velocity += accel * DeltaTime;
+
+const float sLen = length(p.Velocity);
+if (PARAM(SpeedLimit) > 0.f && sLen > PARAM(SpeedLimit))
+	p.Velocity *= PARAM(SpeedLimit) / sLen;
+
+p.Position += p.Velocity * DeltaTime;
+p.Acceleration = float3(0.f, 0.f, 0.f);
+)";
+
+	m.execute = [](ModuleContext& ctx)
+		{
+			const float dt = ctx.DeltaTime();
+			const float aMax = ctx.Param<float>("AccelLimit")(0);
+			const float sMax = ctx.Param<float>("SpeedLimit")(0);
+
+			auto pos = ctx.Particles<float3>(Particles::Position);
+			auto vel = ctx.Particles<float3>(Particles::Velocity);
+			auto acc = ctx.Particles<float3>(Particles::Acceleration);
+
+
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+			{
+				float3 a = acc[i];
+				const float aLen = std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+				if (aMax > 0.f && aLen > aMax)
+				{
+					const float ratio = aMax / aLen;
+					a.x *= ratio;
+					a.y *= ratio;
+					a.z *= ratio;
+				}
+
+				float3& v = vel[i];
+				v.x += a.x * dt;
+				v.y += a.y * dt;
+				v.z += a.z * dt;
+
+				const float sLen = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+				if (sMax > 0.f && sLen > sMax)
+				{
+					const float ratio = sMax / sLen;
+					v.x *= ratio;
+					v.y *= ratio;
+					v.z *= ratio;
+				}
+
+				pos[i].x += v.x * dt;
+				pos[i].y += v.y * dt;
+				pos[i].z += v.z * dt;
+
+				acc[i] = { 0.f, 0.f, 0.f };
+			}
+		};
+
+
+
+	return m;
+}
+
+ModuleDesc GravityForce(float3 gravity)
+{
+	ModuleDesc m;
+
+	m.name = "Gravity Force";
+	m.stage = Stage::ParticleUpdate;
+	m.params = { MakeParam<float3>("Gravity", gravity) };
+	m.reads = 
+	{ 
+		{Particles::Acceleration, &Types::Float3},
+		{Particles::Mass, &Types::Float}
+	};
+	m.writes = { {Particles::Acceleration, &Types::Float3} };
+
+	m.hlsl = R"(
+p.Acceleration += PARAM(Gravity) / p.Mass;
+)";
+
+	m.execute = [](ModuleContext& ctx) 
+		{
+			const float3 g = ctx.Param<float3>("Gravity")(0);
+			auto acc = ctx.Particles<float3>(Particles::Acceleration);
+			auto mass = ctx.Particles<float>(Particles::Mass);
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+			{
+				acc[i].x += g.x / mass[i];
+				acc[i].y += g.y / mass[i];
+				acc[i].z += g.z / mass[i];
+
+			}
+
 		};
 
 	return m;

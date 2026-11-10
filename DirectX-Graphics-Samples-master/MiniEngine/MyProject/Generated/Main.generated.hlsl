@@ -5,6 +5,8 @@
 //     M1_InitializeParticle       ParticleSpawn   
 //     M2_SphereLocation           ParticleSpawn   
 //     M3_ParticleState            ParticleUpdate  
+//     M4_GravityForce             ParticleUpdate  
+//     M5_SolveForceandVelocity    ParticleUpdate  
 // =====================================================================
 
 #include "ModuleCommon.hlsli"
@@ -17,6 +19,9 @@ static const uint OFS_Particles_Color                  = 12;   // float4
 static const uint OFS_Particles_Size                   = 28;   // float
 static const uint OFS_Particles_Lifetime               = 32;   // float
 static const uint OFS_Particles_Age                    = 36;   // float
+static const uint OFS_Particles_Mass                   = 40;   // float
+static const uint OFS_Particles_Acceleration           = 44;   // float3
+static const uint OFS_Particles_Velocity               = 56;   // float3
 // Particles.NormalizedAge : trimmed (nobody reads it) -> no offset, still in struct
 
 static const uint OFS_Emitter_SpawnCount               = 0;   // uint
@@ -28,13 +33,16 @@ static const uint OFS_Emitter_SpawnRemainder           = 4;   // float
 cbuffer ModuleParams : register(b1)
 {
     float  M0_SpawnRate_Rate;                      // 0
-    float  M1_InitializeParticle_Size_Min;         // 4
-    float  M1_InitializeParticle_Size_Max;         // 8
+    float  M1_InitializeParticle_Size;             // 4
+    float  M1_InitializeParticle_Mass;             // 8
     float  M1_InitializeParticle_Lifetime;         // 12
     float4 M1_InitializeParticle_Color;            // 16
     float  M2_SphereLocation_Radius;               // 32
     uint   M2_SphereLocation_SurfaceOnly;          // 36
     uint   M3_ParticleState_KillOnLifetime;        // 40
+    float3 M4_GravityForce_Gravity;                // 48
+    float  M5_SolveForceandVelocity_AccelLimit;    // 60
+    float  M5_SolveForceandVelocity_SpeedLimit;    // 64
 };
 
 // =====================================================================
@@ -47,7 +55,10 @@ struct Particle
     float  Size;
     float  Lifetime;
     float  Age;
+    float  Mass;
     float  NormalizedAge;   // trimmed
+    float3 Acceleration;
+    float3 Velocity;
 };
 
 struct EmitterState
@@ -67,6 +78,9 @@ Particle LoadParticle(RWByteAddressBuffer b, uint i)
     p.Size                 = LoadF1(b, OFS_Particles_Size, i);
     p.Lifetime             = LoadF1(b, OFS_Particles_Lifetime, i);
     p.Age                  = LoadF1(b, OFS_Particles_Age, i);
+    p.Mass                 = LoadF1(b, OFS_Particles_Mass, i);
+    p.Acceleration         = LoadF3(b, OFS_Particles_Acceleration, i);
+    p.Velocity             = LoadF3(b, OFS_Particles_Velocity, i);
     return p;
 }
 
@@ -77,6 +91,9 @@ void StoreParticle(RWByteAddressBuffer b, uint i, Particle p)
     StoreF1(b, OFS_Particles_Size,                   i, p.Size);
     StoreF1(b, OFS_Particles_Lifetime,               i, p.Lifetime);
     StoreF1(b, OFS_Particles_Age,                    i, p.Age);
+    StoreF1(b, OFS_Particles_Mass,                   i, p.Mass);
+    StoreF3(b, OFS_Particles_Acceleration,           i, p.Acceleration);
+    StoreF3(b, OFS_Particles_Velocity,               i, p.Velocity);
 }
 
 EmitterState LoadEmitter()
@@ -106,7 +123,7 @@ void EmitterUpdate(inout EmitterState e)
         const uint	n = (uint)want;
         e.SpawnRemainder = want - (float)n;
         e.SpawnCount += n;
-#line 110 "Main.generated.hlsl"
+#line 127 "Main.generated.hlsl"
 #undef PARAM
     }
 }
@@ -115,17 +132,16 @@ void ParticleSpawn(inout Particle p, uint index)
 {
     // ---- [M1] Initialize Particle----
     {
-#define M1_InitializeParticle_Size (M1_InitializeParticle_Size_Min + (M1_InitializeParticle_Size_Max - M1_InitializeParticle_Size_Min) * Random01(index, 65792))
 #define PARAM(n) M1_InitializeParticle_##n
 #line 1 "M1_InitializeParticle"
         p.Position = OwnerPosition;
+        p.Mass = PARAM(Mass);
         p.Color = PARAM(Color);
         p.Size = PARAM(Size);
         p.Lifetime = PARAM(Lifetime);
         p.Age = 0.f;
-#line 127 "Main.generated.hlsl"
+#line 144 "Main.generated.hlsl"
 #undef PARAM
-#undef M1_InitializeParticle_Size
     }
     // ---- [M2] Sphere Location----
     {
@@ -138,7 +154,7 @@ void ParticleSpawn(inout Particle p, uint index)
         const float dist = (PARAM(SurfaceOnly) != 0) ? PARAM(Radius) : 
         		PARAM(Radius) * pow(Random01(index, 2), 1.f / 3.f);
         p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
-#line 142 "Main.generated.hlsl"
+#line 158 "Main.generated.hlsl"
 #undef PARAM
     }
     // ---- [Initialcopy] none ----
@@ -156,7 +172,35 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
         p.NormalizedAge = min(t, 1.f);
         if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
         	KILL();
-#line 160 "Main.generated.hlsl"
+#line 176 "Main.generated.hlsl"
+#undef PARAM
+    }
+    // ---- [M4] Gravity Force----
+    {
+#define PARAM(n) M4_GravityForce_##n
+#line 1 "M4_GravityForce"
+        p.Acceleration += PARAM(Gravity) / p.Mass;
+#line 184 "Main.generated.hlsl"
+#undef PARAM
+    }
+    // ---- [M5] Solve Force and Velocity----
+    {
+#define PARAM(n) M5_SolveForceandVelocity_##n
+#line 1 "M5_SolveForceandVelocity"
+        float3 accel = p.Acceleration;
+        const float aLen = length(accel);
+        if (PARAM(AccelLimit) > 0.f && aLen > PARAM(AccelLimit))
+        	accel *= PARAM(AccelLimit) / aLen;
+
+        p.Velocity += accel * DeltaTime;
+
+        const float sLen = length(p.Velocity);
+        if (PARAM(SpeedLimit) > 0.f && sLen > PARAM(SpeedLimit))
+        	p.Velocity *= PARAM(SpeedLimit) / sLen;
+
+        p.Position += p.Velocity * DeltaTime;
+        p.Acceleration = float3(0.f, 0.f, 0.f);
+#line 204 "Main.generated.hlsl"
 #undef PARAM
     }
 }

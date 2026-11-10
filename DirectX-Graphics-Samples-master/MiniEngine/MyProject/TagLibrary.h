@@ -24,5 +24,6 @@ namespace Particles
 	constexpr const char* Color =			"Particles.Color";
 	constexpr const char* Size =			"Particles.Size";
 	constexpr const char* Velocity =		"Particles.Velocity";
-
+	constexpr const char* Mass =			"Particles.Mass";
+	constexpr const char* Acceleration	=	"Particles.Acceleration";
 }

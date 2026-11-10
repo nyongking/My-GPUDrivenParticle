@@ -172,9 +172,13 @@ void MyProject::InitializeEmitter()
         SpawnRate(1000.f),
 
         // Particle Initialize
-        InitializeParticle(0.05f, 1.f, float4{ 1.f, 0.6f, 0.2f, 1.f }),   
+        InitializeParticle(0.05f, 1.f, 1.f, float4{ 1.f, 0.6f, 0.2f, 1.f }),
         SphereLocation(5.f, true),
-        ParticleState(true)
+        ParticleState(true),
+
+        // Particle Update
+        GravityForce(float3{0.f, -10.f, 0.f}),
+        SolveForceAndVelocity(10.f, 100.f)
     };
 
     if (!m_Runtime.Initialize(modules, 100'000, EmitterBackend::Gpu))
