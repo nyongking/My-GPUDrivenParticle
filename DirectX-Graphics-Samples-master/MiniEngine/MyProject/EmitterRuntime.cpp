@@ -6,16 +6,17 @@
 #include "CommandListManager.h"
 #include "GraphicsCore.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace
 {
-	CompiledEmitter CompileStack(const std::vector<ModuleDesc>& modules)
+	CompiledEmitter CompileStack(const std::vector<ModuleDesc>& modules, const RendererDesc& sprite)
 	{
 		EmitterCompiler compiler;
 		for (const ModuleDesc& m : modules)
 			compiler.Add(m);
-		compiler.Add(SpriteRenderer::Desc());
+		compiler.Add(sprite);
 		return compiler.Compile();
 	}
 
@@ -190,6 +191,58 @@ void EmitterRuntime::Restart()
 	Request(Pending::Restart);
 }
 
+void EmitterRuntime::SetBindingAttribute(size_t bindingIndex, const std::string& attribute)
+{
+	RenderBinding& b = m_SpriteDesc.bindings[bindingIndex];
+	if (b.attribute == attribute)
+		return;
+
+	// 칸 연결이 바뀌면 Trim 대상(레이아웃)과 렌더러 offset 이 바뀐다.
+	// 레이아웃이 같아도 렌더러가 offset 을 다시 읽어야 하므로 Preserve 가 아니라 Restart
+	b.attribute = attribute;
+	Request(Pending::Restart);
+}
+
+void EmitterRuntime::SetBindingDefault(size_t bindingIndex, const std::vector<uint8_t>& value)
+{
+	RenderBinding& b = m_SpriteDesc.bindings[bindingIndex];
+	if (value.size() != b.type->size)
+		return;
+
+	b.defaultValue = value;
+	m_AppliedSpriteDesc.bindings[bindingIndex].defaultValue = value;   // 재컴파일과 무관한 값
+
+	// 상수 버퍼 값이라 바로 반영 (실행 중이 아닌 쪽도 같이 맞춰 둔다)
+	m_CpuRenderer.SetDefaults(m_SpriteDesc);
+	m_GpuRenderer.SetDefaults(m_SpriteDesc);
+}
+
+std::vector<std::string> EmitterRuntime::BindableAttributes(const TypeInfo* type) const
+{
+	std::vector<std::string> out;
+	auto add = [&](const std::string& name)
+		{
+			if (std::find(out.begin(), out.end(), name) == out.end())
+				out.push_back(name);
+		};
+
+	// 적용된 스택에서 누가 "쓰는" 속성만 (안 쓰는 속성은 연결해도 기본값이 됨)
+	for (const ModuleDesc& m : m_AppliedModules)
+	{
+		for (const Usage& u : m.writes)
+		{
+			const AttributeKey k = AttributeKey::Parse(u.attr);
+			if (k.ns != Namespace::Particles || k.mod != Modifier::None || u.type != type)
+				continue;
+
+			add(k.Full());
+			add("Particles.Previous." + k.name);   // 엔진이 복사해서 채움
+			add("Particles.Initial." + k.name);
+		}
+	}
+	return out;
+}
+
 void EmitterRuntime::ApplyPending()
 {
 	const Pending pending = m_Pending;
@@ -217,6 +270,7 @@ void EmitterRuntime::ApplyPending()
 	if (ok)
 	{
 		m_AppliedModules = m_Modules;
+		m_AppliedSpriteDesc = m_SpriteDesc;
 		m_LastError.clear();
 	}
 	else
@@ -225,6 +279,7 @@ void EmitterRuntime::ApplyPending()
 		// (컴파일 오류 문구에 한글이 있어 ImGui 에서는 깨질 수 있으므로 출력 창에도 남긴다)
 		Utility::Print(m_LastError.c_str());
 		m_Modules = m_AppliedModules;
+		m_SpriteDesc = m_AppliedSpriteDesc;
 		m_Backend = m_ActiveBackend;
 	}
 }
@@ -253,7 +308,7 @@ bool EmitterRuntime::BuildProgram(const CompiledEmitter& compiled, std::unique_p
 
 bool EmitterRuntime::RebuildPreserve()
 {
-	CompiledEmitter next = CompileStack(m_Modules);
+	CompiledEmitter next = CompileStack(m_Modules, m_SpriteDesc);
 	if (!next.Ok())
 	{
 		m_LastError = JoinLines(next.errors);
@@ -284,7 +339,7 @@ bool EmitterRuntime::RebuildPreserve()
 
 bool EmitterRuntime::RebuildRestart()
 {
-	CompiledEmitter next = CompileStack(m_Modules);
+	CompiledEmitter next = CompileStack(m_Modules, m_SpriteDesc);
 	if (!next.Ok())
 	{
 		m_LastError = JoinLines(next.errors);
@@ -301,14 +356,14 @@ bool EmitterRuntime::RebuildRestart()
 
 	if (m_Backend == EmitterBackend::Cpu)
 	{
-		m_Ready = m_Cpu.Initialize(m_Modules, { SpriteRenderer::Desc() }, m_Capacity)
-			&& m_CpuRenderer.Initialize(m_Cpu);
+		m_Ready = m_Cpu.Initialize(m_Modules, { m_SpriteDesc }, m_Capacity)
+			&& m_CpuRenderer.Initialize(m_Cpu, m_SpriteDesc);
 	}
 	else
 	{
 		m_GpuProgram = std::move(program);
 		m_Ready = m_Gpu.Initialize(next, *m_GpuProgram, m_Capacity)
-			&& m_GpuRenderer.InitializeGpu(m_Gpu);
+			&& m_GpuRenderer.InitializeGpu(m_Gpu, m_SpriteDesc);
 	}
 
 	m_ActiveBackend = m_Backend;

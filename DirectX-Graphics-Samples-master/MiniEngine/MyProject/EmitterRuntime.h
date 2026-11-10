@@ -36,6 +36,15 @@ public:
 	void SetParamKind(size_t moduleIndex, size_t paramIndex, ParamKind kind);       // 파티클 유지
 	void SetPerComponent(size_t moduleIndex, size_t paramIndex, bool perComponent); // 파티클 유지
 
+	// -------- 렌더러 바인딩 -------
+	const RendererDesc& SpriteBindings() const { return m_SpriteDesc; }
+	// 연결할 속성 변경 (빈 문자열 = 항상 기본값). Trim 대상이 바뀔 수 있어 재시작
+	void SetBindingAttribute(size_t bindingIndex, const std::string& attribute);
+	// 기본값만 변경. 재컴파일 없이 바로 반영
+	void SetBindingDefault(size_t bindingIndex, const std::vector<uint8_t>& value);
+	// 이 칸에 연결할 수 있는 속성 목록 (적용된 모듈이 쓰는 같은 타입의 Particles 속성 + Previous / Initial)
+	std::vector<std::string> BindableAttributes(const TypeInfo* type) const;
+
 	bool CanMoveModule(size_t moduleIndex, int direction) const;    // 같은 Stage 안에서만 이동
 	void MoveModule(size_t moduleIndex, int direction);             // 재시작
 
@@ -47,7 +56,7 @@ public:
 	bool            Ready() const { return m_Ready; }
 	uint32_t        Capacity() const { return m_Capacity; }
 	uint32_t        AliveCount() const;
-	const std::string&              LastError() const { return m_LastError; }
+	const std::string& LastError() const { return m_LastError; }
 	const std::vector<std::string>& Warnings() const { return m_Compiled.warnings; }
 
 private:
@@ -63,6 +72,8 @@ private:
 
 	std::vector<ModuleDesc> m_Modules;          // 원본. UI 가 직접 편집
 	std::vector<ModuleDesc> m_AppliedModules;   // 마지막으로 적용에 성공한 스택 (실패 시 복구)
+	RendererDesc            m_SpriteDesc = SpriteRenderer::Desc();   // 렌더러 바인딩 (UI 가 편집)
+	RendererDesc            m_AppliedSpriteDesc = SpriteRenderer::Desc();
 	CompiledEmitter         m_Compiled;         // m_AppliedModules 의 컴파일 결과
 
 	EmitterBackend          m_Backend = EmitterBackend::Gpu;        // 요청된 백엔드

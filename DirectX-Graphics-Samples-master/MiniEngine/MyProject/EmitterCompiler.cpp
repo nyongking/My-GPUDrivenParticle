@@ -207,7 +207,38 @@ CompiledEmitter EmitterCompiler::Compile() const
         for (const Usage& u : m.reads)  collect(u, m.name, lv, m.stage, true, false);
     }
     for (const RendererDesc& r : m_Renderers)
-        for (const Usage& u : r.reads) collect(u, r.name, 2, Stage::ParticleUpdate, true, true);
+    {
+        for (const RenderBinding& b : r.bindings)
+        {
+            if (b.attribute.empty())
+                continue; // 기본값 적용
+
+            const std::string who = r.name + "." + b.slot;
+            const AttributeKey k = AttributeKey::Parse(b.attribute);
+            if (k.ns != Namespace::Particles)
+            {
+                out.errors.push_back(who + ": " + b.attribute + "' 렌더러 바인딩은 Particles의 속성만 가능하다.");
+                continue;
+            }
+
+            if (k.mod != Modifier::None)
+            {
+                collect(Usage{ b.attribute, b.type }, who, 2, Stage::ParticleUpdate, true, true);
+                continue;
+            }
+
+            auto it = table.find(k.Full());
+            if (it == table.end() || !it->second.written)
+                continue; // trim의 대상
+
+            if (it->second.type != b.type)
+            {
+                out.errors.push_back(who + ": '" + k.Full() + "' 타입이 다름 (칸 " + b.type->name + " / 속성 " + it->second.type->name + ")");
+                continue;
+            }
+            it->second.read = true;
+        }
+    }
 
     // 순서 의존성 경고: Spawn 에서 앞선 모듈이 쓰지 않은 속성을 읽으면 0 을 읽게 된다
     {

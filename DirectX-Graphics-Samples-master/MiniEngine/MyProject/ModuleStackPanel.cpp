@@ -48,6 +48,52 @@ namespace
 		return DrawFloats(label, reinterpret_cast<float*>(data), p.type->size / sizeof(float), p);
 	}
 
+	// 렌더러 바인딩 (R1): 칸마다 [연결할 속성 콤보] + [기본값]
+	void DrawBindings(EmitterRuntime& runtime)
+	{
+		const RendererDesc& desc = runtime.SpriteBindings();
+		ImGui::SeparatorText(desc.name.c_str());
+
+		for (size_t i = 0; i < desc.bindings.size(); ++i)
+		{
+			const RenderBinding& b = desc.bindings[i];
+			ImGui::PushID(static_cast<int>(i));
+
+			// ---- 연결할 속성 ----
+			const std::vector<std::string> options = runtime.BindableAttributes(b.type);
+			const std::string preview = b.attribute.empty() ? std::string("(default)") : b.attribute;
+
+			ImGui::SetNextItemWidth(220.f);
+			if (ImGui::BeginCombo(b.slot.c_str(), preview.c_str()))
+			{
+				if (ImGui::Selectable("(default)", b.attribute.empty()))
+					runtime.SetBindingAttribute(i, std::string());
+				for (const std::string& name : options)
+					if (ImGui::Selectable(name.c_str(), name == b.attribute))
+						runtime.SetBindingAttribute(i, name);
+
+				// 지금 연결된 속성을 쓰는 모듈이 없으면 목록에 없을 수 있다 -> 그래도 보여 준다 (기본값으로 그려짐)
+				if (!b.attribute.empty() && std::find(options.begin(), options.end(), b.attribute) == options.end())
+					ImGui::TextDisabled("%s (no module writes it -> default)", b.attribute.c_str());
+				ImGui::EndCombo();
+			}
+
+			// ---- 기본값 (연결이 없거나, 연결된 속성을 아무도 쓰지 않을 때 사용) ----
+			ParamDesc view;                      // DrawValue 를 재사용하려고 모양만 맞춘다
+			view.name = b.slot;
+			view.type = b.type;
+			view.uiColor = (b.type == &Types::Float4);
+			std::vector<uint8_t> value = b.defaultValue;
+
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(160.f);
+			if (DrawValue("##default", view, value.data()))
+				runtime.SetBindingDefault(i, value);
+
+			ImGui::PopID();
+		}
+	}
+
 	void DrawParam(EmitterRuntime& runtime, size_t moduleIndex, size_t paramIndex)
 	{
 		ModuleDesc& module = runtime.EditModules()[moduleIndex];
@@ -163,4 +209,6 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 
 	if (moveIndex >= 0)
 		runtime.MoveModule(static_cast<size_t>(moveIndex), moveDirection);
+
+	DrawBindings(runtime);
 }

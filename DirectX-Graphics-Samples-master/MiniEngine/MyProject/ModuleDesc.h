@@ -132,11 +132,33 @@ struct ModuleDesc
     int compiledIndex = -1;     // CompiledEmitter::modules 에서의 위치 (EmitterInstance 가 채움)
 };
 
+struct RenderBinding
+{
+    std::string             slot;
+    const TypeInfo*         type;
+    std::string             attribute;
+    std::vector<uint8_t>    defaultValue;
+};
+
+template<typename T>
+RenderBinding MakeRenderBinding(const std::string& slot, const std::string& attribute, const T& defaultValue)
+{
+    RenderBinding b;
+    b.slot = slot;
+    b.type = &TypeOf<T>();
+    b.attribute = attribute;
+    b.defaultValue.resize(sizeof(T));
+    memcpy(b.defaultValue.data(), &defaultValue, sizeof(T));
+    return b;
+
+}
+
+
 // 렌더러(또는 엔진 단계)는 읽기만 한다
 struct RendererDesc
 {
-    std::string        name;
-    std::vector<Usage> reads;
+    std::string                 name;
+    std::vector<RenderBinding>  bindings;
 };
 
 // --------------------------------------

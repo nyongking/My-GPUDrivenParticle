@@ -24,23 +24,29 @@ using namespace Graphics;
 
 namespace
 {
-
-
-	// HLSL cbuffer SpriteConstants 와 같은 배치 (112 바이트)
+	// HLSL cbuffer SpriteConstants 와 같은 배치... 계속 추가될 수 있음
 	struct alignas(16) SpriteConstants
 	{
-		DirectX::XMFLOAT4X4 viewProj;
-		DirectX::XMFLOAT4   camRight;
-		DirectX::XMFLOAT4   camUp;
-		uint32_t            positionOffset;
-		uint32_t            colorOffset;
-		uint32_t            sizeOffset;
-		uint32_t            capacity;
+		DirectX::XMFLOAT4X4 viewProj;        // 0
+		DirectX::XMFLOAT4   camRight;        // 64
+		DirectX::XMFLOAT4   camUp;           // 80
 
-		uint32_t			sortEnabled;
-		uint32_t			_pad[3];
+		uint32_t            positionOffset;  // 96   (0xFFFFFFFF = 연결 없음 -> 기본값)
+		uint32_t            colorOffset;     // 100
+		uint32_t            sizeOffset;      // 104
+		uint32_t            capacity;        // 108
+
+		float4              defaultColor;    // 112
+		float3              defaultPosition; // 128
+		float               defaultSize;     // 140
+
+		uint32_t            sortEnabled;     // 144
+		uint32_t            _pad[3];
 	};
-	static_assert(sizeof(SpriteConstants) == 128, "HLSL cbuffer SpriteConstants(112 B)와 일치해야 함");
+	static_assert(sizeof(SpriteConstants) == 160, "HLSL cbuffer SpriteConstants(160 B)와 일치해야 함");
+	static_assert(offsetof(SpriteConstants, defaultColor) == 112, "DefaultColor offset 112");
+	static_assert(offsetof(SpriteConstants, defaultPosition) == 128, "DefaultPosition offset 128");
+	static_assert(offsetof(SpriteConstants, sortEnabled) == 144, "SortEnabled offset 144");
 
 	enum RootParams { kRootCBV, kRootSRVs, kNumRootParams };
 	static const uint32_t kNumSRVs = 2;
@@ -85,22 +91,22 @@ RendererDesc SpriteRenderer::Desc()
 	RendererDesc desc = {};
 
 	desc.name = "Sprite Renderer";
-	desc.reads =
+	desc.bindings =
 	{
-		{Particles::Position, &Types::Float3},
-		{Particles::Color, &Types::Float4},
-		{Particles::Size, &Types::Float}
+		MakeRenderBinding<float3>("Position", Particles::Position, float3{ 0.f, 0.f, 0.f }),
+		MakeRenderBinding<float4>("Color",    Particles::Color,    float4{ 1.f, 1.f, 1.f, 1.f }),
+		MakeRenderBinding<float>("Size",      Particles::Size,     0.1f)
 	};
 
 	return desc;
 }
 
-bool SpriteRenderer::Initialize(const EmitterInstance& emitter)
+bool SpriteRenderer::Initialize(const EmitterInstance& emitter, const RendererDesc& desc)
 {
 	m_Log.clear();
 	m_Ready = false;
 
-	if (!ReadLayout(emitter.Compiled().particles, emitter.Capacity()))
+	if (!ReadLayout(emitter.Compiled().particles, emitter.Capacity(), desc))
 		return false;
 
 	m_BufferBytes = static_cast<uint32_t>(emitter.ParticleDataBytes());
@@ -112,52 +118,6 @@ bool SpriteRenderer::Initialize(const EmitterInstance& emitter)
 	m_SortedIndices.resize(idxCount);
 	std::iota(m_SortedIndices.begin(), m_SortedIndices.end(), 0u);
 	m_SortedIndexBuffer.Create(L"Sorted Index Buffer", idxCount, sizeof(uint32_t), m_SortedIndices.data());
-
-	InitializePipeline();
-
-	m_Ready = true;
-	return true;
-}
-
-
-bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity)
-{
-	const Slot* pos = layout.Find(Particles::Position);
-	const Slot* col = layout.Find(Particles::Color);
-	const Slot* siz = layout.Find(Particles::Size);
-
-	if (!pos || !col || !siz)
-	{
-		m_Log = "[SpriteRenderer] Position/Color/Size 중 레이아웃에 없는 값이 있음. "
-			"EmitterInstance::Initialize 에 SpriteRenderer::Desc() 를 넣었는지 확인\n";
-		return false;
-	}
-	if (pos->type != &Types::Float3 || col->type != &Types::Float4 || siz->type != &Types::Float)
-	{
-		m_Log = "[SpriteRenderer] Position(float3) / Color(float4) / Size(float) 타입이 다름\n";
-		return false;
-	}
-
-	m_PositionOffset = pos->offset;
-	m_ColorOffset = col->offset;
-	m_SizeOffset = siz->offset;
-	m_Capacity = capacity;
-	return true;
-}
-
-bool SpriteRenderer::InitializeGpu(const GpuEmitterInstance& emitter)
-{
-	m_Log.clear();
-	m_Ready = false;
-
-	if (!emitter.Ready() || !ReadLayout(emitter.Compiled().particles, emitter.Capacity()))
-		return false;
-
-	// 파티클 버퍼는 GPU 이미터 것을 쓰므로 만들지 않는다.
-	// t1 은 정렬을 끈 상태라 읽지 않지만, SRV 테이블을 채우려고 작은 버퍼를 하나 둔다 (G3 에서 정렬 결과로 바뀜)
-	alignas(16) const uint32_t dummy[4] = { 0, 1, 2, 3 };
-	m_SortedIndexBuffer.Create(L"Sorted Index Buffer (GPU, unused)", 4, sizeof(uint32_t), dummy);
-	m_BufferBytes = 0;
 
 	InitializePipeline();
 
@@ -187,7 +147,8 @@ void SpriteRenderer::Render(GraphicsContext& gfx, const Math::Camera& camera, co
 	gfx.TransitionResource(m_ParticleBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
 
 	// 2) 정렬 여부에 따라 정렬 + 업로드 버퍼
-	if (m_SortMode == SortMode::ViewDepth)
+	const bool sorted = (m_SortMode == SortMode::ViewDepth) && (m_Offsets[kPosition] != kNoAttribute);
+	if (sorted)
 		UploadSortedIndices(gfx, camera, emitter);
 	else
 		gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
@@ -198,6 +159,71 @@ void SpriteRenderer::Render(GraphicsContext& gfx, const Math::Camera& camera, co
 	// 4) 그리기: 파티클 하나 = 사각형(정점 6개), 인스턴스 = 파티클 수
 	gfx.DrawInstanced(6, emitter.Count());
 }
+
+
+bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity, const RendererDesc& desc)
+{	
+	// Desc() 와 같은 칸 구성인지 (칸 순서 = 셰이더 cbuffer 순서)
+	static const TypeInfo* kSlotTypes[kNumSlots] = { &Types::Float3, &Types::Float4, &Types::Float };
+	if (desc.bindings.size() != kNumSlots)
+	{
+		m_Log = "[SpriteRenderer] 바인딩 칸 수가 다름 (SpriteRenderer::Desc() 로 만든 desc 를 넘겨야 함)\n";
+		return false;
+	}
+
+	for (uint32_t i = 0; i < kNumSlots; ++i)
+	{
+		const RenderBinding& b = desc.bindings[i];
+		if (b.type != kSlotTypes[i])
+		{
+			m_Log = "[SpriteRenderer] '" + b.slot + "' 칸 타입이 다름\n";
+			return false;
+		}
+
+		// 연결된 속성이 레이아웃에 있으면 그 offset, 없으면 (아무도 안 씀 / 비워 둠) 기본값
+		const Slot* s = b.attribute.empty() ? nullptr : layout.Find(b.attribute);
+		if (s && s->type != b.type)
+		{
+			m_Log = "[SpriteRenderer] '" + b.slot + "' <- '" + b.attribute + "' 타입이 다름\n";
+			return false;
+		}
+		m_Offsets[i] = s ? s->offset : kNoAttribute;
+	}
+
+	SetDefaults(desc);
+	m_Capacity = capacity;
+	return true;
+}
+
+bool SpriteRenderer::InitializeGpu(const GpuEmitterInstance& emitter, const RendererDesc& desc)
+{
+	m_Log.clear();
+	m_Ready = false;
+
+	if (!emitter.Ready() || !ReadLayout(emitter.Compiled().particles, emitter.Capacity(), desc))
+		return false;
+
+	// 파티클 버퍼는 GPU 이미터 것을 쓰므로 만들지 않는다.
+	// t1 은 정렬을 끈 상태라 읽지 않지만, SRV 테이블을 채우려고 작은 버퍼를 하나 둔다 (G3 에서 정렬 결과로 바뀜)
+	alignas(16) const uint32_t dummy[4] = { 0, 1, 2, 3 };
+	m_SortedIndexBuffer.Create(L"Sorted Index Buffer (GPU, unused)", 4, sizeof(uint32_t), dummy);
+	m_BufferBytes = 0;
+
+	InitializePipeline();
+
+	m_Ready = true;
+	return true;
+}
+
+void SpriteRenderer::SetDefaults(const RendererDesc& desc)
+{
+	if (desc.bindings.size() != kNumSlots)
+		return;
+	std::memcpy(&m_DefaultPosition, desc.bindings[kPosition].defaultValue.data(), sizeof(float3));
+	std::memcpy(&m_DefaultColor, desc.bindings[kColor].defaultValue.data(), sizeof(float4));
+	std::memcpy(&m_DefaultSize, desc.bindings[kSize].defaultValue.data(), sizeof(float));
+}
+
 
 void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter)
 {
@@ -223,10 +249,13 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	DirectX::XMStoreFloat4(&sc.camUp, camera.GetUpVec());
 	sc.camRight.w = 0.f;
 	sc.camUp.w = 0.f;
-	sc.positionOffset = m_PositionOffset;
-	sc.colorOffset = m_ColorOffset;
-	sc.sizeOffset = m_SizeOffset;
+	sc.positionOffset = m_Offsets[kPosition];
+	sc.colorOffset = m_Offsets[kColor];
+	sc.sizeOffset = m_Offsets[kSize];
 	sc.capacity = m_Capacity;
+	sc.defaultColor = m_DefaultColor;
+	sc.defaultPosition = m_DefaultPosition;
+	sc.defaultSize = m_DefaultSize;
 	sc.sortEnabled = sorted ? 1u : 0u;
 
 	gfx.SetRootSignature(s_RootSig);
@@ -243,7 +272,7 @@ void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camer
 	uint32_t count = emitter.Count();
 
 	const float3* pos = reinterpret_cast<const float3*>(emitter.ParticleData()
-		+ size_t(m_PositionOffset) * m_Capacity);
+		+ size_t(m_Offsets[kPosition]) * m_Capacity);
 
 	SortBackToFront(pos, count,
 		ToFloat3(camera.GetPosition()), ToFloat3(camera.GetForwardVec()),

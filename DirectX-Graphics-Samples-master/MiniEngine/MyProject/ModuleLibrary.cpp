@@ -16,11 +16,11 @@ ModuleDesc SpawnRate(float rate)
 	{
 		MakeParam<float>("Rate", rate).WithMin(0.f)
 	};
-	m.reads = 
-	{ 
+	m.reads =
+	{
 		{Engine::DeltaTime, &Types::Float},
 		{Emitter::SpawnCount, &Types::UInt32 },
-		{Emitter::SpawnRemainder, &Types::Float}	
+		{Emitter::SpawnRemainder, &Types::Float}
 	};
 	m.writes =
 	{
@@ -33,7 +33,7 @@ const uint	n = (uint)want;
 e.SpawnRemainder = want - (float)n;
 e.SpawnCount += n;
 )";
-	m.execute = [](ModuleContext& ctx) 
+	m.execute = [](ModuleContext& ctx)
 		{
 			float& remainder = ctx.Emitter<float>(Emitter::SpawnRemainder);
 			uint32_t& count = ctx.Emitter<uint32_t>(Emitter::SpawnCount);
@@ -92,24 +92,32 @@ p.Age = 0.f;
 			const auto colorParam = ctx.Param<float4>("Color");
 			const auto massParam = ctx.Param<float>("Mass");
 
-			auto pos = ctx.Particles<float3>(Particles::Position);
-			auto col = ctx.Particles<float4>(Particles::Color);
-			auto sizes = ctx.Particles<float>(Particles::Size);
-			auto masses = ctx.Particles<float>(Particles::Mass);
-
+			const bool hasPos = ctx.HasParticle(Particles::Position);
+			const bool hasCol = ctx.HasParticle(Particles::Color);
+			const bool hasSize = ctx.HasParticle(Particles::Size);
+			const bool hasMass = ctx.HasParticle(Particles::Mass);
 			const bool hasLife = ctx.HasParticle(Particles::Lifetime);
 			const bool hasAge = ctx.HasParticle(Particles::Age);
+
+			StridedView<float3> pos = {};
+			StridedView<float4> col = {};
+			StridedView<float> sizes = {};
+			StridedView<float> masses = {};
 			StridedView<float> life = {};
 			StridedView<float> age = {};
+			if (hasPos)  pos = ctx.Particles<float3>(Particles::Position);
+			if (hasCol)  col = ctx.Particles<float4>(Particles::Color);
+			if (hasSize) sizes = ctx.Particles<float>(Particles::Size);
+			if (hasMass) masses = ctx.Particles<float>(Particles::Mass);
 			if (hasLife) life = ctx.Particles<float>(Particles::Lifetime);
 			if (hasAge)  age = ctx.Particles<float>(Particles::Age);
 
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
-				pos[i] = origin;
-				col[i] = colorParam(i);
-				sizes[i] = sizeParam(i);
-				masses[i] = massParam(i);
+				if (hasPos)  pos[i] = origin;
+				if (hasCol)  col[i] = colorParam(i);
+				if (hasSize) sizes[i] = sizeParam(i);
+				if (hasMass) masses[i] = massParam(i);
 				if (hasLife) life[i] = lifeParam(i);
 				if (hasAge)  age[i] = 0.f;
 			}
@@ -133,7 +141,7 @@ ModuleDesc SphereLocation(Input<float> radius, bool surfaceOnly)
 	{
 		{ Particles::Position, &Types::Float3 }
 	};
-	m.writes = 
+	m.writes =
 	{
 		{Particles::Position, &Types::Float3}
 	};
@@ -155,7 +163,7 @@ p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
 			const auto radiusParam = ctx.Param<float>("Radius");
 
 			auto pos = ctx.Particles<float3>(Particles::Position);
-			
+
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
 				const float z = ctx.Random01(i, 0) * 2.f - 1.f;
@@ -331,8 +339,8 @@ ModuleDesc GravityForce(float3 gravity)
 	m.name = "Gravity Force";
 	m.stage = Stage::ParticleUpdate;
 	m.params = { MakeParam<float3>("Gravity", gravity) };
-	m.reads = 
-	{ 
+	m.reads =
+	{
 		{Particles::Acceleration, &Types::Float3},
 		{Particles::Mass, &Types::Float}
 	};
@@ -342,7 +350,7 @@ ModuleDesc GravityForce(float3 gravity)
 p.Acceleration += PARAM(Gravity) / p.Mass;
 )";
 
-	m.execute = [](ModuleContext& ctx) 
+	m.execute = [](ModuleContext& ctx)
 		{
 			const float3 g = ctx.Param<float3>("Gravity")(0);
 			auto acc = ctx.Particles<float3>(Particles::Acceleration);
