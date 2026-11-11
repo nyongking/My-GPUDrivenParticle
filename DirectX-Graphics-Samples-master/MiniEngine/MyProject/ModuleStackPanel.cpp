@@ -117,6 +117,36 @@ namespace
 		}
 	}
 
+	// ---- SubUV / 블렌드 (T2) ----
+	void DrawSpriteSettings(EmitterRuntime& runtime)
+	{
+		SpriteSettings s = runtime.GetSpriteSettings();
+		bool changed = false;
+
+		int grid[2] = { static_cast<int>(s.subImageCols), static_cast<int>(s.subImageRows) };
+		ImGui::SetNextItemWidth(160.f);
+		if (ImGui::DragInt2("Sub Image Size", grid, 0.1f, 1, 64))
+		{
+			s.subImageCols = static_cast<uint32_t>((std::max)(grid[0], 1));
+			s.subImageRows = static_cast<uint32_t>((std::max)(grid[1], 1));
+			changed = true;
+		}
+		ImGui::SameLine();
+		changed |= ImGui::Checkbox("Sub UV Blend", &s.subUVBlend);
+
+		static const char* const kBlendModes[] = { "Translucent", "Additive" };
+		int blend = static_cast<int>(s.blend);
+		ImGui::SetNextItemWidth(160.f);
+		if (ImGui::Combo("Blend", &blend, kBlendModes, IM_ARRAYSIZE(kBlendModes)))
+		{
+			s.blend = static_cast<SpriteBlendMode>(blend);
+			changed = true;
+		}
+
+		if (changed)
+			runtime.SetSpriteSettings(s);
+	}
+
 	// 렌더러 바인딩 (R1): 칸마다 [연결할 속성 콤보] + [기본값]
 	void DrawBindings(EmitterRuntime& runtime)
 	{
@@ -124,6 +154,7 @@ namespace
 		ImGui::SeparatorText(desc.name.c_str());
 
 		DrawTexture(runtime);
+		DrawSpriteSettings(runtime);
 
 		for (size_t i = 0; i < desc.bindings.size(); ++i)
 		{

@@ -70,14 +70,7 @@ private:
     bool            m_MoveOwner = false;        // 위아래로 움직이기 (Owner.Velocity 확인)
     float           m_OwnerTime = 0.f;
 
-    // 평면
-    TexturedQuad m_Floor;
 
-    // cam
-    FlyingFPSCamera* m_FlyCam = nullptr;   // m_CameraController 가 소유, 여기선 참조만
-    bool             m_MiddleDragging = false;
-
-    void UpdateMiddleDragLook();
 };
 
 CREATE_APPLICATION(MyProject)
@@ -100,7 +93,7 @@ void MyProject::Startup(void)
     NewCam->SetMoveSpeed(10.f);
     NewCam->SetStrafeSpeed(10.f);
     m_CameraController.reset(NewCam);
-    m_FlyCam = NewCam;
+
     //// Setup your data
     //m_Draft.maxParticles = 1'000'000;
     //m_Draft.steadyRatio = 0.5f;
@@ -115,10 +108,6 @@ void MyProject::Startup(void)
     //L"Particle AfterSim",   // 살아남은 수 확정 + Draw Args
     //L"Particle Draw" });
 
-    // Startup: QuadRenderer::Initialize() 다음
-    m_Floor.SetFloor(Vector3(0.f, -4.f, 0.f), 20.f);
-    m_Floor.SetTint(Color(0.1f, 0.1f, 0.1f));
-
     InitializeEmitter();
 }
 
@@ -129,7 +118,6 @@ void MyProject::Cleanup(void)
     m_Runtime.Shutdown();
 
     //m_Particles.Shutdown();
-    m_Floor.Release();
 
     m_CameraController.reset();
     QuadRenderer::Shutdown();
@@ -145,7 +133,7 @@ void MyProject::Update(float deltaT)
 
     // Update something
     m_CameraController->Update(deltaT);
-    UpdateMiddleDragLook();               // 그다음 휠 드래그로 각도 덮어쓰기
+
     //DebugDraw::AddLine(Vector3(0.f, 0.f, 0.f), Vector3(0.f, 5.f, 0.f), Color(1.f, 1.f, 1.f));
     //DebugDraw::AddLine(Vector3(-1.f, 0.f, 0.f), Vector3(1.f, 0.f, 0.f), Color(1.f, 1.f, 1.f));
 
@@ -184,13 +172,14 @@ void MyProject::InitializeEmitter()
         SpawnRate(1000.f),
 
         // Particle Initialize
-        InitializeParticle(0.05f, 1.f, 1.f, float4{ 1.f, 0.6f, 0.2f, 1.f }),
-        SphereLocation(5.f, true),
-        ParticleState(true),
+        InitializeParticle(0.1f, 1.f, 1.f, float4{ 1.f, 0.6f, 0.2f, 1.f }),
+        SphereLocation(1.f, true),
 
         // Particle Update
-        GravityForce(float3{0.f, -10.f, 0.f}),
-        SolveForceAndVelocity(10.f, 100.f)
+        ParticleState(true),
+        //GravityForce(float3{0.f, -10.f, 0.f}),
+        SolveForceAndVelocity(10.f, 100.f),
+        SubUVAnimation(0.f, 63.f)      // 수명 동안 0~63 프레임 (T_Smoke_SubUV = 8x8)
     };
 
     if (!m_Runtime.Initialize(modules, 100'000, EmitterBackend::Gpu))
@@ -341,45 +330,10 @@ void MyProject::RenderScene(void)
     // Rendering something
     DebugDraw::Render(gfxContext, m_Camera.GetViewProjMatrix());
     QuadRenderer::BeginDraw(gfxContext, m_Camera.GetViewProjMatrix());
-    m_Floor.Draw(gfxContext);              // 불투명한 것 먼저
 
     m_Runtime.Render(gfxContext, m_Camera);
 
 
     // Finish
     gfxContext.Finish();
-}
-
-void MyProject::UpdateMiddleDragLook()
-{
-    if (ImGuiLayer::IsCameraMode() || !m_FlyCam)
-    {
-        m_MiddleDragging = false;
-        return;
-    }
-
-    ImGuiIO& io = ImGui::GetIO();
-
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) && !io.WantCaptureMouse)
-        m_MiddleDragging = true;
-    if (!ImGui::IsMouseDown(ImGuiMouseButton_Middle))
-        m_MiddleDragging = false;
-
-    if (!m_MiddleDragging || (io.MouseDelta.x == 0.f && io.MouseDelta.y == 0.f))
-        return;
-
-    const Vector3 f = m_Camera.GetForwardVec();
-    const float fx = float(f.GetX()), fy = float(f.GetY()), fz = float(f.GetZ());
-
-    float pitch = asinf(fy < -1.f ? -1.f : (fy > 1.f ? 1.f : fy));
-    float heading = atan2f(-fx, -fz);
-
-    const float kSensitivity = 0.005f;          
-    const float kPitchLimit = XM_PIDIV2 - 0.01f;
-
-    heading -= io.MouseDelta.x * kSensitivity;  
-    pitch -= io.MouseDelta.y * kSensitivity;    
-    pitch = (std::max)(-kPitchLimit, (std::min)(kPitchLimit, pitch));
-
-    m_FlyCam->SetHeadingPitchAndPosition(heading, pitch, m_Camera.GetPosition());
 }

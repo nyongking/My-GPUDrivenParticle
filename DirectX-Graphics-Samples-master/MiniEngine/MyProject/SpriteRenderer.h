@@ -35,6 +35,7 @@ class SpriteRenderer
 public:
     enum BindingSlot { kPosition, kColor, kSize, kSubImageIndex, kNumSlots };
 
+    // SpriteRenderer의 기본값에 해당하는 Desc, 이미터마다 원하는 바인딩이 다를 경우 직접 RendererDesc를 지정해야 한다.
     static RendererDesc Desc();
 
     bool Initialize(const EmitterInstance& emitter, const RendererDesc& desc);

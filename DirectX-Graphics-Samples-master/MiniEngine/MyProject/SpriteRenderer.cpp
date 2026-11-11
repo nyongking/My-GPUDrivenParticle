@@ -70,6 +70,7 @@ namespace
 	// 텍스처를 고르지 않았을 때 쓰는 기본 원형 (예전 PS 의 falloff 를 텍스처로 구운 것)
 	Texture       s_SoftCircle;
 
+	// 기본 텍스처 생성
 	void CreateSoftCircle()
 	{
 		const uint32_t kSize = 64;
@@ -100,9 +101,12 @@ namespace
 		s_RootSig.Reset(kNumRootParams, 1);
 		s_RootSig[kRootCBV].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
 		s_RootSig[kRootSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, kNumSRVs, D3D12_SHADER_VISIBILITY_VERTEX);
-		// T1: PS 텍스처 t2 + 샘플러 s0 (uv 0~1 안에서만 쓰므로 Clamp: 반대편 가장자리가 번지지 않게)
+		
+		// 텍스처 및 샘플러 설정
 		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1, D3D12_SHADER_VISIBILITY_PIXEL);
 		s_RootSig.InitStaticSampler(0, SamplerLinearClampDesc, D3D12_SHADER_VISIBILITY_PIXEL);
+		// Blendmode 상수버퍼 설정
+		s_RootSig[kRootPSConstants].InitAsConstants(1, 1, D3D12_SHADER_VISIBILITY_PIXEL);
 		s_RootSig.Finalize(L"Particle Sprite RootSig");
 
 		s_PSO.SetRootSignature(s_RootSig);
@@ -133,7 +137,8 @@ RendererDesc SpriteRenderer::Desc()
 	{
 		MakeRenderBinding<float3>("Position", Particles::Position, float3{ 0.f, 0.f, 0.f }),
 		MakeRenderBinding<float4>("Color",    Particles::Color,    float4{ 1.f, 1.f, 1.f, 1.f }),
-		MakeRenderBinding<float>("Size",      Particles::Size,     0.1f)
+		MakeRenderBinding<float>("Size",      Particles::Size,     0.1f),
+		MakeRenderBinding<float>("SubImageIndex",	Particles::SubImageIndex, 0.f)
 	};
 
 	return desc;
@@ -202,7 +207,7 @@ void SpriteRenderer::Render(GraphicsContext& gfx, const Math::Camera& camera, co
 bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity, const RendererDesc& desc)
 {
 	// Desc() 와 같은 칸 구성인지 (칸 순서 = 셰이더 cbuffer 순서)
-	static const TypeInfo* kSlotTypes[kNumSlots] = { &Types::Float3, &Types::Float4, &Types::Float };
+	static const TypeInfo* kSlotTypes[kNumSlots] = { &Types::Float3, &Types::Float4, &Types::Float, &Types::Float };
 	if (desc.bindings.size() != kNumSlots)
 	{
 		m_Log = "[SpriteRenderer] 바인딩 칸 수가 다름 (SpriteRenderer::Desc() 로 만든 desc 를 넘겨야 함)\n";
@@ -260,6 +265,7 @@ void SpriteRenderer::SetDefaults(const RendererDesc& desc)
 	std::memcpy(&m_DefaultPosition, desc.bindings[kPosition].defaultValue.data(), sizeof(float3));
 	std::memcpy(&m_DefaultColor, desc.bindings[kColor].defaultValue.data(), sizeof(float4));
 	std::memcpy(&m_DefaultSize, desc.bindings[kSize].defaultValue.data(), sizeof(float));
+	std::memcpy(&m_DefaultSubImage, desc.bindings[kSubImageIndex].defaultValue.data(), sizeof(float));
 }
 
 
@@ -295,7 +301,12 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	sc.defaultPosition = m_DefaultPosition;
 	sc.defaultSize = m_DefaultSize;
 	sc.sortEnabled = sorted ? 1u : 0u;
-
+	sc.subImageOffset = m_Offsets[kSubImageIndex];
+	sc.defaultSubImage = m_DefaultSubImage;
+	sc.subUVBlend = m_Settings.subUVBlend ? 1u : 0u;
+	sc.subImageSize[0] = static_cast<float>(m_Settings.subImageCols);
+	sc.subImageSize[1] = static_cast<float>(m_Settings.subImageRows);
+		
 	gfx.SetRootSignature(s_RootSig);
 	gfx.SetPipelineState(s_PSO);
 	gfx.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -304,6 +315,7 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), m_SortedIndexBuffer.GetSRV() };
 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
 	gfx.SetDynamicDescriptor(kRootTexture, 0, TextureSRV());
+	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend));
 }
 
 void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camera& camera, const EmitterInstance& emitter)
@@ -321,8 +333,6 @@ void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camer
 	gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, true);
 	gfx.WriteBuffer(m_SortedIndexBuffer, 0, m_SortedIndices.data(), bytes);
 	gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
-
-
 }
 
 bool SpriteRenderer::SetTexture(const std::wstring& path)
@@ -361,6 +371,10 @@ void SpriteRenderer::ReleaseTextures()
 
 void SpriteRenderer::SetSettings(const SpriteSettings& settings)
 {
+	m_Settings = settings;
+
+	m_Settings.subImageCols = max(m_Settings.subImageCols, 1u);
+	m_Settings.subImageRows = max(m_Settings.subImageRows, 1u);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE SpriteRenderer::TextureSRV() const

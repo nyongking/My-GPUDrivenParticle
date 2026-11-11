@@ -230,6 +230,13 @@ bool EmitterRuntime::SetSpriteTexture(const std::string& path)
 	return cpuOk && gpuOk;
 }
 
+void EmitterRuntime::SetSpriteSettings(const SpriteSettings& settings)
+{
+	// 상수 버퍼 / 루트 상수 값이라 바로 반영 (실행 중이 아닌 쪽도 맞춰 둔다)
+	m_CpuRenderer.SetSettings(settings);
+	m_GpuRenderer.SetSettings(settings);
+}
+
 std::vector<std::string> EmitterRuntime::BindableAttributes(const TypeInfo* type) const
 {
 	std::vector<std::string> out;
