@@ -34,19 +34,22 @@ static const uint OFS_Emitter_SpawnRemainder           = 4;   // float
 cbuffer ModuleParams : register(b1)
 {
     float  M0_SpawnRate_Rate;                      // 0
-    float  M1_InitializeParticle_Size;             // 4
-    float  M1_InitializeParticle_Mass;             // 8
-    float  M1_InitializeParticle_Lifetime;         // 12
-    float4 M1_InitializeParticle_Color;            // 16
-    float  M2_SphereLocation_Radius;               // 32
-    uint   M2_SphereLocation_SurfaceOnly;          // 36
-    uint   M3_ParticleState_KillOnLifetime;        // 40
-    float  M4_SolveForceandVelocity_AccelLimit;    // 44
-    float  M4_SolveForceandVelocity_SpeedLimit;    // 48
-    float  M5_SubUVAnimation_StartFrame;           // 52
-    float  M5_SubUVAnimation_EndFrame;             // 56
-    uint   M5_SubUVAnimation_Loop;                 // 60
-    float  M5_SubUVAnimation_FramesPerSecond;      // 64
+    float  M1_InitializeParticle_Size_Min;         // 4
+    float  M1_InitializeParticle_Size_Max;         // 8
+    float  M1_InitializeParticle_Mass;             // 12
+    float  M1_InitializeParticle_Lifetime;         // 16
+    float3 M1_InitializeParticle_Pos;              // 20
+    float4 M1_InitializeParticle_Color_Min;        // 32
+    float4 M1_InitializeParticle_Color_Max;        // 48
+    float  M2_SphereLocation_Radius;               // 64
+    uint   M2_SphereLocation_SurfaceOnly;          // 68
+    uint   M3_ParticleState_KillOnLifetime;        // 72
+    float  M4_SolveForceandVelocity_AccelLimit;    // 76
+    float  M4_SolveForceandVelocity_SpeedLimit;    // 80
+    float  M5_SubUVAnimation_StartFrame;           // 84
+    float  M5_SubUVAnimation_EndFrame;             // 88
+    uint   M5_SubUVAnimation_Loop;                 // 92
+    float  M5_SubUVAnimation_FramesPerSecond;      // 96
 };
 
 // =====================================================================
@@ -130,7 +133,7 @@ void EmitterUpdate(inout EmitterState e)
         const uint	n = (uint)want;
         e.SpawnRemainder = want - (float)n;
         e.SpawnCount += n;
-#line 134 "Main.generated.hlsl"
+#line 137 "Main.generated.hlsl"
 #undef PARAM
     }
 }
@@ -139,16 +142,20 @@ void ParticleSpawn(inout Particle p, uint index)
 {
     // ---- [M1] Initialize Particle----
     {
+#define M1_InitializeParticle_Size (M1_InitializeParticle_Size_Min + (M1_InitializeParticle_Size_Max - M1_InitializeParticle_Size_Min) * Random01(index, 65792))
+#define M1_InitializeParticle_Color (M1_InitializeParticle_Color_Min + (M1_InitializeParticle_Color_Max - M1_InitializeParticle_Color_Min) * Random01(index, 65808))
 #define PARAM(n) M1_InitializeParticle_##n
 #line 1 "M1_InitializeParticle"
-        p.Position = OwnerPosition;
+        p.Position = OwnerPosition + PARAM(Pos);
         p.Mass = PARAM(Mass);
         p.Color = PARAM(Color);
         p.Size = PARAM(Size);
         p.Lifetime = PARAM(Lifetime);
         p.Age = 0.f;
-#line 151 "Main.generated.hlsl"
+#line 156 "Main.generated.hlsl"
 #undef PARAM
+#undef M1_InitializeParticle_Size
+#undef M1_InitializeParticle_Color
     }
     // ---- [M2] Sphere Location----
     {
@@ -161,7 +168,7 @@ void ParticleSpawn(inout Particle p, uint index)
         const float dist = (PARAM(SurfaceOnly) != 0) ? PARAM(Radius) : 
         		PARAM(Radius) * pow(Random01(index, 2), 1.f / 3.f);
         p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
-#line 165 "Main.generated.hlsl"
+#line 172 "Main.generated.hlsl"
 #undef PARAM
     }
     // ---- [Initialcopy] none ----
@@ -179,7 +186,7 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
         p.NormalizedAge = min(t, 1.f);
         if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
         	KILL();
-#line 183 "Main.generated.hlsl"
+#line 190 "Main.generated.hlsl"
 #undef PARAM
     }
     // ---- [M4] Solve Force and Velocity----
@@ -199,7 +206,7 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
 
         p.Position += p.Velocity * DeltaTime;
         p.Acceleration = float3(0.f, 0.f, 0.f);
-#line 203 "Main.generated.hlsl"
+#line 210 "Main.generated.hlsl"
 #undef PARAM
     }
     // ---- [M5] SubUV Animation----
@@ -211,9 +218,9 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
         if (PARAM(Loop) != 0)
         	t = frac(p.Age * PARAM(FramesPerSecond) / count) * count;
         else
-        	t = min(p.NormalizedAge * count, count - 0.001f);
+        	t = min(p.NormalizedAge * count, count - 1.f);
         p.SubImageIndex = PARAM(StartFrame) + t;
-#line 217 "Main.generated.hlsl"
+#line 224 "Main.generated.hlsl"
 #undef PARAM
     }
 }

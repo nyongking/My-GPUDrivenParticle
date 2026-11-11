@@ -7,8 +7,9 @@
 ModuleDesc SpawnRate(float rate); // Rate에 따라 Spawn 개수를 계산하는 Module
 
 // Particle Spawn
-ModuleDesc InitializeParticle(Input<float> size, Input<float> mass, Input<float> lifeTime, Input<float4> color); // Particle의 입자
+ModuleDesc InitializeParticle(Input<float> size, Input<float> mass, Input<float> lifeTime, Input<float3> pos, Input<float4> color); // Particle의 입자
 ModuleDesc SphereLocation(Input<float> radius, bool surfaceOnly = false);
+ModuleDesc AddVelocityInCone(Input<float> speed, float coneAngleDeg, float3 coneAxis, float InnerConeAngle = 0.f, float speedfalloff = 0.f, float distribution = 1.f, bool localSpace = false);
 
 // Particle Update
 ModuleDesc ParticleState(bool killOnLifeTime = true);

@@ -281,7 +281,7 @@ void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera,
 
 	BindForDraw(gfx, camera, emitter.ParticleBuffer(), false);
 
-	// 개수는 Finalize 가 Draw 인자 (6, alive, 0, 0) 로 써 둔 것. CPU 는 개수를 몰라도 된다
+	// 개수는 Finalize 가 Draw 인자 (6, alive, 0, 0) 로 써둔 것. CPU 는 개수를 몰라도 된다
 	gfx.DrawIndirect(emitter.DrawArgs());
 }
 

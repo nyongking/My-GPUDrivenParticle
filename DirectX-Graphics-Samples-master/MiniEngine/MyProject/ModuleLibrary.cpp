@@ -48,7 +48,7 @@ e.SpawnCount += n;
 	return m;
 }
 
-ModuleDesc InitializeParticle(Input<float> size, Input<float> mass, Input<float> lifeTime, Input<float4> color)
+ModuleDesc InitializeParticle(Input<float> size, Input<float> mass, Input<float> lifeTime, Input<float3> pos, Input<float4> color)
 {
 	ModuleDesc m;
 
@@ -59,6 +59,7 @@ ModuleDesc InitializeParticle(Input<float> size, Input<float> mass, Input<float>
 		MakeParam<float>("Size", size).WithMin(0.f),
 		MakeParam<float>("Mass", mass).WithMin(0.001f),
 		MakeParam<float>("Lifetime", lifeTime).WithMin(0.f),
+		MakeParam<float3>("Pos", pos),
 		MakeParam<float4>("Color", color).AsColor()
 	};
 	m.reads =
@@ -75,7 +76,7 @@ ModuleDesc InitializeParticle(Input<float> size, Input<float> mass, Input<float>
 		{Particles::Mass, &Types::Float}
 	};
 	m.hlsl = R"(
-p.Position = OwnerPosition;
+p.Position = OwnerPosition + PARAM(Pos);
 p.Mass = PARAM(Mass);
 p.Color = PARAM(Color);
 p.Size = PARAM(Size);
@@ -87,6 +88,7 @@ p.Age = 0.f;
 		{
 			const float3 origin = ctx.OwnerPosition();
 
+			const auto posParam = ctx.Param<float3>("Pos");
 			const auto sizeParam = ctx.Param<float>("Size");
 			const auto lifeParam = ctx.Param<float>("Lifetime");
 			const auto colorParam = ctx.Param<float4>("Color");
@@ -114,7 +116,7 @@ p.Age = 0.f;
 
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
-				if (hasPos)  pos[i] = origin;
+				if (hasPos)  pos[i] = origin + posParam(i);
 				if (hasCol)  col[i] = colorParam(i);
 				if (hasSize) sizes[i] = sizeParam(i);
 				if (hasMass) masses[i] = massParam(i);
@@ -181,6 +183,105 @@ p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
 		};
 
 	return m;
+}
+
+ModuleDesc AddVelocityInCone(Input<float> speed, float coneAngleDeg, float3 coneAxis, float InnerConeAngle, float speedfalloff, float distribution, bool localSpace)
+{
+	ModuleDesc m;
+	m.name = "Add Velocity In Cone";
+	m.stage = Stage::ParticleSpawn;
+	m.params =
+	{
+		MakeParam<float>("Speed", speed),
+		MakeParam<float>("ConeAngle", coneAngleDeg).WithMin(0.f),
+		MakeParam<float3>("ConeAxis", coneAxis),
+		MakeParam<float>("InnerConeAngle", InnerConeAngle).WithMin(0.f),
+		MakeParam<float>("SpeedFalloff", speedfalloff).WithMin(0.f),
+		MakeParam<float>("Distribution", distribution).WithMin(0.01f),
+		MakeParam<NBool>("LocalSpace", NBool(localSpace))
+	};
+	m.reads =
+	{
+		//{Particles::Velocity, &Types::Float3},
+		{Engine::OwnerLocalToWorld, &Types::Float4x4}
+	};
+	m.writes =
+	{
+		{Particles::Velocity, &Types::Float3}
+	};
+
+	m.hlsl = R"(
+const float outerA = radians(clamp(PARAM(ConeAngle), 0.f, 180.f));
+const float innerA = radians(clamp(PARAM(InnerConeAngle), 0.f, clamp(PARAM(ConeAngle), 0.f, 180.f)));
+const float cosOuter = cos(outerA);
+const float cosInner = cos(innerA);
+
+const float u = pow(max(Random01(index, 3), 1e-6f), PARAM(Distribution));
+const float cosT = clamp(lerp(cosInner, cosOuter, u), -1.f, 1.f);
+const float sinT = sqrt(saturate(1.f - cosT * cosT));
+const float phi = Random01(index, 4) * 6.28318530f;
+
+const float axisFrac = (outerA > 0.f) ? acos(cosT) / outerA : 0.f;
+const float speed = PARAM(Speed) * saturate(1.f - PARAM(SpeedFalloff) * axisFrac);
+
+float3 n = normalize(PARAM(ConeAxis));
+if (PARAM(LocalSpace) != 0)
+    n = normalize(mul(float4(n, 0.f), OwnerLocalToWorld).xyz);
+
+const float3 helper = (abs(n.y) < 0.999f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f);
+const float3 tAxis = normalize(cross(helper, n));
+const float3 bAxis = cross(n, tAxis);
+
+const float3 dir = tAxis * (sinT * cos(phi)) + bAxis * (sinT * sin(phi)) + n * cosT;
+p.Velocity += dir * speed;
+)";
+
+	m.execute = [](ModuleContext& ctx)
+		{
+			const auto speedParam = ctx.Param<float>("Speed");
+			const float3 axisIn = ctx.Param<float3>("ConeAxis")(0);
+			const float  coneDeg = ctx.Param<float>("ConeAngle")(0);
+			const float  innerDeg = ctx.Param<float>("InnerConeAngle")(0);
+			const float  dist = ctx.Param<float>("Distribution")(0);
+			const float  falloff = ctx.Param<float>("SpeedFalloff")(0);
+			const bool   local = static_cast<bool>(ctx.Param<NBool>("LocalSpace")(0));
+
+			auto clampf = [](float v, float lo, float hi) { return (std::min)((std::max)(v, lo), hi); };
+			const float kDegToRad = 3.14159265f / 180.f;
+			const float kTwoPi = 6.28318530f;
+
+			// 모든 파티클이 공유하는 값은 루프 밖에서 한 번만
+			const float outerDeg = clampf(coneDeg, 0.f, 180.f);
+			const float outerA = outerDeg * kDegToRad;
+			const float innerA = clampf(innerDeg, 0.f, outerDeg) * kDegToRad;
+			const float cosOuter = std::cos(outerA);
+			const float cosInner = std::cos(innerA);
+
+			float3 n = Normalize(axisIn);
+			if (local)
+				n = Normalize(TransformVector(ctx.OwnerLocalToWorld(), n));
+			const float3 helper = (std::fabs(n.y) < 0.999f) ? float3{ 0.f, 1.f, 0.f } : float3{ 1.f, 0.f, 0.f };
+			const float3 tAxis = Normalize(Cross(helper, n));
+			const float3 bAxis = Cross(n, tAxis);
+
+			auto vel = ctx.Particles<float3>(Particles::Velocity);
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+			{
+				const float u = std::pow((std::max)(ctx.Random01(i, 3), 1e-7f), dist);
+				const float cosT = clampf(cosInner + (cosOuter - cosInner) * u, -1.f, 1.f);
+				const float sinT = std::sqrt((std::max)(0.f, 1.f - cosT * cosT));
+				const float phi = ctx.Random01(i, 4) * kTwoPi;
+
+				const float axisFrac = (outerA > 0.f) ? std::acos(cosT) / outerA : 0.f;
+				const float speed = speedParam(i) * clampf(1.f - falloff * axisFrac, 0.f, 1.f);
+
+				const float3 dir = tAxis * (sinT * std::cos(phi)) + bAxis * (sinT * std::sin(phi)) + n * cosT;
+				vel[i] += dir * speed;
+			}
+		};
+
+	return m;
+
 }
 
 ModuleDesc ParticleState(bool killOnLifeTime)
@@ -396,7 +497,7 @@ float t;
 if (PARAM(Loop) != 0)
 	t = frac(p.Age * PARAM(FramesPerSecond) / count) * count;
 else
-	t = min(p.NormalizedAge * count, count - 0.001f);
+	t = min(p.NormalizedAge * count, count - 1.f);
 p.SubImageIndex = PARAM(StartFrame) + t;
 )";	
 
@@ -422,7 +523,7 @@ p.SubImageIndex = PARAM(StartFrame) + t;
 				}
 				else
 				{
-					t = std::fmin(nage[i] * count, count - 0.001f);
+					t = std::fmin(nage[i] * count, count - 1.f);
 				}
 				index[i] = start + t;
 			}
