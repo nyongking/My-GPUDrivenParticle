@@ -22,6 +22,11 @@ enum class EmitterPreset : uint32_t
 const char* PresetName(EmitterPreset preset);
 std::vector<ModuleDesc> MakePreset(EmitterPreset preset, float spawnRate);
 
+constexpr uint32_t kMaxModuleCombos = 32;
+uint32_t                ComboModuleBits(uint32_t combo);      // bit0 Sphere, 1 Cone, 2 Gravity, 3 Solve, 4 SubUV
+std::string             ComboName(uint32_t combo);
+std::vector<ModuleDesc> MakeComboStack(uint32_t combo, float spawnRate);
+
 class EmitterTestScene
 {
 public:
@@ -32,6 +37,7 @@ public:
 		float    spawnRate = 400.f;           // 이미터마다 초당 생성 수. 살아 있는 수 ~= rate x 수명
 		float    spacing = 2.f;               // 격자 간격 (m)
 		uint32_t presetMask = (1u << uint32_t(EmitterPreset::Count)) - 1;   // 돌아가며 쓸 프리셋
+		uint32_t comboCount = 0;
 	};
 
 	struct BuildResult

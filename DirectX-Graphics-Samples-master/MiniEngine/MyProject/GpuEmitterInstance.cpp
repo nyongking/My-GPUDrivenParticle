@@ -264,6 +264,9 @@ void GpuEmitterInstance::Tick(ComputeContext& ctx, float deltaTime, const OwnerT
 	SetPSO(ctx, s_FinalizePSO);
 	ctx.Dispatch(1, 1, 1);
 
+	s_FrameStats.dispatches += 4;
+	s_FrameStats.emitters += 1;
+
 	// ---------- 5. °³¼ö Readback ----------
 	const uint32_t slot = m_Frame % kReadbackSlots;
 	m_ReadbackFence[slot] = 0;

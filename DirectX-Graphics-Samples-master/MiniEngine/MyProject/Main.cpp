@@ -388,6 +388,12 @@ void MyProject::UpdateTestSceneImGui()
             m_TestDraft.presetMask = on ? (m_TestDraft.presetMask | (1u << i)) : (m_TestDraft.presetMask & ~(1u << i));
     }
 
+    int combos = int(m_TestDraft.comboCount);
+    if (ImGui::SliderInt("Module combos (0 = presets)", &combos, 0, int(kMaxModuleCombos)))
+        m_TestDraft.comboCount = uint32_t(combos);
+    if (m_TestDraft.comboCount > 0)
+        ImGui::TextDisabled("first: %s", ComboName(0).c_str());
+
     if (ImGui::Button("Build"))
     {
         m_UseTestScene = true;
@@ -438,8 +444,6 @@ void MyProject::TickRecorder()
     const EmitterGpuProgram::Stats& ps = EmitterGpuProgram::GetStats();
     const uint32_t emitters = m_UseTestScene ? m_TestScene.Count() : 1u;
     const uint32_t capacity = m_UseTestScene ? m_TestScene.CapacityTotal() : m_Runtime.Capacity();
-    // [W5-4 변경] 원래: const uint32_t psoCount = ps.livePrograms * kNumKernels + 1;
-    //   -> 이번 프레임 시뮬레이션이 실제로 쓴 PSO 수 (Uber 모드: 공유 3 + Finalize 1, 생성 방식으로 돈 이미터가 있으면 그만큼 더)
     const GpuSimFrameStats& fs = m_LastSimStats;
     const bool anyGenerated = fs.emitters > fs.uberEmitters;
     const uint32_t psoCount = (fs.uberEmitters > 0 ? UberGpuProgram::kNumPSOs : 0u)
@@ -459,12 +463,18 @@ void MyProject::TickRecorder()
     if (m_BenchRecording)
     {
         m_BenchRecording = false;
-        char extra[96];
-        sprintf_s(extra, ",%s,%u,%d,%u",
+        const EmitterTestScene::Settings& ts = m_TestScene.AppliedSettings();
+        uint32_t presetCount = 0;
+        for (uint32_t i = 0; i < uint32_t(EmitterPreset::Count); ++i)
+            presetCount += (ts.presetMask >> i) & 1u;
+        const uint32_t variants = ts.comboCount > 0 ? (std::min)(ts.comboCount, kMaxModuleCombos) : (std::max)(presetCount, 1u);
+
+        char extra[128];
+        sprintf_s(extra, ",%s,%u,%d,%u,%u",
             UberGpuProgram::ModeName(UberGpuProgram::Mode()), ps.livePrograms,
-            EmitterRuntime::ProgramCacheEnabled() ? 1 : 0, fs.uberEmitters);
-        m_LastSaveOk = m_Recorder.AppendCSV("ParticleProfile_week5_bench.csv",
-            header + ",mode,generatedPrograms,cache,uberEmitters", std::string(values) + extra, m_RecordTag, capacity);
+            EmitterRuntime::ProgramCacheEnabled() ? 1 : 0, fs.uberEmitters, variants);
+        m_LastSaveOk = m_Recorder.AppendCSV("ParticleProfile_week5_bench_v2.csv",
+            header + ",mode,generatedPrograms,cache,uberEmitters,shaderVariants", std::string(values) + extra, m_RecordTag, capacity);
         return;
     }
 
