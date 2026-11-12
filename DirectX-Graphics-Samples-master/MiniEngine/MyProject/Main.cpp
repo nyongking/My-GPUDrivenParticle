@@ -211,8 +211,11 @@ void MyProject::RenderScene(void)
     DebugDraw::Render(gfxContext, m_Camera.GetViewProjMatrix());
     QuadRenderer::BeginDraw(gfxContext, m_Camera.GetViewProjMatrix());
     m_Floor.Draw(gfxContext);
-    m_Runtime.Render(gfxContext, m_Camera);
 
+    if (m_UseTestScene)
+        m_TestScene.Render(gfxContext, m_Camera);
+    else
+        m_Runtime.Render(gfxContext, m_Camera);
 
     // Finish
     gfxContext.Finish();

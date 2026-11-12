@@ -54,6 +54,7 @@ ModuleDesc InitializeParticle(Input<float> size, Input<float> mass, Input<float>
 	ModuleDesc m;
 
 	m.name = "Initialize Particle";
+	m.id = ModuleId::InitializeParticle;
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{
@@ -134,6 +135,7 @@ ModuleDesc SphereLocation(Input<float> radius, bool surfaceOnly)
 {
 	ModuleDesc m;
 	m.name = "Sphere Location";
+	m.id = ModuleId::SphereLocation;
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{
@@ -190,6 +192,8 @@ ModuleDesc AddVelocityInCone(Input<float> speed, float coneAngleDeg, float3 cone
 {
 	ModuleDesc m;
 	m.name = "Add Velocity In Cone";
+	m.id = ModuleId::AddVelocityInCone;
+
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{
@@ -289,6 +293,7 @@ ModuleDesc ParticleState(bool killOnLifeTime)
 {
 	ModuleDesc m;
 	m.name = "Particle State";
+	m.id = ModuleId::ParticleState;
 	m.stage = Stage::ParticleUpdate;
 	m.params =
 	{
@@ -348,6 +353,8 @@ ModuleDesc SolveForceAndVelocity(Input<float> speedLimit, Input<float> accelLimi
 {
 	ModuleDesc m;
 	m.name = "Solve Force and Velocity";
+	m.id = ModuleId::SolveForceAndVelocity;
+
 	m.stage = Stage::ParticleUpdate;
 	m.params =
 	{
@@ -439,6 +446,8 @@ ModuleDesc GravityForce(float3 gravity)
 	ModuleDesc m;
 
 	m.name = "Gravity Force";
+	m.id = ModuleId::GravityForce;
+
 	m.stage = Stage::ParticleUpdate;
 	m.params = { MakeParam<float3>("Gravity", gravity) };
 	m.reads =
@@ -475,6 +484,8 @@ ModuleDesc SubUVAnimation(float startFrame, float endFrame, bool loop, float fra
 	ModuleDesc m;
 
 	m.name = "SubUV Animation";
+	m.id = ModuleId::SubUVAnimation;
+
 	m.stage = Stage::ParticleUpdate;
 	m.params =
 	{
