@@ -8,6 +8,7 @@
 #include "RootSignature.h"
 #include "PipelineState.h"
 #include "BufferManager.h"
+#include "EngineProfiling.h"
 
 #include "PostEffects.h"
 #include "Renderer.h"
@@ -25,6 +26,8 @@
 
 #include "ModuleLibrary.h"
 #include "EmitterRuntime.h"
+
+#include "EmitterTestScene.h"
 
 #include <cmath>
 #include "ModuleStackPanel.h"
@@ -55,6 +58,9 @@ private:
     void InitializeEmitter();
     void UpdateImGui(float deltaT);
     void UpdateMiddleDragLook();
+    void UpdateTestSceneImGui();
+    void TickRecorder();
+
 
     bool m_ShowImGuiDemo = false;
 
@@ -70,6 +76,19 @@ private:
     float           m_RotateSpeedDeg = 90.f;    // 초당 회전 (Box Location 방향이 돌아감)
     bool            m_MoveOwner = false;        // 위아래로 움직이기 (Owner.Velocity 확인)
     float           m_OwnerTime = 0.f;
+
+    static constexpr const wchar_t* kSimTimerName = L"Particle Simulation";   // 모든 이미터 시뮬레이션의 GPU 타이머
+
+    EmitterTestScene            m_TestScene;
+    EmitterTestScene::Settings  m_TestDraft;          // UI 가 편집, Build 를 눌러야 적용
+    bool                        m_UseTestScene = false;
+    bool                        m_FixedDt = true;     // 측정 재현성을 위해 1/60 고정
+
+    ProfileRecorder             m_Recorder;
+    char                        m_RecordTag[64] = "Generated";
+    int                         m_RecordFrames = 600;
+    bool                        m_LastSaveOk = true;
+    GpuSimFrameStats            m_LastSimStats;       // 지난 프레임 값 (UI 표시 / CSV)
 
     // -------- 평면 설정
     TexturedQuad m_Floor;
@@ -106,14 +125,7 @@ void MyProject::Startup(void)
     //m_Draft.steadyRatio = 0.5f;
     //m_Particles.Initialize(m_Draft, Vector3(0.f, 0.f, 0.f));
 
-    //// Setup Profile Recorder
-    //m_Recorder.SetTimers({
-    //L"Particle Update",     // 컴퓨트 전체
-    //L"Particle Emit",
-    //L"Particle ArgsPre",    // alive 수 -> Simulate Dispatch Args
-    //L"Particle Simulate",
-    //L"Particle AfterSim",   // 살아남은 수 확정 + Draw Args
-    //L"Particle Draw" });
+    m_Recorder.SetTimers({ kSimTimerName });
 
     InitializeEmitter();
 
@@ -124,7 +136,7 @@ void MyProject::Startup(void)
 void MyProject::Cleanup(void)
 {
     // Free up resources in an orderly fashion
-
+    m_TestScene.Shutdown();
     m_Runtime.Shutdown();
 
     m_Floor.Release();
@@ -144,21 +156,9 @@ void MyProject::Update(float deltaT)
     // Update something
     m_CameraController->Update(deltaT);
 
-    //DebugDraw::AddLine(Vector3(0.f, 0.f, 0.f), Vector3(0.f, 5.f, 0.f), Color(1.f, 1.f, 1.f));
-    //DebugDraw::AddLine(Vector3(-1.f, 0.f, 0.f), Vector3(1.f, 0.f, 0.f), Color(1.f, 1.f, 1.f));
-
-
-   /* m_Particles.Update(m_FixedDt ? 1.0f / 60.f : deltaT);
-
-    const Particles::ParticleStat stat = m_Particles.GetParticleStat();
-    if (m_Recorder.Tick(stat.counters.aliveCount))
-    {
-        m_LastSaveOk = m_Recorder.AppendCSV("ParticleProfile_v2.csv",
-            Particles::SettingsCsvHeader(), Particles::SettingsCsvValues(m_Particles.GetSettings()),
-            m_RecordTag, stat.maxParticles);
-    }*/
-
     m_Runtime.ApplyPending();     // UI 가 지난 프레임에 남긴 변경을 Tick 전에 적용
+
+    const float simDt = m_FixedDt ? (1.f / 60.f) : deltaT;
 
     // 소유자: Y 축 회전 + (선택) 위아래 이동
     m_OwnerTime += deltaT;
@@ -169,11 +169,55 @@ void MyProject::Update(float deltaT)
     owner.position = { m_EmitterPos.x, m_EmitterPos.y + bob, m_EmitterPos.z };
     owner.rotation = QuatFromAxisAngle(float3{ 0.f, 1.f, 0.f }, m_OwnerAngle);
 
-    m_Runtime.Tick(deltaT, owner);
+    {
+        GpuEmitterInstance::BeginFrameStats();
+        ComputeContext& simCtx = ComputeContext::Begin(kSimTimerName);
+
+        if (m_UseTestScene)
+            m_TestScene.Tick(simCtx, simDt);
+        else
+            m_Runtime.Tick(simCtx, simDt, owner);
+
+        const uint64_t fence = simCtx.Finish();
+
+        if (m_UseTestScene)
+            m_TestScene.OnSubmitted(fence);
+        else
+            m_Runtime.OnSubmitted(fence);
+
+        m_LastSimStats = GpuEmitterInstance::FrameStats();
+    }
+
+    TickRecorder();
 
     UpdateImGui(deltaT);
     UpdateMiddleDragLook();
 }
+
+void MyProject::RenderScene(void)
+{
+    GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Render");
+
+    gfxContext.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
+    gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, true);
+
+    gfxContext.ClearColor(g_SceneColorBuffer);
+    gfxContext.ClearDepth(g_SceneDepthBuffer);
+
+    gfxContext.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV());
+    gfxContext.SetViewportAndScissor(0, 0, g_SceneColorBuffer.GetWidth(), g_SceneColorBuffer.GetHeight());
+
+    // Rendering something
+    DebugDraw::Render(gfxContext, m_Camera.GetViewProjMatrix());
+    QuadRenderer::BeginDraw(gfxContext, m_Camera.GetViewProjMatrix());
+    m_Floor.Draw(gfxContext);
+    m_Runtime.Render(gfxContext, m_Camera);
+
+
+    // Finish
+    gfxContext.Finish();
+}
+
 
 void MyProject::InitializeEmitter()
 {
@@ -215,109 +259,11 @@ void MyProject::UpdateImGui(float deltaT)
 
     DrawModuleStackPanel(m_Runtime);
 
-    //const Particles::ParticleStat stat = m_Particles.GetParticleStat();
+    if (!m_UseTestScene)
+        DrawModuleStackPanel(m_Runtime);
 
-    //{
-    //    ImGui::SeparatorText("Particle Stat");
-    //    ImGui::Text("Alive : %u / %u", stat.counters.aliveCount, stat.maxParticles);
-    //    ImGui::Text("Dead  : %u", stat.counters.deadCount);
-    //    ImGui::Text("Emit  : %u", stat.counters.emitCount);
-
-    //    const bool ok = (stat.counters.aliveCount + stat.counters.deadCount == stat.maxParticles);
-    //    ImGui::TextColored(ok ? ImVec4(0.4f, 1.f, 0.4f, 1.f) : ImVec4(1.f, 0.3f, 0.3f, 1.f),
-    //        "alive + dead = %u %s", stat.counters.aliveCount + stat.counters.deadCount, ok ? "(OK)" : "(MISMATCH)");
-
-    //    static float history[240] = {};
-    //    static int   offset = 0;
-    //    history[offset] = float(stat.counters.aliveCount);
-    //    offset = (offset + 1) % IM_ARRAYSIZE(history);
-    //    ImGui::PlotLines("##alive", history, IM_ARRAYSIZE(history), offset,
-    //        "alive", 0.f, float(stat.maxParticles), ImVec2(0.f, 60.f));
-    //}
-
-    //{
-    //    const ImVec4 kWarn(1.f, 0.6f, 0.2f, 1.f);
-
-    //    ImGui::BeginDisabled(m_Recorder.IsBusy());      // 기록 중에는 조건 변경 금지
-    //    ImGui::SeparatorText("Settings (edit -> Apply)");
-
-    //    ImGui::TextDisabled("Pool: %s", Particles::kPoolTechniqueName);
-
-    //    // Max particles
-    //    static const uint32_t kMaxOptions[] = { 10'000, 100'000, 1'000'000 };
-    //    static const char* kMaxLabels[] = { "10K", "100K", "1M" };
-    //    int maxIndex = 0;
-    //    for (int i = 0; i < IM_ARRAYSIZE(kMaxOptions); ++i)
-    //        if (kMaxOptions[i] == m_Draft.maxParticles)
-    //            maxIndex = i;
-    //    if (ImGui::Combo("Max particles", &maxIndex, kMaxLabels, IM_ARRAYSIZE(kMaxLabels)))
-    //        m_Draft.maxParticles = kMaxOptions[maxIndex];
-
-    //    // Emit
-    //    ImGui::SliderFloat("Steady ratio", &m_Draft.steadyRatio, 0.f, 1.f, "%.2f");
-    //    ImGui::SliderFloat("Burst ratio", &m_Draft.burstRatio, 0.f, 1.f, "%.2f");
-    //    ImGui::SliderFloat("Burst interval (s)", &m_Draft.burstInterval, 0.5f, 5.f, "%.1f");
-    //    ImGui::SliderFloat("Life min (s)", &m_Draft.minLife, 0.1f, 5.f, "%.1f");
-    //    ImGui::SliderFloat("Life max (s)", &m_Draft.maxLife, 0.1f, 5.f, "%.1f");
-
-    //    // 측정 조건이 의도와 달라지는 경우 경고
-    //    if (m_Draft.steadyRatio + m_Draft.burstRatio > 1.f)
-    //        ImGui::TextColored(kWarn, "steady + burst > 1 : emits will be dropped");
-    //    if (m_Draft.burstRatio > 0.f && m_Draft.maxLife >= m_Draft.burstInterval)
-    //        ImGui::TextColored(kWarn, "life >= interval : bursts overlap");
-
-    //    // Apply / Reset / Revert
-    //    const bool dirty = (Particles::Sanitize(m_Draft) != m_Particles.GetSettings());
-    //    if (ImGui::Button(dirty ? "Apply *###Apply" : "Apply###Apply"))
-    //    {
-    //        m_Draft = Particles::Sanitize(m_Draft);
-    //        m_Particles.ApplySettings(m_Draft);
-    //    }
-    //    ImGui::SameLine();
-    //    if (ImGui::Button("Reset buffers"))
-    //    {
-    //        m_Draft = Particles::Sanitize(m_Draft);
-    //        m_Particles.ApplySettings(m_Draft, true);
-    //    }
-    //    ImGui::SameLine();
-    //    if (ImGui::Button("Revert"))
-    //        m_Draft = m_Particles.GetSettings();        // 편집한 걸 버리고 적용된 값으로 되돌림
-
-    //    ImGui::EndDisabled();
-
-    //    const ParticleSettings& s = m_Particles.GetSettings();
-    //    ImGui::TextDisabled("applied: %s, %u, steady %.2f, burst %.2f / %.1fs, life %.1f~%.1f",
-    //        Particles::kPoolTechniqueName, s.maxParticles, s.steadyRatio, s.burstRatio,
-    //        s.burstInterval, s.minLife, s.maxLife);
-    //}
-
-    //{
-    //    ImGui::SeparatorText("Record");
-    //    ImGui::InputText("Tag", m_RecordTag, sizeof(m_RecordTag));
-    //    ImGui::InputInt("Frames", &m_RecordFrames);
-
-    //    // burst가 켜져 있으면 주기의 정수배로 맞추는 버튼
-    //    const ParticleSettings& s = m_Particles.GetSettings();
-    //    if (s.burstRatio > 0.f)
-    //    {
-    //        const int period = int(s.burstInterval * 60.f + 0.5f);
-    //        ImGui::Text("burst period = %d frames", period);
-    //        ImGui::SameLine();
-    //        if (ImGui::SmallButton("Round to period"))
-    //        {
-    //            const int k = (m_RecordFrames + period / 2) / period;
-    //            m_RecordFrames = (k < 1 ? 1 : k) * period;
-    //        }
-    //    }
-
-    //    if (m_Recorder.IsBusy())
-    //        ImGui::ProgressBar(m_Recorder.GetProgress(), ImVec2(-1.f, 0.f), m_Recorder.GetStateText());
-    //    else if (ImGui::Button("Record"))
-    //        m_Recorder.Start(300, (uint32_t)(m_RecordFrames > 0 ? m_RecordFrames : 1));
-    //    if (!m_LastSaveOk)
-    //        ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "CSV save failed (open in Excel?)");
-    //}
-
+    UpdateTestSceneImGui();
+    
 
     ImGui::End();
 
@@ -363,26 +309,104 @@ void MyProject::UpdateMiddleDragLook()
     m_FlyCam->SetHeadingPitchAndPosition(heading, pitch, m_Camera.GetPosition());
 }
 
-void MyProject::RenderScene(void)
+
+void MyProject::UpdateTestSceneImGui()
 {
-    GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Render");
+    ImGui::SeparatorText("Test Scene (week 5)");
 
-    gfxContext.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
-    gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, true);
+    ImGui::BeginDisabled(m_Recorder.IsBusy());      // 기록 중에는 조건 변경 금지
 
-    gfxContext.ClearColor(g_SceneColorBuffer);
-    gfxContext.ClearDepth(g_SceneDepthBuffer);
+    if (ImGui::Checkbox("Use test scene", &m_UseTestScene) && m_UseTestScene && m_TestScene.Empty())
+        m_TestScene.Build(m_TestDraft);
+    ImGui::Checkbox("Fixed dt (1/60)", &m_FixedDt);
 
-    gfxContext.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV());
-    gfxContext.SetViewportAndScissor(0, 0, g_SceneColorBuffer.GetWidth(), g_SceneColorBuffer.GetHeight());
+    // N 바로 고르기 (누르면 바로 다시 만든다)
+    static const uint32_t kCounts[] = { 1, 10, 100 };
+    for (int i = 0; i < IM_ARRAYSIZE(kCounts); ++i)
+    {
+        if (i > 0) ImGui::SameLine();
+        char label[16];
+        sprintf_s(label, "N = %u", kCounts[i]);
+        if (ImGui::Button(label))
+        {
+            m_TestDraft.count = kCounts[i];
+            m_UseTestScene = true;
+            m_TestScene.Build(m_TestDraft);
+        }
+    }
 
-    // Rendering something
-    DebugDraw::Render(gfxContext, m_Camera.GetViewProjMatrix());
-    QuadRenderer::BeginDraw(gfxContext, m_Camera.GetViewProjMatrix());
-    m_Floor.Draw(gfxContext);
-    m_Runtime.Render(gfxContext, m_Camera);
+    int count = int(m_TestDraft.count);
+    int capacity = int(m_TestDraft.capacityPerEmitter);
+    if (ImGui::InputInt("Count", &count))                 m_TestDraft.count = uint32_t((std::max)(count, 1));
+    if (ImGui::InputInt("Capacity / emitter", &capacity)) m_TestDraft.capacityPerEmitter = uint32_t((std::max)(capacity, 64));
+    ImGui::SliderFloat("Spawn rate / emitter", &m_TestDraft.spawnRate, 1.f, 2000.f, "%.0f");
+    ImGui::SliderFloat("Spacing", &m_TestDraft.spacing, 0.5f, 5.f, "%.1f");
 
+    for (uint32_t i = 0; i < uint32_t(EmitterPreset::Count); ++i)
+    {
+        if (i > 0) ImGui::SameLine();
+        bool on = (m_TestDraft.presetMask & (1u << i)) != 0;
+        if (ImGui::Checkbox(PresetName(EmitterPreset(i)), &on))
+            m_TestDraft.presetMask = on ? (m_TestDraft.presetMask | (1u << i)) : (m_TestDraft.presetMask & ~(1u << i));
+    }
 
-    // Finish
-    gfxContext.Finish();
+    if (ImGui::Button("Build"))
+    {
+        m_UseTestScene = true;
+        m_TestScene.Build(m_TestDraft);
+    }
+
+    ImGui::EndDisabled();
+
+    // ---------- 측정값 ----------
+    const EmitterGpuProgram::Stats& ps = EmitterGpuProgram::GetStats();
+    const EmitterTestScene::BuildResult& b = m_TestScene.LastBuild();
+
+    ImGui::Text("Emitters      : %u / %u", m_TestScene.Count(), b.requested);
+    ImGui::Text("Alive         : %u / %u", m_TestScene.AliveTotal(), m_TestScene.CapacityTotal());
+    ImGui::Text("Compute PSOs  : %u  (%u programs x %u + Finalize)",
+        ps.livePrograms * EmitterGpuProgram::kNumKernels + 1, ps.livePrograms, uint32_t(EmitterGpuProgram::kNumKernels));
+    ImGui::Text("PSO changes   : %u / frame", m_LastSimStats.psoChanges);
+    ImGui::Text("Dispatches    : %u / frame", m_LastSimStats.dispatches);
+    ImGui::Text("Sim GPU time  : %.3f ms", EngineProfiling::GetGpuTimeLast(kSimTimerName));
+    ImGui::Text("Setup         : %.1f ms (shader build %.1f ms, %u builds)", b.setupMs, b.shaderBuildMs, b.shaderBuilds);
+    if (!m_TestScene.LastError().empty())
+        ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "Some emitters failed (see Output window)");
+
+    // ---------- 기록 ----------
+    ImGui::InputText("Tag", m_RecordTag, sizeof(m_RecordTag));
+    ImGui::InputInt("Frames", &m_RecordFrames);
+    if (m_Recorder.IsBusy())
+        ImGui::ProgressBar(m_Recorder.GetProgress(), ImVec2(-1.f, 0.f), m_Recorder.GetStateText());
+    else if (ImGui::Button("Record"))
+        m_Recorder.Start(120, uint32_t(m_RecordFrames > 0 ? m_RecordFrames : 1));
+    if (!m_LastSaveOk)
+        ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "CSV save failed (open in Excel?)");
 }
+
+void MyProject::TickRecorder()
+{
+    const uint32_t alive = m_UseTestScene ? m_TestScene.AliveTotal() : m_Runtime.AliveCount();
+    if (!m_Recorder.Tick(alive))
+        return;
+
+    // 기록이 끝난 프레임: 조건과 함께 CSV 한 줄
+    const EmitterGpuProgram::Stats& ps = EmitterGpuProgram::GetStats();
+    const uint32_t emitters = m_UseTestScene ? m_TestScene.Count() : 1u;
+    const uint32_t capacity = m_UseTestScene ? m_TestScene.CapacityTotal() : m_Runtime.Capacity();
+    const uint32_t psoCount = ps.livePrograms * EmitterGpuProgram::kNumKernels + 1;   // +1 = 공용 Finalize
+    const EmitterTestScene::BuildResult& b = m_TestScene.LastBuild();
+
+    const std::string header = "emitters,capPerEmitter,spawnRate,fixedDt,psoCount,psoChanges,dispatches,setupMs,shaderBuildMs";
+    char values[256];
+    sprintf_s(values, "%u,%u,%.1f,%d,%u,%u,%u,%.2f,%.2f",
+        emitters,
+        m_UseTestScene ? m_TestScene.AppliedSettings().capacityPerEmitter : m_Runtime.Capacity(),
+        m_UseTestScene ? m_TestScene.AppliedSettings().spawnRate : 0.f,
+        m_FixedDt ? 1 : 0,
+        psoCount, m_LastSimStats.psoChanges, m_LastSimStats.dispatches,
+        m_UseTestScene ? b.setupMs : 0.0, m_UseTestScene ? b.shaderBuildMs : 0.0);
+
+    m_LastSaveOk = m_Recorder.AppendCSV("ParticleProfile_week5.csv", header, values, m_RecordTag, capacity);
+}
+

@@ -1,10 +1,13 @@
 #include "pch.h"
 #include "EmitterGpuProgram.h"
 
+#include "SystemTime.h"
 #include <fstream>
 
 namespace
 {
+	EmitterGpuProgram::Stats s_Stats;
+
 	const char* kEntryNames[EmitterGpuProgram::kNumKernels] =
 	{
 		"EmitterUpdateMain",
@@ -49,11 +52,26 @@ namespace
 	}
 }
 
+const EmitterGpuProgram::Stats& EmitterGpuProgram::GetStats()
+{
+	return s_Stats;
+}
+
+void EmitterGpuProgram::ResetBuildStats()
+{
+	s_Stats.buildMs = 0.0;
+	s_Stats.builds = 0;
+}
+
+
 bool EmitterGpuProgram::Build(const CompiledEmitter& compiled, const ShaderCompiler& compiler,
 	const std::string& name)
 {
 	Shutdown();
 	m_Log = "[EmitterGpuProgram]" + name + "\n";
+
+	// 시간 측정
+	const int64_t startTick = SystemTime::GetCurrentTick();
 
 	if (!compiler.Ready())
 	{
@@ -115,11 +133,20 @@ bool EmitterGpuProgram::Build(const CompiledEmitter& compiled, const ShaderCompi
 
 	m_Log += "  PSO 3개 생성 완료\n";
 	m_Ready = true;
+
+	++s_Stats.livePrograms;
+	++s_Stats.builds;
+	s_Stats.builds += SystemTime::TimeBetweenTicks(startTick, SystemTime::GetCurrentTick()) * 1000.0;
+
 	return true;
 }
 
+
 void EmitterGpuProgram::Shutdown()
 {
+	if (m_Ready && s_Stats.livePrograms > 0)
+		--s_Stats.livePrograms;
+
 	for (int i = 0; i < kNumKernels; ++i)
 	{
 		m_PSO[i] = ComputePSO(kPsoNames[i]);

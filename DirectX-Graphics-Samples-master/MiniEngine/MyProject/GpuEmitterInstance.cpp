@@ -68,6 +68,30 @@ namespace
 		s_FinalizePSO.Finalize();
 		s_FinalizeReady = true;
 	}
+
+	GpuSimFrameStats		s_FrameStats;
+	const ID3D12PipelineState* s_LastPSO = nullptr;
+
+	void SetPSO(ComputeContext& ctx, const ComputePSO& pso)
+	{
+		const ID3D12PipelineState* p = pso.GetPipelineStateObject();
+		if (p != s_LastPSO)
+		{
+			++s_FrameStats.psoChanges;
+			s_LastPSO = p;
+		}
+	}
+}
+
+void GpuEmitterInstance::BeginFrameStats()
+{
+	s_FrameStats = GpuSimFrameStats();
+	s_LastPSO = nullptr;
+}
+
+const GpuSimFrameStats& GpuEmitterInstance::FrameStats()
+{
+	return s_FrameStats;
 }
 
 
@@ -140,13 +164,16 @@ void GpuEmitterInstance::Shutdown()
 
 	m_ModuleParams.clear();
 	m_Program = nullptr;
+	m_WaitingSubmit = false;
 	m_Ready = false;
 }
 
-void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
+void GpuEmitterInstance::Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& t)
 {
 	if (!m_Ready)
 		return;
+
+	ASSERT(!m_WaitingSubmit, "이전 Tick 이후 OnSubmitted 호출되지 않음");
 
 	ReadCountersIfReady();
 
@@ -160,7 +187,6 @@ void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 	m_PrevOwnerPosition = t.position;
 	m_HasPrevOwner = true;
 
-	ComputeContext& ctx = ComputeContext::Begin(L"Gpu Emitter");
 
 	ctx.SetRootSignature(EmitterGpuProgram::RootSig());
 	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootEngineCB, sizeof(ec), &ec);
@@ -186,13 +212,13 @@ void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 	ctx.SetDynamicDescriptors(EmitterGpuProgram::kRootUAVs, 0, EmitterGpuProgram::kNumUAVs, uavs);
 
 	// --------- 1. Emitter Update ---------
-	ctx.SetPipelineState(m_Program->PSO(EmitterGpuProgram::kEmitterUpdate));
+	SetPSO(ctx, m_Program->PSO(EmitterGpuProgram::kEmitterUpdate));
 	ctx.Dispatch(1, 1, 1);
 
 	// --------- 2. Particle Update: In[0..ALIVE_IN) -> 살아남은 것만 Out[cursor++] ---------
 //   그룹 수 = 지난 프레임 Finalize 가 m_FrameArgs[16..] 에 써 둔 값
 	ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-	ctx.SetPipelineState(m_Program->PSO(EmitterGpuProgram::kParticleUpdate));
+	SetPSO(ctx, m_Program->PSO(EmitterGpuProgram::kParticleUpdate));
 	ctx.DispatchIndirect(m_FrameArgs, kFrameArgsUpdate);
 
 	// --------- 3. Particle Spawn ---------
@@ -200,36 +226,47 @@ void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 	ctx.InsertUAVBarrier(m_Counters);
 	ctx.InsertUAVBarrier(m_EmitterData);
 	ctx.InsertUAVBarrier(particlesOut);     // Update 가 Out 에 다 쓴 뒤에 (같은 버퍼에 이어 쓰므로)
-	ctx.SetPipelineState(m_Program->PSO(EmitterGpuProgram::kParticleSpawn));
+	SetPSO(ctx, m_Program->PSO(EmitterGpuProgram::kParticleSpawn));
 	ctx.DispatchIndirect(m_SpawnArgs);
 
-	// --------- 3. Finalize (스레드 1개) ---------
+	// --------- 4. Finalize (스레드 1개) ---------
 	ctx.InsertUAVBarrier(m_Counters);
 	ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	uavs[4] = m_FrameArgs.GetUAV(); // uav 4번에 드로우 인자로 교체
 	ctx.SetDynamicDescriptors(EmitterGpuProgram::kRootUAVs, 0, EmitterGpuProgram::kNumUAVs, uavs);
-	ctx.SetPipelineState(s_FinalizePSO);
+	SetPSO(ctx, s_FinalizePSO);
 	ctx.Dispatch(1, 1, 1);
 
-	// ---------- 4. 개수 Readback ----------
+	// ---------- 5. 개수 Readback ----------
 	const uint32_t slot = m_Frame % kReadbackSlots;
+	m_ReadbackFence[slot] = 0;
+	m_SubmitSlot = slot;
+	m_WaitingSubmit = true;
+
 	ctx.TransitionResource(m_Counters, D3D12_RESOURCE_STATE_COPY_SOURCE);
 	ctx.CopyBufferRegion(m_Readback[slot], 0, m_Counters, 0, kCounterBytes);
 
-	// ---------- 5. 그리기 준비 + 교체 ----------
+	// ---------- 6. 그리기 준비 + 교체 ----------
 	ctx.TransitionResource(particlesOut, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, true);
 
 	m_Current = 1 - m_Current;
-	m_ReadbackFence[slot] = ctx.Finish();
 	++m_Frame;
 }
 
-void GpuEmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
+void GpuEmitterInstance::Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition)
 {
 	OwnerTransform t;
 	t.position = ownerPosition;
-	Tick(deltaTime, t);
+	Tick(ctx, deltaTime, t);
+}
+
+void GpuEmitterInstance::OnSubmitted(uint64_t fence)
+{
+	if (!m_WaitingSubmit)
+		return;
+	m_ReadbackFence[m_SubmitSlot] = fence;
+	m_WaitingSubmit = false;
 }
 
 void GpuEmitterInstance::LoadModuleParams()

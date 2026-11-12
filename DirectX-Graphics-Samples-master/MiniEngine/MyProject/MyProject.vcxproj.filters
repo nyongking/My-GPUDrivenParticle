@@ -129,6 +129,9 @@
     <ClCompile Include="OwnerTransform.cpp">
       <Filter>Particle\Params</Filter>
     </ClCompile>
+    <ClCompile Include="EmitterTestScene.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -218,6 +221,9 @@
     </ClInclude>
     <ClInclude Include="OwnerTransform.h">
       <Filter>Particle\Params</Filter>
+    </ClInclude>
+    <ClInclude Include="EmitterTestScene.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

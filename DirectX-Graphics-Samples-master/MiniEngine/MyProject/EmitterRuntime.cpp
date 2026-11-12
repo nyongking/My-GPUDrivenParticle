@@ -6,6 +6,7 @@
 #include "CommandListManager.h"
 #include "GraphicsCore.h"
 
+
 #include <algorithm>
 #include <utility>
 
@@ -74,7 +75,7 @@ void EmitterRuntime::Shutdown()
 	m_Ready = false;
 }
 
-void EmitterRuntime::Tick(float deltaTime, const OwnerTransform& owner)
+void EmitterRuntime::Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& owner)
 {
 	if (!m_Ready)
 		return;
@@ -82,14 +83,14 @@ void EmitterRuntime::Tick(float deltaTime, const OwnerTransform& owner)
 	if (m_ActiveBackend == EmitterBackend::Cpu)
 		m_Cpu.Tick(deltaTime, owner);
 	else
-		m_Gpu.Tick(deltaTime, owner);
+		m_Gpu.Tick(ctx, deltaTime, owner);
 }
 
-void EmitterRuntime::Tick(float deltaTime, const float3& ownerPosition)
+void EmitterRuntime::Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition)
 {
 	OwnerTransform owner;
 	owner.position = ownerPosition;
-	Tick(deltaTime, owner);
+	Tick(ctx, deltaTime, owner);
 }
 
 void EmitterRuntime::Render(GraphicsContext& gfx, const Math::Camera& camera)
@@ -101,6 +102,12 @@ void EmitterRuntime::Render(GraphicsContext& gfx, const Math::Camera& camera)
 		m_CpuRenderer.Render(gfx, camera, m_Cpu);
 	else
 		m_GpuRenderer.RenderGpu(gfx, camera, m_Gpu);
+}
+
+void EmitterRuntime::OnSubmitted(uint64_t fence)
+{
+	if (m_Ready && m_ActiveBackend == EmitterBackend::Gpu)
+		m_Gpu.OnSubmitted(fence);
 }
 
 void EmitterRuntime::ShutdownActive()

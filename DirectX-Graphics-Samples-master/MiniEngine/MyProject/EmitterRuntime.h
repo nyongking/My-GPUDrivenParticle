@@ -12,6 +12,7 @@
 #include <vector>
 
 class GraphicsContext;
+class ComputeContext;
 namespace Math { class Camera; }
 
 enum class EmitterBackend { Cpu, Gpu };
@@ -24,9 +25,11 @@ public:
 	bool Initialize(const std::vector<ModuleDesc>& modules, uint32_t capacity, EmitterBackend backend);
 	void Shutdown();
 
-	void Tick(float deltaTime, const OwnerTransform& owner);
-	void Tick(float deltaTime, const float3& ownerPosition);
+	void Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& owner);
+	void Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition);
 	void Render(GraphicsContext& gfx, const Math::Camera& camera);
+	
+	void OnSubmitted(uint64_t fence);
 	void ApplyPending();
 
 	// ---------- 편집 ----------

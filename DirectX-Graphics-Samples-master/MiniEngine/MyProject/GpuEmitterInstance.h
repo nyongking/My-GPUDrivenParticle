@@ -9,6 +9,15 @@
 #include <cstdint>
 #include <string>
 
+class ComputeContext;
+
+struct GpuSimFrameStats
+{
+	uint32_t psoChanges = 0;
+	uint32_t dispatches = 0;
+	uint32_t emitters = 0;
+};
+
 class GpuEmitterInstance
 {
 public:
@@ -16,13 +25,17 @@ public:
 	GpuEmitterInstance(const GpuEmitterInstance&) = delete;
 	GpuEmitterInstance& operator=(const GpuEmitterInstance&) = delete;
 
+	static void BeginFrameStats();
+	static const GpuSimFrameStats& FrameStats();
+
 	bool Initialize(const CompiledEmitter& compiled, 
 		const EmitterGpuProgram& program,
 		uint32_t capacity);
 	void Shutdown();
 
-	void Tick(float deltaTime, const OwnerTransform& t);
-	void Tick(float deltaTime, const float3& ownerPosition);
+	void Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& t);
+	void Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition);
+	void OnSubmitted(uint64_t fence);
 
 	// 입력값 바이트만 교체 (레이아웃 동일). 다음 Tick 부터 반영
 	void SetModuleParamData(const std::vector<uint8_t>& data);
@@ -70,6 +83,9 @@ private:
 	uint64_t                 m_ReadbackFence[kReadbackSlots] = {};
 	uint32_t                 m_ReadbackAlive = 0;
 	uint32_t                 m_ReadbackRequest = 0;
+
+	uint32_t				 m_SubmitSlot = 0;
+	bool					 m_WaitingSubmit = false;
 
 	uint32_t                 m_Capacity = 0;
 	uint32_t                 m_Frame = 0;

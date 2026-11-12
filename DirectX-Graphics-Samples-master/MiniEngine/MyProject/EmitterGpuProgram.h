@@ -17,7 +17,17 @@ public:
 	enum RootParam {kRootEngineCB, kRootModuleCB, kRootUAVs, kNumRootParams };
 	static const uint32_t kNumUAVs = 5;
 
+	struct Stats
+	{
+		uint32_t livePrograms = 0;
+		uint32_t builds = 0;
+		double buildMs = 0.0;
+	};
+	static const Stats& GetStats();
+	static void ResetBuildStats();
+
 	EmitterGpuProgram() = default;
+	~EmitterGpuProgram() { Shutdown(); }
 	EmitterGpuProgram(const EmitterGpuProgram&) = delete;
 	EmitterGpuProgram& operator=(const EmitterGpuProgram&) = delete;
 	
