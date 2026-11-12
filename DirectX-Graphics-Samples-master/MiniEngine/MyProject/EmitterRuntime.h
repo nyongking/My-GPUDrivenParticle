@@ -60,6 +60,9 @@ public:
 	bool CanMoveModule(size_t moduleIndex, int direction) const;    // 같은 Stage 안에서만 이동
 	void MoveModule(size_t moduleIndex, int direction);             // 재시작
 
+	void AddModule(const ModuleDesc& module);
+	void RemoveModule(size_t moduleIndex);
+
 	void SetBackend(EmitterBackend backend);                        // 재시작
 	void Restart();
 
@@ -71,6 +74,7 @@ public:
 	const std::string& LastError() const { return m_LastError; }
 	const std::vector<std::string>& Warnings() const { return m_Compiled.warnings; }
 	const UberEmitterData& Uber() const { return m_Uber; }
+	bool			HasGeneratedProgram() const { return m_GpuProgram != nullptr; }
 
 private:
 	enum class Pending { None, Values, Preserve, Restart };     // 큰 값이 작은 값을 포함한다
@@ -83,6 +87,10 @@ private:
 	bool BuildProgram(const CompiledEmitter& compiled, std::unique_ptr<EmitterGpuProgram>& out);
 	void ShutdownActive();
 	void RebuildUberData();
+
+	bool NeedGeneratedProgram(const UberEmitterData& uber) const;
+	void EnsureUberProgram();
+	void SyncProgramWithMode();
 
 
 	std::vector<ModuleDesc> m_Modules;          // 원본. UI 가 직접 편집

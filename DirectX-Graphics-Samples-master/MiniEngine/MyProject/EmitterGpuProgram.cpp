@@ -137,6 +137,7 @@ bool EmitterGpuProgram::Build(const CompiledEmitter& compiled, const ShaderCompi
 
 	++s_Stats.livePrograms;
 	++s_Stats.builds;
+	++s_Stats.lifetimeBuilds;
 	s_Stats.buildMs += SystemTime::TimeBetweenTicks(startTick, SystemTime::GetCurrentTick()) * 1000.0;
 
 	return true;

@@ -98,7 +98,7 @@ const GpuSimFrameStats& GpuEmitterInstance::FrameStats()
 }
 
 
-bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const EmitterGpuProgram& program, uint32_t capacity)
+bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const EmitterGpuProgram* program, uint32_t capacity)
 {
 	Shutdown();
 
@@ -106,7 +106,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	m_Log.clear();
 #endif
 
-	if (!compiled.Ok() || !program.Ready() || capacity == 0)
+	if (!compiled.Ok() || (program != nullptr && !program->Ready()) || capacity == 0)
 	{
 #ifndef RELEASE
 		m_Log = "[GpuEmitterInstance] CompiledEmitter 에러 / EmitterGpuProgram 미준비 / capacity 0 중 하나\n";
@@ -115,7 +115,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	}
 
 	m_Compiled = compiled;
-	m_Program = &program;
+	m_Program = program;
 	m_Capacity = capacity;
 
 	alignas(16) const uint32_t zeros[8] = {};
@@ -194,9 +194,16 @@ void GpuEmitterInstance::Tick(ComputeContext& ctx, float deltaTime, const OwnerT
 	m_HasPrevOwner = true;
 
 	const bool wantUber = UberGpuProgram::Mode() == GpuSimMode::Uber;
-	const bool useUber = wantUber && UberGpuProgram::Ready() && m_UberOk;
-	if (useUber)       ++s_FrameStats.uberEmitters;
-	else if (wantUber) ++s_FrameStats.uberFallbacks;
+	const bool uberPossible = UberGpuProgram::Ready() && m_UberOk;
+	const bool useUber = uberPossible && (wantUber || m_Program == nullptr);
+	if (!useUber && m_Program == nullptr)
+		return;
+	if (useUber)      
+		++s_FrameStats.uberEmitters;
+	else if (wantUber)
+		++s_FrameStats.uberFallbacks;
+
+
 
 	auto kernelPSO = [&](EmitterGpuProgram::Kernel k) -> const ComputePSO&
 		{
@@ -306,10 +313,10 @@ void GpuEmitterInstance::SetModuleParamData(const std::vector<uint8_t>& data)
 	LoadModuleParams();
 }
 
-void GpuEmitterInstance::Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram& program)
+void GpuEmitterInstance::Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram* program)
 {
 	m_Compiled = compiled;
-	m_Program = &program;
+	m_Program = program;
 	LoadModuleParams();
 }
 

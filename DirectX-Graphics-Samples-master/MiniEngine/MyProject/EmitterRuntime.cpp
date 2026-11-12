@@ -187,6 +187,20 @@ void EmitterRuntime::MoveModule(size_t moduleIndex, int direction)
 	Request(Pending::Restart);
 }
 
+void EmitterRuntime::AddModule(const ModuleDesc& module)
+{
+	m_Modules.push_back(module);
+	Request(Pending::Restart);
+}
+
+void EmitterRuntime::RemoveModule(size_t moduleIndex)
+{
+	if (moduleIndex >= m_Modules.size())
+		return;
+	m_Modules.erase(m_Modules.begin() + moduleIndex);
+	Request(Pending::Restart);
+}
+
 void EmitterRuntime::SetBackend(EmitterBackend backend)
 {
 	if (m_Backend == backend)
@@ -273,6 +287,8 @@ std::vector<std::string> EmitterRuntime::BindableAttributes(const TypeInfo* type
 
 void EmitterRuntime::ApplyPending()
 {
+	SyncProgramWithMode();
+
 	const Pending pending = m_Pending;
 	m_Pending = Pending::None;
 
@@ -324,16 +340,7 @@ bool EmitterRuntime::BuildProgram(const CompiledEmitter& compiled, std::unique_p
 		m_LastError = "ShaderCompiler initialize failed\n" + m_ShaderCompiler.Log();
 		return false;
 	}
-
-	static bool s_UberLayoutChecked = false;
-	if (!s_UberLayoutChecked)
-	{
-		std::string log;
-		UberGpuProgram::SetLayoutVerified(CheckUberShaderLayout(m_ShaderCompiler, log));
-		UberGpuProgram::Initialize();
-		Utility::Print(log.c_str());
-		s_UberLayoutChecked = true;
-	}
+	
 
 	std::unique_ptr<EmitterGpuProgram> program = std::make_unique<EmitterGpuProgram>();
 	const bool built = program->Build(compiled, m_ShaderCompiler, "Main");
@@ -366,13 +373,14 @@ bool EmitterRuntime::RebuildPreserve()
 	}
 	else
 	{
+		EnsureUberProgram();
 		std::unique_ptr<EmitterGpuProgram> program;
-		if (!BuildProgram(next, program))
+		if (NeedGeneratedProgram(BuildUberEmitterData(m_Modules, next)) && !BuildProgram(next, program))
 			return false;
 
 		Graphics::g_CommandManager.IdleGPU();
-		m_Gpu.Rebind(next, *program);
-		m_GpuProgram = std::move(program);      // 이전 프로그램은 Rebind 뒤에 해제
+		m_Gpu.Rebind(next, program.get());
+		m_GpuProgram = std::move(program);
 	}
 
 	m_Compiled = std::move(next);
@@ -390,8 +398,12 @@ bool EmitterRuntime::RebuildRestart()
 	}
 
 	std::unique_ptr<EmitterGpuProgram> program;
-	if (m_Backend == EmitterBackend::Gpu && !BuildProgram(next, program))
-		return false;
+	if (m_Backend == EmitterBackend::Gpu)
+	{
+		EnsureUberProgram();
+		if (NeedGeneratedProgram(BuildUberEmitterData(m_Modules, next)) && !BuildProgram(next, program))
+			return false;
+	}
 
 	// 여기까지 성공해야 실행 중인 이미터를 내린다
 	Graphics::g_CommandManager.IdleGPU();
@@ -405,7 +417,7 @@ bool EmitterRuntime::RebuildRestart()
 	else
 	{
 		m_GpuProgram = std::move(program);
-		m_Ready = m_Gpu.Initialize(next, *m_GpuProgram, m_Capacity)
+		m_Ready = m_Gpu.Initialize(next, m_GpuProgram.get(), m_Capacity)
 			&& m_GpuRenderer.InitializeGpu(m_Gpu, m_SpriteDesc);
 	}
 
@@ -426,6 +438,48 @@ void EmitterRuntime::RebuildUberData()
 
 	if (m_ActiveBackend == EmitterBackend::Gpu)
 		m_Gpu.SetUberData(m_Uber);
+}
+
+bool EmitterRuntime::NeedGeneratedProgram(const UberEmitterData& uber) const
+{
+	return UberGpuProgram::Mode() == GpuSimMode::Generated || !UberGpuProgram::Ready() || !uber.Ok();
+}
+
+void EmitterRuntime::EnsureUberProgram()
+{
+	static bool s_Done = false;
+	if (s_Done)
+		return;
+
+	// 배치 검사에 DXC 반사가 필요하다. 실패하면 Uber 는 준비 안 됨 -> 생성 방식으로 실행 (BuildProgram 이 오류를 남김)
+	if (!m_ShaderCompiler.Ready() && !m_ShaderCompiler.Initialize(ShaderCompiler::FindIncludeDir(L"ModuleCommon.hlsli")))
+		return;
+
+	std::string log;
+	UberGpuProgram::SetLayoutVerified(CheckUberShaderLayout(m_ShaderCompiler, log));
+	UberGpuProgram::Initialize();
+	Utility::Print(log.c_str());
+	s_Done = true;
+}
+
+void EmitterRuntime::SyncProgramWithMode()
+{
+	if (!m_Ready || m_ActiveBackend != EmitterBackend::Gpu || m_Pending >= Pending::Preserve)
+		return;     // 재빌드가 예정돼 있으면 그쪽에서 맞춘다
+
+	const bool need = NeedGeneratedProgram(m_Uber);
+	if (need && !m_GpuProgram)
+	{
+		// Uber -> Generated: 생성 방식 셰이더를 만든다 (레이아웃이 같으므로 파티클은 유지)
+		Request(Pending::Preserve);
+	}
+	else if (!need && m_GpuProgram)
+	{
+		// Generated -> Uber: 생성 방식 PSO 를 내린다. 지난 프레임이 쓰던 PSO 이므로 GPU 를 기다린 뒤에
+		Graphics::g_CommandManager.IdleGPU();
+		m_Gpu.Rebind(m_Compiled, nullptr);
+		m_GpuProgram.reset();
+	}
 }
 
 

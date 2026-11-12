@@ -61,10 +61,10 @@ void UberGpuProgram::SetLayoutVerified(bool ok)
 const char* UberGpuProgram::StatusText()
 {
 	if (!s_PSOReady)       
-		return "PSO 미생성 (GPU 이미터를 하나 이상 만들면 생성됨)";
-	if (!s_LayoutVerified) 
-		return "cbuffer 배치 불일치 -> Uber 비활성 (출력 창 참고)";
-	return "준비됨";
+		return "PSOs not created yet";
+	if (!s_LayoutVerified)
+		return "cbuffer layout mismatch - Uber disabled (see Output window)";
+	return "ready";
 }
 
 GpuSimMode UberGpuProgram::Mode()

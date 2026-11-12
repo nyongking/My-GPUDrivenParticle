@@ -22,6 +22,7 @@ public:
 		uint32_t livePrograms = 0;
 		uint32_t builds = 0;
 		double buildMs = 0.0;
+		uint32_t lifetimeBuilds = 0;
 	};
 	static const Stats& GetStats();
 	static void ResetBuildStats();

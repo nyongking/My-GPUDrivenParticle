@@ -32,7 +32,7 @@ public:
 	static const GpuSimFrameStats& FrameStats();
 
 	bool Initialize(const CompiledEmitter& compiled, 
-		const EmitterGpuProgram& program,
+		const EmitterGpuProgram* program,
 		uint32_t capacity);
 	void Shutdown();
 
@@ -43,7 +43,7 @@ public:
 	// 입력값 바이트만 교체 (레이아웃 동일). 다음 Tick 부터 반영
 	void SetModuleParamData(const std::vector<uint8_t>& data);
 	// 파티클 레이아웃이 같은 새 프로그램으로 교체 (버퍼 유지). 호출 전 GPU idle 필요
-	void Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram& program);
+	void Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram* program);
 	void SetUberData(const UberEmitterData& data);
 	bool UberReady() const { return m_UberOk; }
 

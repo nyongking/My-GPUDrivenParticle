@@ -2,6 +2,8 @@
 #include "ModuleStackPanel.h"
 
 #include "EmitterRuntime.h"
+#include "ModuleLibrary.h"
+#include "UberGpuProgram.h"
 #include "imgui.h"
 
 #include <algorithm>
@@ -10,6 +12,50 @@
 
 namespace
 {
+	const std::vector<ModuleDesc>& ModuleCatalog()
+	{
+		static const std::vector<ModuleDesc> s_Catalog =
+		{
+			SpawnRate(50.f),
+			InitializeParticle(0.1f, 1.f, 1.f, float3{ 0.f, 0.f, 0.f }, float4{ 1.f, 1.f, 1.f, 1.f }),
+			SphereLocation(0.5f, false),
+			AddVelocityInCone(3.f, 30.f, float3{ 0.f, 1.f, 0.f }),
+			ParticleState(true),
+			GravityForce(float3{ 0.f, -9.8f, 0.f }),
+			SolveForceAndVelocity(0.f, 0.f),      // 0 = 제한 없음
+			SubUVAnimation(0.f, 63.f)
+		};
+		return s_Catalog;
+	}
+
+	bool HasModuleId(const std::vector<ModuleDesc>& modules, ModuleId id)
+	{
+		for (const ModuleDesc& m : modules)
+			if (m.id == id)
+				return true;
+		return false;
+	}
+
+	// Uber / 생성 방식 상태 한 줄 + 공유 셰이더 데이터 문제 (ImGui 는 한글이 깨지므로 영어, 자세한 내용은 출력 창)
+	void DrawSimStatus(const EmitterRuntime& runtime)
+	{
+		if (runtime.Backend() != EmitterBackend::Gpu)
+			return;
+
+		const UberEmitterData& uber = runtime.Uber();
+		ImGui::Text("Sim: %s | generated shader: %s | shader compiles (total): %u",
+			UberGpuProgram::ModeName(UberGpuProgram::Mode()),
+			runtime.HasGeneratedProgram() ? "yes" : "no",
+			EmitterGpuProgram::GetStats().lifetimeBuilds);
+
+		if (!uber.errors.empty())
+			ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f),
+				"Uber: %u error(s) - this stack runs with the generated shader (see Output window)", uint32_t(uber.errors.size()));
+		if (!uber.warnings.empty())
+			ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f),
+				"Uber: %u warning(s) - e.g. fixed execution order (see Output window)", uint32_t(uber.warnings.size()));
+	}
+
 	bool DrawFloats(const char* label, float* v, uint32_t count, const ParamDesc& p)
 	{
 		const float speed = (std::max)(std::fabs(v[0]) * 0.01f, 0.01f);
@@ -263,9 +309,12 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 	for (const std::string& warning : runtime.Warnings())
 		ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f), "%s", warning.c_str());
 
+	DrawSimStatus(runtime);
+
 	// 순서 변경은 목록을 다 그린 뒤 적용한다
 	int moveIndex = -1;
 	int moveDirection = 0;
+	int removeIndex = -1;
 
 	static const Stage kStages[] = { Stage::EmitterUpdate, Stage::ParticleSpawn, Stage::ParticleUpdate };
 	for (Stage stage : kStages)
@@ -298,6 +347,10 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 			ImGui::EndDisabled();
 
 			ImGui::SameLine();
+			if (ImGui::SmallButton("X"))
+				removeIndex = static_cast<int>(i);
+
+			ImGui::SameLine();
 			if (ImGui::TreeNodeEx(modules[i].name.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
 			{
 				for (size_t p = 0; p < modules[i].params.size(); ++p)
@@ -311,6 +364,24 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 
 	if (moveIndex >= 0)
 		runtime.MoveModule(static_cast<size_t>(moveIndex), moveDirection);
+
+	if (removeIndex >= 0)
+		runtime.RemoveModule(static_cast<size_t>(removeIndex));
+
+	ImGui::Spacing();
+	if (ImGui::BeginCombo("Add module", "Select..."))
+	{
+		const std::vector<ModuleDesc>& catalog = ModuleCatalog();
+		for (size_t c = 0; c < catalog.size(); ++c)
+		{
+			// 이미 있는 모듈은 추가할 수 있지만, 공유 셰이더에는 자리가 하나뿐이라 생성 방식으로 실행된다
+			const bool dup = HasModuleId(runtime.EditModules(), catalog[c].id);
+			const std::string label = catalog[c].name + (dup ? "  (already in stack: runs Generated)" : "");
+			if (ImGui::Selectable(label.c_str()))
+				runtime.AddModule(catalog[c]);
+		}
+		ImGui::EndCombo();
+	}
 
 	DrawBindings(runtime);
 }
