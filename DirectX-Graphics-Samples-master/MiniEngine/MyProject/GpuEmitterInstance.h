@@ -5,6 +5,7 @@
 #include "GpuBuffer.h"
 #include "ReadbackBuffer.h"
 #include "OwnerTransform.h"
+#include "UberEmitterData.h"     // [W5-4 추가]
 
 #include <cstdint>
 #include <string>
@@ -16,6 +17,8 @@ struct GpuSimFrameStats
 	uint32_t psoChanges = 0;
 	uint32_t dispatches = 0;
 	uint32_t emitters = 0;
+	uint32_t uberEmitters = 0;
+	uint32_t uberFallbacks = 0;
 };
 
 class GpuEmitterInstance
@@ -41,6 +44,8 @@ public:
 	void SetModuleParamData(const std::vector<uint8_t>& data);
 	// 파티클 레이아웃이 같은 새 프로그램으로 교체 (버퍼 유지). 호출 전 GPU idle 필요
 	void Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram& program);
+	void SetUberData(const UberEmitterData& data);
+	bool UberReady() const { return m_UberOk; }
 
 	bool		Ready() const { return m_Ready; }
 	uint32_t	Capacity() const { return m_Capacity; }
@@ -78,6 +83,10 @@ private:
 	// b1 ModuleParams: ConstantBufferSize 만큼, 16 바이트 정렬 (SetDynamicConstantBufferView 조건)
 	struct alignas(16) Chunk16 { uint8_t bytes[16]; };
 	std::vector<Chunk16>     m_ModuleParams;
+
+	std::vector<Chunk16>     m_UberParams;
+	alignas(16) EmitterLayoutCB m_UberLayout;
+	bool                     m_UberOk = false;
 
 	ReadbackBuffer           m_Readback[kReadbackSlots];
 	uint64_t                 m_ReadbackFence[kReadbackSlots] = {};

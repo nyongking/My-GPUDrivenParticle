@@ -9,6 +9,7 @@
 #include "GraphicsCore.h"
 
 #include "CompiledShaders/EmitterFinalizeCS.h"
+#include "UberGpuProgram.h"
 
 #include <algorithm>
 #include <cmath>
@@ -167,6 +168,9 @@ void GpuEmitterInstance::Shutdown()
 	m_ModuleParams.clear();
 	m_Program = nullptr;
 	m_WaitingSubmit = false;
+	m_UberParams.clear();
+	m_UberLayout = EmitterLayoutCB();
+	m_UberOk = false;
 	m_Ready = false;
 }
 
@@ -189,11 +193,25 @@ void GpuEmitterInstance::Tick(ComputeContext& ctx, float deltaTime, const OwnerT
 	m_PrevOwnerPosition = t.position;
 	m_HasPrevOwner = true;
 
+	const bool wantUber = UberGpuProgram::Mode() == GpuSimMode::Uber;
+	const bool useUber = wantUber && UberGpuProgram::Ready() && m_UberOk;
+	if (useUber)       ++s_FrameStats.uberEmitters;
+	else if (wantUber) ++s_FrameStats.uberFallbacks;
+
+	auto kernelPSO = [&](EmitterGpuProgram::Kernel k) -> const ComputePSO&
+		{
+			return useUber ? UberGpuProgram::PSO(k) : m_Program->PSO(k);
+		};
 
 	ctx.SetRootSignature(EmitterGpuProgram::RootSig());
 	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootEngineCB, sizeof(ec), &ec);
-	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootModuleCB, m_ModuleParams.size() * sizeof(Chunk16), m_ModuleParams.data());
-
+	//ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootModuleCB, m_ModuleParams.size() * sizeof(Chunk16), m_ModuleParams.data());
+	if (useUber)
+		ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootModuleCB, m_UberParams.size() * sizeof(Chunk16), m_UberParams.data());
+	else
+		ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootModuleCB, m_ModuleParams.size() * sizeof(Chunk16), m_ModuleParams.data());
+	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootLayoutCB, sizeof(m_UberLayout), &m_UberLayout);
+	
 	ByteAddressBuffer& particlesIn = m_Particles[m_Current];
 	ByteAddressBuffer& particlesOut = m_Particles[1 - m_Current];
 
@@ -214,13 +232,13 @@ void GpuEmitterInstance::Tick(ComputeContext& ctx, float deltaTime, const OwnerT
 	ctx.SetDynamicDescriptors(EmitterGpuProgram::kRootUAVs, 0, EmitterGpuProgram::kNumUAVs, uavs);
 
 	// --------- 1. Emitter Update ---------
-	SetPSO(ctx, m_Program->PSO(EmitterGpuProgram::kEmitterUpdate));
+	SetPSO(ctx, kernelPSO(EmitterGpuProgram::kEmitterUpdate));
 	ctx.Dispatch(1, 1, 1);
 
 	// --------- 2. Particle Update: In[0..ALIVE_IN) -> 살아남은 것만 Out[cursor++] ---------
 //   그룹 수 = 지난 프레임 Finalize 가 m_FrameArgs[16..] 에 써 둔 값
 	ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-	SetPSO(ctx, m_Program->PSO(EmitterGpuProgram::kParticleUpdate));
+	SetPSO(ctx, kernelPSO(EmitterGpuProgram::kParticleUpdate));
 	ctx.DispatchIndirect(m_FrameArgs, kFrameArgsUpdate);
 
 	// --------- 3. Particle Spawn ---------
@@ -228,7 +246,7 @@ void GpuEmitterInstance::Tick(ComputeContext& ctx, float deltaTime, const OwnerT
 	ctx.InsertUAVBarrier(m_Counters);
 	ctx.InsertUAVBarrier(m_EmitterData);
 	ctx.InsertUAVBarrier(particlesOut);     // Update 가 Out 에 다 쓴 뒤에 (같은 버퍼에 이어 쓰므로)
-	SetPSO(ctx, m_Program->PSO(EmitterGpuProgram::kParticleSpawn));
+	SetPSO(ctx, kernelPSO(EmitterGpuProgram::kParticleSpawn));
 	ctx.DispatchIndirect(m_SpawnArgs);
 
 	// --------- 4. Finalize (스레드 1개) ---------
@@ -293,6 +311,18 @@ void GpuEmitterInstance::Rebind(const CompiledEmitter& compiled, const EmitterGp
 	m_Compiled = compiled;
 	m_Program = &program;
 	LoadModuleParams();
+}
+
+void GpuEmitterInstance::SetUberData(const UberEmitterData& data)
+{
+	m_UberLayout = data.layout;
+	m_UberOk = data.Ok() && !data.params.empty();
+
+	const size_t bytes = (data.params.size() + 15) & ~size_t(15);
+	m_UberParams.assign((std::max)(bytes, size_t(16)) / 16, Chunk16());
+	std::memset(m_UberParams.data(), 0, m_UberParams.size() * sizeof(Chunk16));
+	if (!data.params.empty())
+		std::memcpy(m_UberParams.data(), data.params.data(), data.params.size());
 }
 
 void GpuEmitterInstance::ReadCountersIfReady()

@@ -88,6 +88,7 @@
     <ClInclude Include="TagLibrary.h" />
     <ClInclude Include="TexturedQuad.h" />
     <ClInclude Include="UberEmitterData.h" />
+    <ClInclude Include="UberGpuProgram.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AttributeKey.cpp" />
@@ -122,6 +123,7 @@
     <ClCompile Include="SpriteRenderer.cpp" />
     <ClCompile Include="TexturedQuad.cpp" />
     <ClCompile Include="UberEmitterData.cpp" />
+    <ClCompile Include="UberGpuProgram.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Core/Core.vcxproj">

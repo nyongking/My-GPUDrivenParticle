@@ -14,7 +14,7 @@ class EmitterGpuProgram
 public:
 	// 각 단계의 main 번호
 	enum Kernel { kEmitterUpdate, kParticleUpdate, kParticleSpawn, kNumKernels };
-	enum RootParam {kRootEngineCB, kRootModuleCB, kRootUAVs, kNumRootParams };
+	enum RootParam { kRootEngineCB, kRootModuleCB, kRootUAVs, kRootLayoutCB, kNumRootParams };
 	static const uint32_t kNumUAVs = 5;
 
 	struct Stats

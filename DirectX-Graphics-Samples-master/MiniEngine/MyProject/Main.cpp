@@ -28,6 +28,7 @@
 #include "EmitterRuntime.h"
 
 #include "EmitterTestScene.h"
+#include "UberGpuProgram.h"      // [W5-4 추가]
 
 #include <cmath>
 #include "ModuleStackPanel.h"
@@ -325,6 +326,23 @@ void MyProject::UpdateTestSceneImGui()
         m_TestScene.Build(m_TestDraft);
     ImGui::Checkbox("Fixed dt (1/60)", &m_FixedDt);
 
+    {
+        int mode = int(UberGpuProgram::Mode());
+        ImGui::TextUnformatted("Sim mode:");
+        ImGui::SameLine();
+        const bool a = ImGui::RadioButton("Generated", &mode, int(GpuSimMode::Generated));
+        ImGui::SameLine();
+        const bool c = ImGui::RadioButton("Uber", &mode, int(GpuSimMode::Uber));
+        if (a || c)
+        {
+            UberGpuProgram::SetMode(GpuSimMode(mode));
+            strcpy_s(m_RecordTag, UberGpuProgram::ModeName(GpuSimMode(mode)));
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%s)", UberGpuProgram::StatusText());
+    }
+
+
     // N 바로 고르기 (누르면 바로 다시 만든다)
     static const uint32_t kCounts[] = { 1, 10, 100 };
     for (int i = 0; i < IM_ARRAYSIZE(kCounts); ++i)
@@ -369,8 +387,12 @@ void MyProject::UpdateTestSceneImGui()
 
     ImGui::Text("Emitters      : %u / %u", m_TestScene.Count(), b.requested);
     ImGui::Text("Alive         : %u / %u", m_TestScene.AliveTotal(), m_TestScene.CapacityTotal());
-    ImGui::Text("Compute PSOs  : %u  (%u programs x %u + Finalize)",
+    ImGui::Text("Generated PSOs: %u  (%u programs x %u + Finalize)",
         ps.livePrograms * EmitterGpuProgram::kNumKernels + 1, ps.livePrograms, uint32_t(EmitterGpuProgram::kNumKernels));
+    ImGui::Text("Uber PSOs     : %u + Finalize", UberGpuProgram::kNumPSOs);
+    ImGui::Text("Uber emitters : %u / %u", m_LastSimStats.uberEmitters, m_LastSimStats.emitters);
+    if (m_LastSimStats.uberFallbacks > 0)
+        ImGui::TextColored(ImVec4(1.f, 0.6f, 0.2f, 1.f), "  %u emitters fell back to Generated (see Output window)", m_LastSimStats.uberFallbacks);
     ImGui::Text("PSO changes   : %u / frame", m_LastSimStats.psoChanges);
     ImGui::Text("Dispatches    : %u / frame", m_LastSimStats.dispatches);
     ImGui::Text("Sim GPU time  : %.3f ms", EngineProfiling::GetGpuTimeLast(kSimTimerName));
@@ -399,7 +421,12 @@ void MyProject::TickRecorder()
     const EmitterGpuProgram::Stats& ps = EmitterGpuProgram::GetStats();
     const uint32_t emitters = m_UseTestScene ? m_TestScene.Count() : 1u;
     const uint32_t capacity = m_UseTestScene ? m_TestScene.CapacityTotal() : m_Runtime.Capacity();
-    const uint32_t psoCount = ps.livePrograms * EmitterGpuProgram::kNumKernels + 1;   // +1 = 공용 Finalize
+    // [W5-4 변경] 원래: const uint32_t psoCount = ps.livePrograms * kNumKernels + 1;
+    //   -> 이번 프레임 시뮬레이션이 실제로 쓴 PSO 수 (Uber 모드: 공유 3 + Finalize 1, 생성 방식으로 돈 이미터가 있으면 그만큼 더)
+    const GpuSimFrameStats& fs = m_LastSimStats;
+    const bool anyGenerated = fs.emitters > fs.uberEmitters;
+    const uint32_t psoCount = (fs.uberEmitters > 0 ? UberGpuProgram::kNumPSOs : 0u)
+        + (anyGenerated ? ps.livePrograms * EmitterGpuProgram::kNumKernels : 0u) + 1;   // +1 = 공용 Finalize
     const EmitterTestScene::BuildResult& b = m_TestScene.LastBuild();
 
     const std::string header = "emitters,capPerEmitter,spawnRate,fixedDt,psoCount,psoChanges,dispatches,setupMs,shaderBuildMs";

@@ -34,6 +34,8 @@ namespace
 		s_RootSig[EmitterGpuProgram::kRootEngineCB].InitAsConstantBuffer(0);   // b0
 		s_RootSig[EmitterGpuProgram::kRootModuleCB].InitAsConstantBuffer(1);   // b1
 		s_RootSig[EmitterGpuProgram::kRootUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, EmitterGpuProgram::kNumUAVs);   // u0~u4
+		s_RootSig[EmitterGpuProgram::kRootLayoutCB].InitAsConstantBuffer(2);   // b2  
+
 		s_RootSig.Finalize(L"Emitter Compute RootSig");
 
 		s_RootSigReady = true;
@@ -62,7 +64,6 @@ void EmitterGpuProgram::ResetBuildStats()
 	s_Stats.buildMs = 0.0;
 	s_Stats.builds = 0;
 }
-
 
 bool EmitterGpuProgram::Build(const CompiledEmitter& compiled, const ShaderCompiler& compiler,
 	const std::string& name)

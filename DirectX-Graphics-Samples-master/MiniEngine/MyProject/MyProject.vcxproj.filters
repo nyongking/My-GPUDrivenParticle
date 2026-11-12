@@ -133,7 +133,10 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="UberEmitterData.cpp">
-      <Filter>Particle\Modules</Filter>
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="UberGpuProgram.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -229,8 +232,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="UberEmitterData.h">
-      <Filter>Particle\Modules</Filter>
+      <Filter>Particle\Emitter</Filter>
     </ClInclude>
+    <ClInclude Include="UberGpuProgram.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Logo.png">

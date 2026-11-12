@@ -6,6 +6,7 @@
 #include "CommandListManager.h"
 #include "GraphicsCore.h"
 
+#include "UberGpuProgram.h"
 
 #include <algorithm>
 #include <utility>
@@ -289,7 +290,10 @@ void EmitterRuntime::ApplyPending()
 			if (m_ActiveBackend == EmitterBackend::Cpu)
 				m_Cpu.SetModuleParamData(m_Compiled.moduleParamData);
 			else
+			{
 				m_Gpu.SetModuleParamData(m_Compiled.moduleParamData);
+				m_Gpu.SetUberData(m_Uber);
+			}
 		}
 		return;
 	}
@@ -325,7 +329,8 @@ bool EmitterRuntime::BuildProgram(const CompiledEmitter& compiled, std::unique_p
 	if (!s_UberLayoutChecked)
 	{
 		std::string log;
-		CheckUberShaderLayout(m_ShaderCompiler, log);
+		UberGpuProgram::SetLayoutVerified(CheckUberShaderLayout(m_ShaderCompiler, log));
+		UberGpuProgram::Initialize();
 		Utility::Print(log.c_str());
 		s_UberLayoutChecked = true;
 	}
@@ -418,6 +423,9 @@ void EmitterRuntime::RebuildUberData()
 	m_Uber = BuildUberEmitterData(m_Modules, m_Compiled);
 	if (!m_Uber.warnings.empty() || !m_Uber.errors.empty())
 		Utility::Print(DescribeUber(m_Uber).c_str());
+
+	if (m_ActiveBackend == EmitterBackend::Gpu)
+		m_Gpu.SetUberData(m_Uber);
 }
 
 
