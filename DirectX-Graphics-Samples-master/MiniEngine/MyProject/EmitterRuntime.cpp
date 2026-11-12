@@ -281,6 +281,7 @@ void EmitterRuntime::ApplyPending()
 	if (pending == Pending::Values)
 	{
 		FillModuleParamData(m_Modules, m_Compiled);
+		FillUberParams(m_Modules, m_Uber.params, nullptr);
 		m_AppliedModules = m_Modules;
 
 		if (m_Ready)
@@ -318,6 +319,15 @@ bool EmitterRuntime::BuildProgram(const CompiledEmitter& compiled, std::unique_p
 	{
 		m_LastError = "ShaderCompiler initialize failed\n" + m_ShaderCompiler.Log();
 		return false;
+	}
+
+	static bool s_UberLayoutChecked = false;
+	if (!s_UberLayoutChecked)
+	{
+		std::string log;
+		CheckUberShaderLayout(m_ShaderCompiler, log);
+		Utility::Print(log.c_str());
+		s_UberLayoutChecked = true;
 	}
 
 	std::unique_ptr<EmitterGpuProgram> program = std::make_unique<EmitterGpuProgram>();
@@ -361,6 +371,7 @@ bool EmitterRuntime::RebuildPreserve()
 	}
 
 	m_Compiled = std::move(next);
+	RebuildUberData();
 	return true;
 }
 
@@ -395,10 +406,18 @@ bool EmitterRuntime::RebuildRestart()
 
 	m_ActiveBackend = m_Backend;
 	m_Compiled = std::move(next);
+	RebuildUberData();
 
 	if (!m_Ready)
 		m_LastError = "Emitter resources could not be created (see Output window)\n";
 	return m_Ready;
+}
+
+void EmitterRuntime::RebuildUberData()
+{
+	m_Uber = BuildUberEmitterData(m_Modules, m_Compiled);
+	if (!m_Uber.warnings.empty() || !m_Uber.errors.empty())
+		Utility::Print(DescribeUber(m_Uber).c_str());
 }
 
 

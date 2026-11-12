@@ -132,6 +132,9 @@
     <ClCompile Include="EmitterTestScene.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="UberEmitterData.cpp">
+      <Filter>Particle\Modules</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -225,6 +228,9 @@
     <ClInclude Include="EmitterTestScene.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="UberEmitterData.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="Logo.png">
@@ -258,6 +264,9 @@
       <Filter>Shaders\Particle</Filter>
     </None>
     <None Include="Shaders\ModuleCommon.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\ParticleUber.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
   </ItemGroup>
@@ -299,6 +308,15 @@
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\ParticleSpritePS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleUberEmitterUpdateCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleUberParticleSpawnCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleUberParticleUpdateCS.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
   </ItemGroup>

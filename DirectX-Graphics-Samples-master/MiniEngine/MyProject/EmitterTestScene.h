@@ -29,7 +29,7 @@ public:
 	{
 		uint32_t count = 10;
 		uint32_t capacityPerEmitter = 4096;   // 이미터에서 할당되는 파티클 개수, (capacity * N * 2)
-		float    spawnRate = 200.f;           // 이미터마다 초당 생성 수. 살아 있는 수 ~= rate x 수명
+		float    spawnRate = 400.f;           // 이미터마다 초당 생성 수. 살아 있는 수 ~= rate x 수명
 		float    spacing = 2.f;               // 격자 간격 (m)
 		uint32_t presetMask = (1u << uint32_t(EmitterPreset::Count)) - 1;   // 돌아가며 쓸 프리셋
 	};

@@ -140,7 +140,7 @@ void MyProject::Cleanup(void)
     m_Runtime.Shutdown();
 
     m_Floor.Release();
-    
+
     m_CameraController.reset();
     QuadRenderer::Shutdown();
     DebugDraw::Shutdown();
@@ -240,6 +240,8 @@ void MyProject::InitializeEmitter()
 
     if (!m_Runtime.Initialize(modules, 100'000, EmitterBackend::Gpu))
         Utility::Print(m_Runtime.LastError().c_str());
+
+    Utility::Print(DescribeUber(m_Runtime.Uber()).c_str());
 }
 
 void MyProject::UpdateImGui(float deltaT)
@@ -263,7 +265,7 @@ void MyProject::UpdateImGui(float deltaT)
         DrawModuleStackPanel(m_Runtime);
 
     UpdateTestSceneImGui();
-    
+
 
     ImGui::End();
 

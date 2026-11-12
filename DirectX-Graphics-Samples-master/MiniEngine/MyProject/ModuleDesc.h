@@ -115,12 +115,27 @@ ParamDesc MakeParam(const std::string& name, const Input<T>& input)
 }
 
 
+enum class ModuleId : uint32_t
+{
+    SpawnRate,
+    InitializeParticle,
+    SphereLocation,
+    AddVelocityInCone,
+    ParticleState,
+    GravityForce,
+    SolveForceAndVelocity,
+    SubUVAnimation,
+    Count,
+    Unknown = 0xFFFFFFFFu       // ModuleLibrary 밖에서 만든 모듈 (공유 셰이더로 실행 불가)
+};
+
 class ModuleContext;
 // 모듈 선언 (값으로 복사해서 저장할 수 있도록 일반 구조체로 둔다)
 struct ModuleDesc
 {
-    std::string        name;
     Stage              stage;
+    ModuleId           id = ModuleId::Unknown;
+    std::string        name;
     std::vector<Usage> reads;
     std::vector<Usage> writes;
     std::vector<ParamDesc> params;   // 모듈 입력값 (GPU 상수 버퍼로 감)

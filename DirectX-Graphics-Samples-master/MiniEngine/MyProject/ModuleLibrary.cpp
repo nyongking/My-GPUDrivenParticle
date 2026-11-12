@@ -11,6 +11,7 @@ ModuleDesc SpawnRate(float rate)
 	ModuleDesc m;
 
 	m.name = "Spawn Rate";
+	m.id = ModuleId::SpawnRate;
 	m.stage = Stage::EmitterUpdate;
 	m.params =
 	{

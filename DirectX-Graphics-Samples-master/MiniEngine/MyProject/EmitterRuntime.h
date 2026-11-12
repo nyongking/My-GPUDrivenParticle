@@ -6,6 +6,7 @@
 #include "GpuEmitterInstance.h"
 #include "ShaderCompiler.h"
 #include "SpriteRenderer.h"
+#include "UberEmitterData.h"
 
 #include <memory>
 #include <string>
@@ -69,6 +70,7 @@ public:
 	uint32_t        AliveCount() const;
 	const std::string& LastError() const { return m_LastError; }
 	const std::vector<std::string>& Warnings() const { return m_Compiled.warnings; }
+	const UberEmitterData& Uber() const { return m_Uber; }
 
 private:
 	enum class Pending { None, Values, Preserve, Restart };     // 큰 값이 작은 값을 포함한다
@@ -80,12 +82,15 @@ private:
 	bool RebuildRestart();
 	bool BuildProgram(const CompiledEmitter& compiled, std::unique_ptr<EmitterGpuProgram>& out);
 	void ShutdownActive();
+	void RebuildUberData();
+
 
 	std::vector<ModuleDesc> m_Modules;          // 원본. UI 가 직접 편집
 	std::vector<ModuleDesc> m_AppliedModules;   // 마지막으로 적용에 성공한 스택 (실패 시 복구)
 	RendererDesc            m_SpriteDesc = SpriteRenderer::Desc();   // 렌더러 바인딩 (UI 가 편집)
 	RendererDesc            m_AppliedSpriteDesc = SpriteRenderer::Desc();
 	CompiledEmitter         m_Compiled;         // m_AppliedModules 의 컴파일 결과
+	UberEmitterData			m_Uber;
 	std::string             m_SpriteTexture;    // 렌더러가 재시작해도 유지 (렌더러 쪽 캐시)
 
 	EmitterBackend          m_Backend = EmitterBackend::Gpu;        // 요청된 백엔드

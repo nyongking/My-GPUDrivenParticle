@@ -1,0 +1,5 @@
+emitters,capPerEmitter,spawnRate,fixedDt,psoCount,psoChanges,dispatches,setupMs,shaderBuildMs,tag,maxParticles,frames,aliveAvg,aliveRatio,frameMs_mean,frameMs_median,Particle Simulation_mean,Particle Simulation_median,Particle Simulation_p95,Particle Simulation_max
+1,4096,400.0,1,7,4,0,26.39,22.29,Generated(N=1),4096,600,406.6667,0.0993,16.6660,16.6727,0.0688,0.0390,0.0770,8.7146
+4,4096,400.0,0,16,16,0,95.58,80.92,Generated(N=4),16384,600,2123.5500,0.1296,16.6729,16.6783,0.2668,0.1363,0.8573,8.0631
+10,4096,400.0,0,34,40,0,244.34,214.36,Generated(N=10),40960,600,5457.4867,0.1332,16.6655,16.6777,0.4476,0.3693,1.0218,8.0100
+100,4096,400.0,0,304,400,0,2279.95,1963.82,Generated(N=100),409600,600,53066.0833,0.1296,16.6714,16.6764,2.0125,1.7726,4.1974,6.6404

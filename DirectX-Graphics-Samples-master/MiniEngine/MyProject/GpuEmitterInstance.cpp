@@ -80,6 +80,8 @@ namespace
 			++s_FrameStats.psoChanges;
 			s_LastPSO = p;
 		}
+		ctx.SetPipelineState(pso);
+
 	}
 }
 
