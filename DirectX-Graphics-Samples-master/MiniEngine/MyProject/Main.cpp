@@ -28,7 +28,7 @@
 #include "EmitterRuntime.h"
 
 #include "EmitterTestScene.h"
-#include "UberGpuProgram.h"      // [W5-4 추가]
+#include "UberGpuProgram.h"
 
 #include <cmath>
 #include "ModuleStackPanel.h"
@@ -61,6 +61,9 @@ private:
     void UpdateMiddleDragLook();
     void UpdateTestSceneImGui();
     void TickRecorder();
+    void StartBenchmark();
+    void TickBenchmark();
+    void DrawBenchmarkImGui();
 
 
     bool m_ShowImGuiDemo = false;
@@ -90,6 +93,17 @@ private:
     int                         m_RecordFrames = 600;
     bool                        m_LastSaveOk = true;
     GpuSimFrameStats            m_LastSimStats;       // 지난 프레임 값 (UI 표시 / CSV)
+
+    struct BenchStep { uint32_t count; GpuSimMode mode; };
+    static constexpr uint32_t   kBenchCountOptions = 6;
+    static constexpr uint32_t   kBenchCounts[kBenchCountOptions] = { 1, 10, 50, 100, 200, 400 };
+    bool                        m_BenchUseCount[kBenchCountOptions] = { true, true, true, true, true, false };
+    int                         m_BenchWarmup = 120;              // 장면을 새로 만든 뒤 버릴 프레임 (생성/전환 직후의 튐 제외)
+    std::vector<BenchStep>      m_BenchSteps;
+    size_t                      m_BenchIndex = 0;
+    bool                        m_BenchRunning = false;
+    bool                        m_BenchRecording = false;         // 지금 기록 중인 것이 벤치마크 한 칸인가 (CSV 파일 구분)
+
 
     // -------- 평면 설정
     TexturedQuad m_Floor;
@@ -190,6 +204,7 @@ void MyProject::Update(float deltaT)
     }
 
     TickRecorder();
+    TickBenchmark();
 
     UpdateImGui(deltaT);
     UpdateMiddleDragLook();
@@ -320,7 +335,7 @@ void MyProject::UpdateTestSceneImGui()
 {
     ImGui::SeparatorText("Test Scene (week 5)");
 
-    ImGui::BeginDisabled(m_Recorder.IsBusy());      // 기록 중에는 조건 변경 금지
+    ImGui::BeginDisabled(m_Recorder.IsBusy() || m_BenchRunning);      // 기록 중에는 조건 변경 금지
 
     if (ImGui::Checkbox("Use test scene", &m_UseTestScene) && m_UseTestScene && m_TestScene.Empty())
         m_TestScene.Build(m_TestDraft);
@@ -399,6 +414,8 @@ void MyProject::UpdateTestSceneImGui()
     ImGui::Text("Setup         : %.1f ms (shader build %.1f ms, %u builds)", b.setupMs, b.shaderBuildMs, b.shaderBuilds);
     if (!m_TestScene.LastError().empty())
         ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "Some emitters failed (see Output window)");
+    
+    DrawBenchmarkImGui();
 
     // ---------- 기록 ----------
     ImGui::InputText("Tag", m_RecordTag, sizeof(m_RecordTag));
@@ -439,6 +456,104 @@ void MyProject::TickRecorder()
         psoCount, m_LastSimStats.psoChanges, m_LastSimStats.dispatches,
         m_UseTestScene ? b.setupMs : 0.0, m_UseTestScene ? b.shaderBuildMs : 0.0);
 
+    if (m_BenchRecording)
+    {
+        m_BenchRecording = false;
+        char extra[96];
+        sprintf_s(extra, ",%s,%u,%d,%u",
+            UberGpuProgram::ModeName(UberGpuProgram::Mode()), ps.livePrograms,
+            EmitterRuntime::ProgramCacheEnabled() ? 1 : 0, fs.uberEmitters);
+        m_LastSaveOk = m_Recorder.AppendCSV("ParticleProfile_week5_bench.csv",
+            header + ",mode,generatedPrograms,cache,uberEmitters", std::string(values) + extra, m_RecordTag, capacity);
+        return;
+    }
+
     m_LastSaveOk = m_Recorder.AppendCSV("ParticleProfile_week5.csv", header, values, m_RecordTag, capacity);
 }
+void MyProject::StartBenchmark()
+{
+    m_BenchSteps.clear();
+    for (uint32_t i = 0; i < kBenchCountOptions; ++i)
+    {
+        if (!m_BenchUseCount[i])
+            continue;
+        m_BenchSteps.push_back({ kBenchCounts[i], GpuSimMode::Generated });
+        m_BenchSteps.push_back({ kBenchCounts[i], GpuSimMode::Uber });
+    }
+    m_BenchIndex = 0;
+    m_BenchRunning = !m_BenchSteps.empty();
+    m_UseTestScene = true;
+    m_FixedDt = true;
+}
 
+void MyProject::TickBenchmark()
+{
+    if (!m_BenchRunning || m_Recorder.IsBusy())
+        return;
+
+    if (m_BenchIndex >= m_BenchSteps.size())
+    {
+        m_BenchRunning = false;
+        Utility::Print("[Benchmark] done -> ParticleProfile_week5_bench.csv\n");
+        return;
+    }
+
+    const BenchStep& s = m_BenchSteps[m_BenchIndex++];
+
+    // 모드를 먼저 바꿔야 Build 가 필요한 셰이더만 만든다 (Uber 면 컴파일 없음)
+    UberGpuProgram::SetMode(s.mode);
+    strcpy_s(m_RecordTag, UberGpuProgram::ModeName(s.mode));
+
+    m_TestDraft.count = s.count;
+    m_TestScene.Build(m_TestDraft);
+
+    m_BenchRecording = true;
+    m_Recorder.Start(uint32_t((std::max)(m_BenchWarmup, 1)), uint32_t((std::max)(m_RecordFrames, 1)));
+
+    char msg[96];
+    sprintf_s(msg, "[Benchmark] %u / %u : N = %u, %s\n", uint32_t(m_BenchIndex), uint32_t(m_BenchSteps.size()),
+        s.count, UberGpuProgram::ModeName(s.mode));
+    Utility::Print(msg);
+}
+
+void MyProject::DrawBenchmarkImGui()
+{
+    ImGui::SeparatorText("Benchmark: sim GPU time vs emitter count");
+
+    // 공정한 비교: 생성 방식도 조합마다 한 번만 컴파일하고, 같은 조합끼리 프로그램을 같이 쓰게 한다
+    bool cache = EmitterRuntime::ProgramCacheEnabled();
+    ImGui::BeginDisabled(m_BenchRunning);
+    if (ImGui::Checkbox("Share generated programs (cache)", &cache))
+        EmitterRuntime::SetProgramCacheEnabled(cache);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::TextDisabled("alive: %u, cache hits: %u", EmitterGpuProgram::GetStats().livePrograms, EmitterRuntime::ProgramCacheHits());
+
+    ImGui::BeginDisabled(m_BenchRunning);
+    ImGui::TextUnformatted("N:");
+    for (uint32_t i = 0; i < kBenchCountOptions; ++i)
+    {
+        ImGui::SameLine();
+        char label[16];
+        sprintf_s(label, "%u##bench", kBenchCounts[i]);
+        ImGui::Checkbox(label, &m_BenchUseCount[i]);
+    }
+    ImGui::InputInt("Warmup frames", &m_BenchWarmup);
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("record frames = 'Frames' below, capacity / spawn rate / presets = Test Scene settings");
+
+    if (!m_BenchRunning)
+    {
+        if (ImGui::Button("Run benchmark"))
+            StartBenchmark();
+    }
+    else
+    {
+        const BenchStep& s = m_BenchSteps[m_BenchIndex > 0 ? m_BenchIndex - 1 : 0];
+        ImGui::Text("Running %u / %u : N = %u, %s", uint32_t(m_BenchIndex), uint32_t(m_BenchSteps.size()),
+            s.count, UberGpuProgram::ModeName(s.mode));
+        ImGui::SameLine();
+        if (ImGui::Button("Stop"))
+            m_BenchRunning = false;     // 진행 중인 칸은 끝까지 기록된다
+    }
+}

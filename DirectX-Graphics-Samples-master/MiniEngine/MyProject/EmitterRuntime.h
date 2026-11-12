@@ -76,6 +76,10 @@ public:
 	const UberEmitterData& Uber() const { return m_Uber; }
 	bool			HasGeneratedProgram() const { return m_GpuProgram != nullptr; }
 
+	static void     SetProgramCacheEnabled(bool enabled);
+	static bool     ProgramCacheEnabled();
+	static uint32_t ProgramCacheHits();
+
 private:
 	enum class Pending { None, Values, Preserve, Restart };     // 큰 값이 작은 값을 포함한다
 
@@ -84,7 +88,7 @@ private:
 
 	bool RebuildPreserve();
 	bool RebuildRestart();
-	bool BuildProgram(const CompiledEmitter& compiled, std::unique_ptr<EmitterGpuProgram>& out);
+	bool BuildProgram(const CompiledEmitter& compiled, std::shared_ptr<EmitterGpuProgram>& out);
 	void ShutdownActive();
 	void RebuildUberData();
 
@@ -112,7 +116,7 @@ private:
 	SpriteRenderer          m_CpuRenderer;
 
 	ShaderCompiler                      m_ShaderCompiler;
-	std::unique_ptr<EmitterGpuProgram>  m_GpuProgram;
+	std::shared_ptr<EmitterGpuProgram>  m_GpuProgram;
 	GpuEmitterInstance                  m_Gpu;
 	SpriteRenderer                      m_GpuRenderer;
 };

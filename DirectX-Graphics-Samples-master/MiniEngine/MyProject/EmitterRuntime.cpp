@@ -9,7 +9,20 @@
 #include "UberGpuProgram.h"
 
 #include <algorithm>
+#include <unordered_map>
 #include <utility>
+
+namespace
+{
+	std::unordered_map<std::string, std::weak_ptr<EmitterGpuProgram>> s_ProgramCache;
+	bool		s_ProgramCacheEnabled = true;
+	uint32_t	s_ProgramCacheHits = 0;
+}
+
+void EmitterRuntime::SetProgramCacheEnabled(bool enabled) { s_ProgramCacheEnabled = enabled; }
+bool EmitterRuntime::ProgramCacheEnabled() { return s_ProgramCacheEnabled; }
+uint32_t EmitterRuntime::ProgramCacheHits() { return s_ProgramCacheHits; }
+
 
 namespace
 {
@@ -333,22 +346,49 @@ void EmitterRuntime::ApplyPending()
 }
 
 
-bool EmitterRuntime::BuildProgram(const CompiledEmitter& compiled, std::unique_ptr<EmitterGpuProgram>& out)
+bool EmitterRuntime::BuildProgram(const CompiledEmitter& compiled, std::shared_ptr<EmitterGpuProgram>& out)
 {
+	std::string cacheKey;
+	if (s_ProgramCacheEnabled)
+	{
+		const GeneratedShader generated = GenerateEmitterShader(compiled, "Main.generated.hlsl");
+		if (generated.Ok())
+		{
+			cacheKey = generated.source;
+			auto it = s_ProgramCache.find(cacheKey);
+			if (it != s_ProgramCache.end())
+			{
+				if (std::shared_ptr<EmitterGpuProgram> cached = it->second.lock())
+				{
+					++s_ProgramCacheHits;
+					out = std::move(cached);
+					return true;
+				}
+			}
+		}
+	}
+
 	if (!m_ShaderCompiler.Ready() && !m_ShaderCompiler.Initialize(ShaderCompiler::FindIncludeDir(L"ModuleCommon.hlsli")))
 	{
 		m_LastError = "ShaderCompiler initialize failed\n" + m_ShaderCompiler.Log();
 		return false;
 	}
-	
 
-	std::unique_ptr<EmitterGpuProgram> program = std::make_unique<EmitterGpuProgram>();
+
+	std::shared_ptr<EmitterGpuProgram> program = std::make_shared<EmitterGpuProgram>();
 	const bool built = program->Build(compiled, m_ShaderCompiler, "Main");
 	Utility::Print(program->Log().c_str());
 	if (!built)
 	{
 		m_LastError = program->Log();
 		return false;
+	}
+
+	if (!cacheKey.empty())
+	{
+		for (auto it = s_ProgramCache.begin(); it != s_ProgramCache.end(); )
+			it = it->second.expired() ? s_ProgramCache.erase(it) : std::next(it);
+		s_ProgramCache[cacheKey] = program;
 	}
 
 	out = std::move(program);
@@ -374,7 +414,7 @@ bool EmitterRuntime::RebuildPreserve()
 	else
 	{
 		EnsureUberProgram();
-		std::unique_ptr<EmitterGpuProgram> program;
+		std::shared_ptr<EmitterGpuProgram> program;
 		if (NeedGeneratedProgram(BuildUberEmitterData(m_Modules, next)) && !BuildProgram(next, program))
 			return false;
 
@@ -397,7 +437,7 @@ bool EmitterRuntime::RebuildRestart()
 		return false;
 	}
 
-	std::unique_ptr<EmitterGpuProgram> program;
+	std::shared_ptr<EmitterGpuProgram> program;
 	if (m_Backend == EmitterBackend::Gpu)
 	{
 		EnsureUberProgram();
