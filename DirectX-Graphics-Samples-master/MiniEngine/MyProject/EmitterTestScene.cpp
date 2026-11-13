@@ -186,11 +186,40 @@ void EmitterTestScene::Shutdown()
 
 void EmitterTestScene::Tick(ComputeContext& ctx, float deltaTime)
 {
+	if (!m_StageMajor)
+	{
+		for (Item& item : m_Items)
+		{
+			item.runtime->ApplyPending();
+			item.runtime->Tick(ctx, deltaTime, item.owner);
+		}
+		return;
+	}
+	std::vector<GpuEmitterInstance*>& gpus = m_StagedScratch;
+	gpus.clear();
 	for (Item& item : m_Items)
 	{
-		item.runtime->ApplyPending();
-		item.runtime->Tick(ctx, deltaTime, item.owner);
+		if (GpuEmitterInstance* gpu = item.runtime->StagedGpu())
+		{
+			if (gpu->BeginTick(deltaTime, item.owner))
+				gpus.push_back(gpu);
+		}
+		else
+		{
+			item.runtime->Tick(ctx, deltaTime, item.owner);
+		}
 	}
+
+	for (uint32_t s = 0; s < uint32_t(GpuSimStage::End); ++s)
+	{
+		const GpuSimStage stage = GpuSimStage(s);
+		for (GpuEmitterInstance* gpu : gpus)
+			gpu->StageBarriers(ctx, stage);
+		for (GpuEmitterInstance* gpu : gpus)
+			gpu->EndTick();
+	}
+
+
 }
 
 void EmitterTestScene::OnSubmitted(uint64_t fence)

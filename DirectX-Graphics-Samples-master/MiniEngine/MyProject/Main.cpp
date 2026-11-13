@@ -94,7 +94,7 @@ private:
     bool                        m_LastSaveOk = true;
     GpuSimFrameStats            m_LastSimStats;       // 지난 프레임 값 (UI 표시 / CSV)
 
-    struct BenchStep { uint32_t count; GpuSimMode mode; };
+    struct BenchStep { uint32_t count; GpuSimMode mode; bool stageMajor; };
     static constexpr uint32_t   kBenchCountOptions = 6;
     static constexpr uint32_t   kBenchCounts[kBenchCountOptions] = { 1, 10, 50, 100, 200, 400 };
     bool                        m_BenchUseCount[kBenchCountOptions] = { true, true, true, true, true, false };
@@ -104,6 +104,8 @@ private:
     bool                        m_BenchRunning = false;
     bool                        m_BenchRecording = false;         // 지금 기록 중인 것이 벤치마크 한 칸인가 (CSV 파일 구분)
 
+    bool                        m_BenchEmitterOrder = true;
+    bool                        m_BenchStageOrder = true;
 
     // -------- 평면 설정
     TexturedQuad m_Floor;
@@ -342,6 +344,12 @@ void MyProject::UpdateTestSceneImGui()
     ImGui::Checkbox("Fixed dt (1/60)", &m_FixedDt);
 
     {
+        bool stageMajor = m_TestScene.StageMajor();
+        if (ImGui::Checkbox("Stage-major order (all emitters per stage)", &stageMajor))
+            m_TestScene.SetStageMajor(stageMajor);
+    }
+
+    {
         int mode = int(UberGpuProgram::Mode());
         ImGui::TextUnformatted("Sim mode:");
         ImGui::SameLine();
@@ -487,8 +495,14 @@ void MyProject::StartBenchmark()
     {
         if (!m_BenchUseCount[i])
             continue;
-        m_BenchSteps.push_back({ kBenchCounts[i], GpuSimMode::Generated });
-        m_BenchSteps.push_back({ kBenchCounts[i], GpuSimMode::Uber });
+        for (int order = 0; order < 2; ++order)
+        {
+            const bool stage = order == 1;
+            if ((stage && !m_BenchStageOrder) || (!stage && !m_BenchEmitterOrder))
+                continue;
+            m_BenchSteps.push_back({ kBenchCounts[i], GpuSimMode::Generated, stage });
+            m_BenchSteps.push_back({ kBenchCounts[i], GpuSimMode::Uber, stage });
+        }
     }
     m_BenchIndex = 0;
     m_BenchRunning = !m_BenchSteps.empty();
@@ -512,7 +526,8 @@ void MyProject::TickBenchmark()
 
     // 모드를 먼저 바꿔야 Build 가 필요한 셰이더만 만든다 (Uber 면 컴파일 없음)
     UberGpuProgram::SetMode(s.mode);
-    strcpy_s(m_RecordTag, UberGpuProgram::ModeName(s.mode));
+    m_TestScene.SetStageMajor(s.stageMajor);
+    sprintf_s(m_RecordTag, "%s%s", UberGpuProgram::ModeName(s.mode), s.stageMajor ? "+Stage" : "");
 
     m_TestDraft.count = s.count;
     m_TestScene.Build(m_TestDraft);

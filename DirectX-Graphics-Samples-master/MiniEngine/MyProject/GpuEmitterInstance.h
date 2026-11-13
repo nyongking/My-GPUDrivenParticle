@@ -5,13 +5,14 @@
 #include "GpuBuffer.h"
 #include "ReadbackBuffer.h"
 #include "OwnerTransform.h"
-#include "UberEmitterData.h"     // [W5-4 추가]
+#include "UberEmitterData.h"
 
 #include <cstdint>
 #include <string>
 
 class ComputeContext;
 
+// GPU 방식 내에서 Uber/Generated 두 방식의 성능 측정을 위한 구조
 struct GpuSimFrameStats
 {
 	uint32_t psoChanges = 0;
@@ -20,6 +21,21 @@ struct GpuSimFrameStats
 	uint32_t uberEmitters = 0;
 	uint32_t uberFallbacks = 0;
 };
+
+// 이미터의 시뮬레이션 단계 설정. 
+// 이미터별 각자 단계 설정이 아닌 전체 이미터가 하나의 단계(PSO)를 고정해서 실행한다.
+enum class GpuSimStage : uint32_t
+{
+	Prepare, // UAV 전환 작업
+	EmitterUpdate,
+	ParticleUpdate,
+	ParticleSpawn,
+	Finalize,
+	Readback, // 프로파일링, 개수 복사 작업
+	Present,  // Draw 상태
+	End,
+};
+
 
 class GpuEmitterInstance
 {
@@ -39,6 +55,13 @@ public:
 	void Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& t);
 	void Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition);
 	void OnSubmitted(uint64_t fence);
+
+	// ----- 단계별 Compute 작업의 함수들 -----
+	bool BeginTick(float deltaTime, const OwnerTransform& t);
+	void StageBarriers(ComputeContext& ctx, GpuSimStage stage);
+	void StageWork(ComputeContext& ctx, GpuSimStage stage);
+	void EndTick();
+	// ----------------------------------------
 
 	// 입력값 바이트만 교체 (레이아웃 동일). 다음 Tick 부터 반영
 	void SetModuleParamData(const std::vector<uint8_t>& data);
@@ -67,6 +90,10 @@ public:
 private:
 	void ReadCountersIfReady();
 	void LoadModuleParams();
+	// ----- 단계별 PSO 설정함수 -----
+	void BindRoot(ComputeContext& ctx, bool finalizeStage);
+	const ComputePSO& KernelPSO(EmitterGpuProgram::Kernel k) const;
+	// -----------------------------
 
 	static const uint32_t kReadbackSlots = 3;
 	
@@ -79,7 +106,6 @@ private:
 	IndirectArgsBuffer       m_SpawnArgs;      // DispatchIndirect (x, y, z)
 	IndirectArgsBuffer       m_FrameArgs;      // [0 - 15] : DrawIndirect 인자 (6, AliveCount, 0, 0) / [16 - 27] : DispatchIndirect 인자 (다음 프레임의 ParticleUpdate 그룹 수, 1, 1)
 
-
 	// b1 ModuleParams: ConstantBufferSize 만큼, 16 바이트 정렬 (SetDynamicConstantBufferView 조건)
 	struct alignas(16) Chunk16 { uint8_t bytes[16]; };
 	std::vector<Chunk16>     m_ModuleParams;
@@ -87,6 +113,12 @@ private:
 	std::vector<Chunk16>     m_UberParams;
 	alignas(16) EmitterLayoutCB m_UberLayout;
 	bool                     m_UberOk = false;
+
+	// ----- 단계별 PSO 설정값 -----
+	alignas(16) uint8_t		 m_TickEngineCB[112] = {};
+	bool					 m_TickActive = false;
+	bool					 m_TickUber = false;
+	// -----------------------------
 
 	ReadbackBuffer           m_Readback[kReadbackSlots];
 	uint64_t                 m_ReadbackFence[kReadbackSlots] = {};

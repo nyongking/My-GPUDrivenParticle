@@ -60,6 +60,9 @@ public:
 	void OnSubmitted(uint64_t fence);
 	void Render(GraphicsContext& gfx, const Math::Camera& camera);
 
+	void SetStageMajor(bool stageMajor) { m_StageMajor = stageMajor; }
+	bool StageMajor() const { return m_StageMajor; }
+
 	bool                Empty() const { return m_Items.empty(); }
 	uint32_t            Count() const { return uint32_t(m_Items.size()); }
 	uint32_t            AliveTotal() const;
@@ -80,4 +83,7 @@ private:
 	Settings          m_Settings;
 	BuildResult       m_LastBuild;
 	std::string       m_LastError;
+
+	bool			  m_StageMajor = false;
+	std::vector<GpuEmitterInstance*> m_StagedScratch;
 };

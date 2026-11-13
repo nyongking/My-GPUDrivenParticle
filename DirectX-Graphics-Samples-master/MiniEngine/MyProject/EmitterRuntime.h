@@ -30,6 +30,8 @@ public:
 	void Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition);
 	void Render(GraphicsContext& gfx, const Math::Camera& camera);
 	
+	GpuEmitterInstance* StagedGpu() { return (m_Ready && m_ActiveBackend == EmitterBackend::Gpu) ? &m_Gpu : nullptr; }
+	
 	void OnSubmitted(uint64_t fence);
 	void ApplyPending();
 
