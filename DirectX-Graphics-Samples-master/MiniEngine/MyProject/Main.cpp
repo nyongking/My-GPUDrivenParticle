@@ -481,7 +481,7 @@ void MyProject::TickRecorder()
         sprintf_s(extra, ",%s,%u,%d,%u,%u",
             UberGpuProgram::ModeName(UberGpuProgram::Mode()), ps.livePrograms,
             EmitterRuntime::ProgramCacheEnabled() ? 1 : 0, fs.uberEmitters, variants);
-        m_LastSaveOk = m_Recorder.AppendCSV("ParticleProfile_week5_bench_v2.csv",
+        m_LastSaveOk = m_Recorder.AppendCSV("ParticleProfile_week5_bench_v3.csv",
             header + ",mode,generatedPrograms,cache,uberEmitters,shaderVariants", std::string(values) + extra, m_RecordTag, capacity);
         return;
     }
@@ -564,6 +564,9 @@ void MyProject::DrawBenchmarkImGui()
         ImGui::Checkbox(label, &m_BenchUseCount[i]);
     }
     ImGui::InputInt("Warmup frames", &m_BenchWarmup);
+    ImGui::Checkbox("Emitter order", &m_BenchEmitterOrder);
+    ImGui::SameLine();
+    ImGui::Checkbox("Stage order", &m_BenchStageOrder);
     ImGui::EndDisabled();
     ImGui::TextDisabled("record frames = 'Frames' below, capacity / spawn rate / presets = Test Scene settings");
 

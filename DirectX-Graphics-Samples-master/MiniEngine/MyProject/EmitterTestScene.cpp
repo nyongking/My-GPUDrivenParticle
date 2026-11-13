@@ -186,19 +186,11 @@ void EmitterTestScene::Shutdown()
 
 void EmitterTestScene::Tick(ComputeContext& ctx, float deltaTime)
 {
-	if (!m_StageMajor)
-	{
-		for (Item& item : m_Items)
-		{
-			item.runtime->ApplyPending();
-			item.runtime->Tick(ctx, deltaTime, item.owner);
-		}
-		return;
-	}
 	std::vector<GpuEmitterInstance*>& gpus = m_StagedScratch;
 	gpus.clear();
 	for (Item& item : m_Items)
 	{
+		item.runtime->ApplyPending();
 		if (GpuEmitterInstance* gpu = item.runtime->StagedGpu())
 		{
 			if (gpu->BeginTick(deltaTime, item.owner))
@@ -216,8 +208,11 @@ void EmitterTestScene::Tick(ComputeContext& ctx, float deltaTime)
 		for (GpuEmitterInstance* gpu : gpus)
 			gpu->StageBarriers(ctx, stage);
 		for (GpuEmitterInstance* gpu : gpus)
-			gpu->EndTick();
+			gpu->StageWork(ctx, stage);
 	}
+
+	for (GpuEmitterInstance* gpu : gpus)
+		gpu->EndTick();
 
 
 }

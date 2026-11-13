@@ -28,14 +28,6 @@ namespace
 		return s_Catalog;
 	}
 
-	bool HasModuleId(const std::vector<ModuleDesc>& modules, ModuleId id)
-	{
-		for (const ModuleDesc& m : modules)
-			if (m.id == id)
-				return true;
-		return false;
-	}
-
 	// Uber / 생성 방식 상태 한 줄 + 공유 셰이더 데이터 문제 (ImGui 는 한글이 깨지므로 영어, 자세한 내용은 출력 창)
 	void DrawSimStatus(const EmitterRuntime& runtime)
 	{
@@ -374,10 +366,7 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 		const std::vector<ModuleDesc>& catalog = ModuleCatalog();
 		for (size_t c = 0; c < catalog.size(); ++c)
 		{
-			// 이미 있는 모듈은 추가할 수 있지만, 공유 셰이더에는 자리가 하나뿐이라 생성 방식으로 실행된다
-			const bool dup = HasModuleId(runtime.EditModules(), catalog[c].id);
-			const std::string label = catalog[c].name + (dup ? "  (already in stack: runs Generated)" : "");
-			if (ImGui::Selectable(label.c_str()))
+			if (ImGui::Selectable(catalog[c].name.c_str()))
 				runtime.AddModule(catalog[c]);
 		}
 		ImGui::EndCombo();

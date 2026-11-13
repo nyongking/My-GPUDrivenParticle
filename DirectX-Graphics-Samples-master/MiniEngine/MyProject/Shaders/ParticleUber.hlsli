@@ -3,113 +3,88 @@
 #define NO_ATTRIBUTE 0xFFFFFFFF      // 렌더러(ParticleSpriteVS) 와 같은 규칙
 
 // =====================================================================
-// 0. 모듈 번호 (== 실행 순서). C++ ModuleId 와 같은 순서여야 한다
+// 0. 모듈 번호, C++의 ModuleID
 // =====================================================================
-#define MOD_SPAWN_RATE              (1u << 0)   // EmitterUpdate
-#define MOD_INITIALIZE_PARTICLE     (1u << 1)   // ParticleSpawn
-#define MOD_SPHERE_LOCATION         (1u << 2)   // ParticleSpawn
-#define MOD_ADD_VELOCITY_IN_CONE    (1u << 3)   // ParticleSpawn
-#define MOD_PARTICLE_STATE          (1u << 4)   // ParticleUpdate
-#define MOD_GRAVITY_FORCE           (1u << 5)   // ParticleUpdate
-#define MOD_SOLVE_FORCE_AND_VELOCITY (1u << 6)  // ParticleUpdate
-#define MOD_SUBUV_ANIMATION         (1u << 7)   // ParticleUpdate
-
-// perComponent 플래그 (벡터 입력값만 의미 있음. 스칼라는 성분이 하나라 상관없다)
-#define PC_INITIALIZE_PARTICLE_POS      (1u << 0)
-#define PC_INITIALIZE_PARTICLE_COLOR    (1u << 1)
-#define PC_ADD_VELOCITY_IN_CONE_AXIS    (1u << 2)
+#define MODID_SPAWN_RATE                0
+#define MODID_INITIALIZE_PARTICLE       1
+#define MODID_SPHERE_LOCATION           2
+#define MODID_ADD_VELOCITY_IN_CONE      3
+#define MODID_PARTICLE_STATE            4
+#define MODID_GRAVITY_FORCE             5
+#define MODID_SOLVE_FORCE_AND_VELOCITY  6
+#define MODID_SUBUV_ANIMATION           7
 
 // =====================================================================
 // 1. 레이아웃 (b2). 이미터마다 다른 값. 전부 uint 라 C++ 구조체와 그대로 맞는다
 // =====================================================================
 cbuffer EmitterLayout : register(b2)
 {
-    uint ModuleMask; // 0   MOD_ 비트
-    uint PerComponentMask; // 4   PC_ 비트
-    uint Slot_InitializeParticle; // 8   스택에서의 순번. RandomRange salt 를 생성 방식과 같게 만들기 위해
-    uint Slot_SphereLocation; // 12
-    uint Slot_AddVelocityInCone; // 16
-    uint Ofs_Emitter_SpawnCount; // 20  Emitter 블록
-    uint Ofs_Emitter_SpawnRemainder; // 24
-    uint Ofs_Position; // 28  Particles 블록 (SoA 열 시작 = offset * Capacity)
-    uint Ofs_Color; // 32
-    uint Ofs_Size; // 36
-    uint Ofs_Lifetime; // 40
-    uint Ofs_Age; // 44
-    uint Ofs_Mass; // 48
-    uint Ofs_NormalizedAge; // 52
-    uint Ofs_Velocity; // 56
-    uint Ofs_Acceleration; // 60
-    uint Ofs_SubImageIndex; // 64
-    uint3 _LayoutPad; // 68  -> 전체 80 바이트
-    // 속성이 늘면 여기에 추가 (C++ EmitterLayoutCB 도 같이)
+    uint EmitterInstBegin;
+    uint EmitterInstCount;
+    uint SpawnInstBegin;
+    uint SpawnInstCount;
+    uint UpdateInstBegin;
+    uint UpdateInstCount; // 20
+    uint Ofs_Emitter_SpawnCount; // 24  Emitter 블록
+    uint Ofs_Emitter_SpawnRemainder; // 28
+    uint Ofs_Position; // 32  Particles 블록 (SoA 열 시작 = offset * Capacity)
+    uint Ofs_Color; // 36
+    uint Ofs_Size; // 40
+    uint Ofs_Lifetime; // 44
+    uint Ofs_Age; // 48
+    uint Ofs_Mass; // 52
+    uint Ofs_NormalizedAge; // 56
+    uint Ofs_Velocity; // 60
+    uint Ofs_Acceleration; // 64
+    uint Ofs_SubImageIndex; // 68
+    uint2 _LayoutPad; // 72
 };
 
-bool HasModule(uint bit)
-{
-    return (ModuleMask & bit) != 0;
-}
 bool HasAttr(uint ofs)
 {
     return ofs != NO_ATTRIBUTE;
 }
 
-// =====================================================================
-// 2. 모듈 입력값 (b1). 모든 모듈의 자리를 고정한다. 스택에 없는 모듈의 자리는 0
-// =====================================================================
-cbuffer ModuleParams : register(b1)
+StructuredBuffer<uint> ModuleData : register(t0);
+
+struct ModuleInst
 {
-    // ---- SpawnRate ----
-    float SpawnRate_Rate; // 0
-
-    // ---- InitializeParticle ----
-    float InitializeParticle_Size_Min; // 4
-    float InitializeParticle_Size_Max; // 8
-    float InitializeParticle_Mass_Min; // 12
-    float InitializeParticle_Mass_Max; // 16
-    float InitializeParticle_Lifetime_Min; // 20
-    float InitializeParticle_Lifetime_Max; // 24
-    float3 InitializeParticle_Pos_Min; // 32   (16 바이트 경계를 넘지 않게 밀림)
-    float3 InitializeParticle_Pos_Max; // 48
-    float4 InitializeParticle_Color_Min; // 64
-    float4 InitializeParticle_Color_Max; // 80
-
-    // ---- SphereLocation ----
-    float SphereLocation_Radius_Min; // 96
-    float SphereLocation_Radius_Max; // 100
-    uint SphereLocation_SurfaceOnly; // 104
-
-    // ---- AddVelocityInCone ----
-    float AddVelocityInCone_Speed_Min; // 108
-    float AddVelocityInCone_Speed_Max; // 112
-    float AddVelocityInCone_ConeAngle_Min; // 116
-    float AddVelocityInCone_ConeAngle_Max; // 120
-    float3 AddVelocityInCone_ConeAxis_Min; // 128
-    float3 AddVelocityInCone_ConeAxis_Max; // 144
-    float AddVelocityInCone_InnerConeAngle_Min; // 156
-    float AddVelocityInCone_InnerConeAngle_Max; // 160
-    float AddVelocityInCone_SpeedFalloff_Min; // 164
-    float AddVelocityInCone_SpeedFalloff_Max; // 168
-    float AddVelocityInCone_Distribution_Min; // 172
-    float AddVelocityInCone_Distribution_Max; // 176
-    uint AddVelocityInCone_LocalSpace; // 180
-
-    // ---- ParticleState ----
-    uint ParticleState_KillOnLifetime; // 184
-
-    // ---- GravityForce ----
-    float3 GravityForce_Gravity; // 192
-
-    // ---- SolveForceandVelocity ---- (생성기와 같은 이름: "Solve Force and Velocity" 에서 공백만 뺌)
-    float SolveForceandVelocity_AccelLimit; // 204
-    float SolveForceandVelocity_SpeedLimit; // 208
-
-    // ---- SubUVAnimation ----
-    float SubUVAnimation_StartFrame; // 212
-    float SubUVAnimation_EndFrame; // 216
-    uint SubUVAnimation_Loop; // 220
-    float SubUVAnimation_FramesPerSecond; // 224  -> 전체 228 바이트 (C++ 은 16 단위로 240)
+    uint Id;
+    uint Slot;
+    uint Base;
+    uint Flags;
 };
+
+ModuleInst LoadInst(uint i)
+{
+    ModuleInst m;
+    m.Id = ModuleData[i * 4 + 0];
+    m.Slot = ModuleData[i * 4 + 1];
+    m.Base = ModuleData[i * 4 + 2];
+    m.Flags = ModuleData[i * 4 + 3];
+    return m;
+}
+
+uint ParamU(ModuleInst m, uint k)
+{
+    return ModuleData[m.Base + k];
+}
+float ParamF(ModuleInst m, uint k)
+{
+    return asfloat(ParamU(m, k));
+}
+float3 ParamF3(ModuleInst m, uint k)
+{
+    return float3(ParamF(m, k), ParamF(m, k + 1), ParamF(m, k + 2));
+}
+float4 ParamF4(ModuleInst m, uint k)
+{
+    return float4(ParamF(m, k), ParamF(m, k + 1), ParamF(m, k + 2), ParamF(m, k + 3));
+}
+bool PerComp(ModuleInst m, uint paramIndex)
+{
+    return (m.Flags & (1u << paramIndex)) != 0;
+}
 
 // =====================================================================
 // 3. RandomRange
@@ -253,9 +228,9 @@ void StoreEmitter(EmitterState e)
 #define PARAM(n) P_##n
 
 // ---- [EmitterUpdate] Spawn Rate ----
-void Module_SpawnRate(inout EmitterState e)
+void Module_SpawnRate(inout EmitterState e, ModuleInst m)
 {
-    const float P_Rate = SpawnRate_Rate;
+    const float P_Rate = ParamF(m, 0);
 
     const float want = PARAM(Rate) * DeltaTime + e.SpawnRemainder;
     const uint n = (uint) want;
@@ -264,16 +239,13 @@ void Module_SpawnRate(inout EmitterState e)
 }
 
 // ---- [ParticleSpawn] Initialize Particle ----
-void Module_InitializeParticle(inout Particle p, uint index)
+void Module_InitializeParticle(inout Particle p, uint index, ModuleInst m)
 {
-    const uint s = Slot_InitializeParticle;
-    const float P_Size = RandomParam1(InitializeParticle_Size_Min, InitializeParticle_Size_Max, index, ParamSalt(s, 0));
-    const float P_Mass = RandomParam1(InitializeParticle_Mass_Min, InitializeParticle_Mass_Max, index, ParamSalt(s, 1));
-    const float P_Lifetime = RandomParam1(InitializeParticle_Lifetime_Min, InitializeParticle_Lifetime_Max, index, ParamSalt(s, 2));
-    const float3 P_Pos = RandomParam3(InitializeParticle_Pos_Min, InitializeParticle_Pos_Max, index, ParamSalt(s, 3),
-                                           (PerComponentMask & PC_INITIALIZE_PARTICLE_POS) != 0);
-    const float4 P_Color = RandomParam4(InitializeParticle_Color_Min, InitializeParticle_Color_Max, index, ParamSalt(s, 4),
-                                           (PerComponentMask & PC_INITIALIZE_PARTICLE_COLOR) != 0);
+    const float P_Size = RandomParam1(ParamF(m, 0), ParamF(m, 1), index, ParamSalt(m.Slot, 0));
+    const float P_Mass = RandomParam1(ParamF(m, 2), ParamF(m, 3), index, ParamSalt(m.Slot, 1));
+    const float P_Lifetime = RandomParam1(ParamF(m, 4), ParamF(m, 5), index, ParamSalt(m.Slot, 2));
+    const float3 P_Pos = RandomParam3(ParamF3(m, 6), ParamF3(m, 9), index, ParamSalt(m.Slot, 3), PerComp(m, 3));
+    const float4 P_Color = RandomParam4(ParamF4(m, 12), ParamF4(m, 16), index, ParamSalt(m.Slot, 4), PerComp(m, 4));
 
     p.Position = OwnerPosition + PARAM(Pos);
     p.Mass = PARAM(Mass);
@@ -284,12 +256,11 @@ void Module_InitializeParticle(inout Particle p, uint index)
 }
 
 // ---- [ParticleSpawn] Sphere Location ----
-void Module_SphereLocation(inout Particle p, uint index)
+void Module_SphereLocation(inout Particle p, uint index, ModuleInst m)
 {
-    const uint s = Slot_SphereLocation;
-    const float P_Radius = RandomParam1(SphereLocation_Radius_Min, SphereLocation_Radius_Max, index, ParamSalt(s, 0));
-    const uint P_SurfaceOnly = SphereLocation_SurfaceOnly;
-
+    const float P_Radius = RandomParam1(ParamF(m, 0), ParamF(m, 1), index, ParamSalt(m.Slot, 0));
+    const uint P_SurfaceOnly = ParamU(m, 2);
+    
     const float kTwoPi = 6.28318530f;
     const float z = Random01(index, 0) * 2.f - 1.f;
     const float phi = Random01(index, 1) * kTwoPi;
@@ -300,17 +271,15 @@ void Module_SphereLocation(inout Particle p, uint index)
 }
 
 // ---- [ParticleSpawn] Add Velocity In Cone ----
-void Module_AddVelocityInCone(inout Particle p, uint index)
+void Module_AddVelocityInCone(inout Particle p, uint index, ModuleInst m)
 {
-    const uint s = Slot_AddVelocityInCone;
-    const float P_Speed = RandomParam1(AddVelocityInCone_Speed_Min, AddVelocityInCone_Speed_Max, index, ParamSalt(s, 0));
-    const float P_ConeAngle = RandomParam1(AddVelocityInCone_ConeAngle_Min, AddVelocityInCone_ConeAngle_Max, index, ParamSalt(s, 1));
-    const float3 P_ConeAxis = RandomParam3(AddVelocityInCone_ConeAxis_Min, AddVelocityInCone_ConeAxis_Max, index, ParamSalt(s, 2),
-                                                 (PerComponentMask & PC_ADD_VELOCITY_IN_CONE_AXIS) != 0);
-    const float P_InnerConeAngle = RandomParam1(AddVelocityInCone_InnerConeAngle_Min, AddVelocityInCone_InnerConeAngle_Max, index, ParamSalt(s, 3));
-    const float P_SpeedFalloff = RandomParam1(AddVelocityInCone_SpeedFalloff_Min, AddVelocityInCone_SpeedFalloff_Max, index, ParamSalt(s, 4));
-    const float P_Distribution = RandomParam1(AddVelocityInCone_Distribution_Min, AddVelocityInCone_Distribution_Max, index, ParamSalt(s, 5));
-    const uint P_LocalSpace = AddVelocityInCone_LocalSpace;
+    const float P_Speed = RandomParam1(ParamF(m, 0), ParamF(m, 1), index, ParamSalt(m.Slot, 0));
+    const float P_ConeAngle = RandomParam1(ParamF(m, 2), ParamF(m, 3), index, ParamSalt(m.Slot, 1));
+    const float3 P_ConeAxis = RandomParam3(ParamF3(m, 4), ParamF(m, 7), index, ParamSalt(m.Slot, 2), PerComp(m, 2));
+    const float P_InnerConeAngle = RandomParam1(ParamF(m, 10), ParamF(m, 11), index, ParamSalt(m.Slot, 3));
+    const float P_SpeedFalloff = RandomParam1(ParamF(m, 12), ParamF(m, 13), index, ParamSalt(m.Slot, 4));
+    const float P_Distribution = RandomParam1(ParamF(m, 14), ParamF(m, 15), index, ParamSalt(m.Slot, 5));
+    const uint P_LocalSpace = ParamU(m, 16);
 
     const float outerA = radians(clamp(PARAM(ConeAngle), 0.f, 180.f));
     const float innerA = radians(clamp(PARAM(InnerConeAngle), 0.f, clamp(PARAM(ConeAngle), 0.f, 180.f)));
@@ -338,9 +307,9 @@ void Module_AddVelocityInCone(inout Particle p, uint index)
 }
 
 // ---- [ParticleUpdate] Particle State ----
-void Module_ParticleState(inout Particle p, uint index, inout bool alive)
+void Module_ParticleState(inout Particle p, uint index, inout bool alive, ModuleInst m)
 {
-    const uint P_KillOnLifetime = ParticleState_KillOnLifetime;
+    const uint P_KillOnLifetime = ParamU(m, 0);
 
     p.Age += DeltaTime;
     const float t = (p.Lifetime > 0.f) ? p.Age / p.Lifetime : 1.f;
@@ -350,18 +319,18 @@ void Module_ParticleState(inout Particle p, uint index, inout bool alive)
 }
 
 // ---- [ParticleUpdate] Gravity Force ----
-void Module_GravityForce(inout Particle p, uint index)
+void Module_GravityForce(inout Particle p, uint index, ModuleInst m)
 {
-    const float3 P_Gravity = GravityForce_Gravity;
+    const float3 P_Gravity = ParamF3(m, 0);
 
     p.Acceleration += PARAM(Gravity) / p.Mass;
 }
 
 // ---- [ParticleUpdate] Solve Force and Velocity ----
-void Module_SolveForceandVelocity(inout Particle p, uint index)
+void Module_SolveForceandVelocity(inout Particle p, uint index, ModuleInst m)
 {
-    const float P_AccelLimit = SolveForceandVelocity_AccelLimit;
-    const float P_SpeedLimit = SolveForceandVelocity_SpeedLimit;
+    const float P_AccelLimit = ParamF(m, 0);
+    const float P_SpeedLimit = ParamF(m, 1);
 
     float3 accel = p.Acceleration;
     const float aLen = length(accel);
@@ -379,12 +348,12 @@ void Module_SolveForceandVelocity(inout Particle p, uint index)
 }
 
 // ---- [ParticleUpdate] SubUV Animation ----
-void Module_SubUVAnimation(inout Particle p, uint index)
+void Module_SubUVAnimation(inout Particle p, uint index, ModuleInst m)
 {
-    const float P_StartFrame = SubUVAnimation_StartFrame;
-    const float P_EndFrame = SubUVAnimation_EndFrame;
-    const uint P_Loop = SubUVAnimation_Loop;
-    const float P_FramesPerSecond = SubUVAnimation_FramesPerSecond;
+    const float P_StartFrame = ParamF(m, 0);
+    const float P_EndFrame = ParamF(m, 1);
+    const uint P_Loop = ParamU(m, 2);
+    const float P_FramesPerSecond = ParamU(m, 3);
 
     const float count = max(PARAM(EndFrame) - PARAM(StartFrame) + 1.f, 1.f);
     float t;
@@ -405,32 +374,66 @@ void Module_SubUVAnimation(inout Particle p, uint index)
 // =====================================================================
 void EmitterUpdate(inout EmitterState e)
 {
-    if (HasModule(MOD_SPAWN_RATE))
-        Module_SpawnRate(e);
+    [loop]
+    for (uint i = 0; i < EmitterInstCount; ++i)
+    {
+        const ModuleInst m = LoadInst(EmitterInstBegin + i);
+        switch (m.Id)
+        {
+            case MODID_SPAWN_RATE:
+                Module_SpawnRate(e, m);
+                break;
+            default:
+                break;
+        }
+    }  
+
 }
 
 void ParticleSpawn(inout Particle p, uint index)
 {
-    if (HasModule(MOD_INITIALIZE_PARTICLE))
-        Module_InitializeParticle(p, index);
-    if (HasModule(MOD_SPHERE_LOCATION))
-        Module_SphereLocation(p, index);
-    if (HasModule(MOD_ADD_VELOCITY_IN_CONE))
-        Module_AddVelocityInCone(p, index);
-    // [Initial copy] 이번 범위에서는 지원하지 않음 (3단계에서 경고)
+    [loop]
+    for (uint i = 0; i < SpawnInstCount; ++i)
+    {
+        const ModuleInst m = LoadInst(SpawnInstBegin + i);
+        switch (m.Id)
+        {
+            case MODID_INITIALIZE_PARTICLE:
+                Module_InitializeParticle(p, index, m);
+                break;
+            case MODID_SPHERE_LOCATION:
+                Module_SphereLocation(p, index, m);
+                break;
+            case MODID_ADD_VELOCITY_IN_CONE:
+                Module_AddVelocityInCone(p, index, m);
+                break;
+        }
+    }
 }
 
 void ParticleUpdate(inout Particle p, uint index, inout bool alive)
 {
-    // [Previous copy] 이번 범위에서는 지원하지 않음 (3단계에서 경고)
-    if (HasModule(MOD_PARTICLE_STATE))
-        Module_ParticleState(p, index, alive);
-    if (HasModule(MOD_GRAVITY_FORCE))
-        Module_GravityForce(p, index);
-    if (HasModule(MOD_SOLVE_FORCE_AND_VELOCITY))
-        Module_SolveForceandVelocity(p, index);
-    if (HasModule(MOD_SUBUV_ANIMATION))
-        Module_SubUVAnimation(p, index);
+    [loop]
+    for (uint i = 0; i < UpdateInstCount; ++i)
+    {
+        const ModuleInst m = LoadInst(UpdateInstBegin + i);
+        switch (m.Id)
+        {
+            case MODID_PARTICLE_STATE:
+                Module_ParticleState(p, index, alive, m);
+            break;
+            case MODID_GRAVITY_FORCE:
+                Module_GravityForce(p, index, m);
+                break;
+            case MODID_SOLVE_FORCE_AND_VELOCITY:
+                Module_SolveForceandVelocity(p, index, m);
+                break;
+             case MODID_SUBUV_ANIMATION:
+                Module_SubUVAnimation(p, index, m);
+                break;
+        }
+    }
+
 }
 
 // =====================================================================

@@ -240,6 +240,9 @@ bool GpuEmitterInstance::BeginTick(float deltaTime, const OwnerTransform& t)
 	return true;
 }
 
+// ------------------------------
+// 단계별 Barrier로 인해 차이가 두드러짐
+// ------------------------------
 void GpuEmitterInstance::StageBarriers(ComputeContext& ctx, GpuSimStage stage)
 {
 	if (!m_TickActive)

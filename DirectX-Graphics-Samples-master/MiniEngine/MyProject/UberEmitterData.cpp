@@ -17,14 +17,11 @@
 namespace
 {
 	constexpr uint32_t kModuleCount = uint32_t(ModuleId::Count);
+	constexpr uint32_t kExpectedRecordDwords[] = { 1, 20, 3, 17, 1, 3, 2, 4 };
+
+	const Stage kUberStages[] = { Stage::EmitterUpdate, Stage::ParticleSpawn, Stage::ParticleUpdate };
 
 	bool ValidId(ModuleId id) { return uint32_t(id) < kModuleCount; }
-
-	// "Solve Force and Velocity" -> "SolveForceandVelocity" (ModuleScope 에서 "M0_" 만 뺀다)
-	std::string UberScope(const std::string& moduleName)
-	{
-		return ModuleScope(0, moduleName).substr(3);
-	}
 
 	// 고정 자리 Block 을 만들 기준 모듈들. ModuleId 순서 그대로 (값은 쓰지 않으므로 아무거나)
 	std::vector<ModuleDesc> ReferenceModules()
@@ -45,10 +42,62 @@ namespace
 		return m;
 	}
 
-	std::vector<std::string> UberSlotNames(const ModuleDesc& m, const ParamDesc& p)
+	const std::vector<ModuleDesc>& References()
 	{
-		return ParamSlotNames(p.name, IsUberRangeParam(m.stage, p.type) ? ParamKind::RandomRange : ParamKind::Constant);
+		static const std::vector<ModuleDesc> sRef = ReferenceModules();
+		return sRef;
 	}
+
+	void BuildModuleData(const std::vector<ModuleDesc>& modules, std::vector<uint8_t>& out,
+		EmitterLayoutCB* L, std::vector<std::string>* errors)
+	{
+		std::vector<uint32_t> order;
+		uint32_t begin[3] = {};
+		uint32_t count[3] = {};
+		for (uint32_t i = 0; i < 3; ++i)
+		{
+			begin[i] = uint32_t(order.size());
+			for (uint32_t j = 0; j < modules.size(); ++j)
+			{
+				const ModuleDesc& m = modules[j];
+				if (!ValidId(m.id) || kUberStages[i] != m.stage)
+					continue;
+				if (References()[uint32_t(m.id)].stage != m.stage)
+					continue;
+
+				order.push_back(j);
+
+			}
+			count[i] = uint32_t(order.size()) - begin[i];
+		}
+
+		if (errors)
+		{
+			for (const ModuleDesc& m : modules)
+			{
+				if (!ValidId(m.id))
+				{
+					errors->push_back(m.name + ": 공유 셰이더가 모르는 모듈, Id가 없음");
+				}
+				else if (References()[uint32_t(m.id)].stage != m.stage)
+				{
+					errors->push_back(m.name + "공유 셰이더가 이 모듈을 실행하는 단계와 다름");
+				}
+			}
+		}
+
+		uint32_t instCount = uint32_t(order.size());
+		uint32_t total = instCount * 4;
+		std::vector<UberParamRecord> records(instCount);
+		for (uint32_t i = 0; i < instCount; ++i)
+		{
+			records[i] = MakeUberParamRecord()
+		}
+
+
+
+	}
+
 
 	uint32_t FindOffset(const Block& block, const char* fullName)
 	{
@@ -83,6 +132,18 @@ const char* ModuleIdName(ModuleId id)
 bool IsUberRangeParam(Stage stage, const TypeInfo* type)
 {
 	return stage == Stage::ParticleSpawn && IsFloatFamily(type);
+}
+
+UberParamRecord MakeUberParamRecord(const ModuleDesc& m)
+{
+	UberParamRecord ret;
+	for (const ParamDesc& desc : m.params)
+	{
+		ret.paramDword.push_back(ret.dwords);
+		const uint32_t s = desc.type ? desc.type->size / 4 : 0;
+		ret.dwords += IsUberRangeParam(m.stage, desc.type) ? s * 2 : s;
+	}
+	return ret;
 }
 
 const Block& UberParamBlock()
