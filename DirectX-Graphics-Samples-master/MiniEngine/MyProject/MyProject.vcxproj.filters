@@ -279,6 +279,9 @@
     <None Include="Shaders\ParticleListCommon.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
+    <None Include="Shaders\SpriteFacing.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
     <None Include="Shaders\ParticleUber.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>

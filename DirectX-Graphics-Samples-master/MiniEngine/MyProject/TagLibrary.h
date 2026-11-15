@@ -27,4 +27,8 @@ namespace Particles
 	constexpr const char* Mass =			"Particles.Mass";
 	constexpr const char* Acceleration	=	"Particles.Acceleration";
 	constexpr const char* SubImageIndex =	"Particles.SubImageIndex";
+	constexpr const char* SpriteSize =		"Particles.SpriteSize";		// float2 (full width / height)
+	constexpr const char* SpriteRotation =	"Particles.SpriteRotation";	// float (degrees)
+	constexpr const char* SpriteFacing =	"Particles.SpriteFacing";	// float3
+	constexpr const char* SpriteAlignment =	"Particles.SpriteAlignment";// float3
 }

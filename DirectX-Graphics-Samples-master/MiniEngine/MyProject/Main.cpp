@@ -81,6 +81,9 @@ private:
     bool            m_MoveOwner = false;        // 위아래로 움직이기 (Owner.Velocity 확인)
     float           m_OwnerTime = 0.f;
 
+    bool            m_TimeStop = false;         // true = 시뮬레이션 정지 (카메라 / UI 는 계속)
+    bool            m_StepOnce = false;         // 정지 중 한 프레임만 진행
+
     static constexpr const wchar_t* kSimTimerName = L"Particle Simulation";   // 모든 이미터 시뮬레이션의 GPU 타이머
 
     EmitterTestScene            m_TestScene;
@@ -175,11 +178,16 @@ void MyProject::Update(float deltaT)
 
     m_Runtime.ApplyPending();     // UI 가 지난 프레임에 남긴 변경을 Tick 전에 적용
 
-    const float simDt = m_FixedDt ? (1.f / 60.f) : deltaT;
+    // 타임 스톱: 시뮬레이션 / 소유자 시간을 0 으로 (Tick 은 그대로 돌려 펜스 / 버퍼 흐름 유지). Step 은 한 프레임만 진행
+    const bool  advance = !m_TimeStop || m_StepOnce;
+    m_StepOnce = false;
+    const float frameDt = m_FixedDt ? (1.f / 60.f) : deltaT;
+    const float simDt = advance ? frameDt : 0.f;
+    const float ownerDt = advance ? (m_TimeStop ? frameDt : deltaT) : 0.f;
 
     // 소유자: Y 축 회전 + (선택) 위아래 이동
-    m_OwnerTime += deltaT;
-    m_OwnerAngle += m_RotateSpeedDeg * (3.14159265f / 180.f) * deltaT;
+    m_OwnerTime += ownerDt;
+    m_OwnerAngle += m_RotateSpeedDeg * (3.14159265f / 180.f) * ownerDt;
     const float bob = m_MoveOwner ? std::sin(m_OwnerTime * 2.f) : 0.f;   // 위아래 1m
 
     OwnerTransform owner;
@@ -275,6 +283,14 @@ void MyProject::UpdateImGui(float deltaT)
     ImGui::End();
 
     ImGui::Begin("Particle");
+
+    ImGui::SeparatorText("Time");
+    ImGui::Checkbox("Time stop", &m_TimeStop);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!m_TimeStop);
+    if (ImGui::Button("Step"))
+        m_StepOnce = true;
+    ImGui::EndDisabled();
 
     ImGui::SeparatorText("Owner");
     ImGui::SliderFloat("Rotate (deg/s)", &m_RotateSpeedDeg, 0.f, 360.f);

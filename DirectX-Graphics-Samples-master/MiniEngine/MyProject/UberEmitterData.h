@@ -61,7 +61,8 @@ struct EmitterLayoutCB
 	uint32_t ofsVelocity = Uber::kNoAttribute;
 	uint32_t ofsAcceleration = Uber::kNoAttribute;
 	uint32_t ofsSubImageIndex = Uber::kNoAttribute;
-	uint32_t pad[2] = {};
+	uint32_t ofsSpriteSize = Uber::kNoAttribute;
+	uint32_t ofsSpriteRotation = Uber::kNoAttribute;
 };
 static_assert(sizeof(EmitterLayoutCB) == 80, "EmitterLayoutCB 는 HLSL EmitterLayout(80 바이트) 과 같아야 한다");
 

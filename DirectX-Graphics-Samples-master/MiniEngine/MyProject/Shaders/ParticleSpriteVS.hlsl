@@ -1,29 +1,53 @@
-cbuffer SpriteConstants : register(b0)
-{
-    float4x4 ViewProj;
-    float4 CamRight;
-    float4 CamUp;
-
-    uint PositionOffset; // Particles.Position 의 offset (파티클 하나 기준 바이트)
-    uint ColorOffset; // Particles.Color
-    uint SizeOffset; // Particles.Size
-    uint Capacity; // 최대 파티클 수 (SoA 열 길이)
-    
-    float4 DefaultColor;
-    float3 DefaultPosition;
-    float DefaultSize;
-    
-    uint SortEnabled; // 1 = sort, 0 = not sorted
-    uint SubImageOffset; // SubImage의 Index
-    float DefaultSubImage; // 152
-    uint SubUVBlend; // 156 1 = 다음 프레임과 섞기
-    
-    float2 SubImageSize; // 160 (가로 칸, 세로 칸)
-    uint SortStride; // 168 정렬 목록 한 칸 바이트 (CPU 4 = uint index / GPU 8 = uint2(index, key))
-    float _pad; // 172
-};
+#include "SpriteFacing.hlsli"
 
 #define NO_ATTRIBUTE 0xFFFFFFFF
+
+// C++ SpriteConstants 와 같은 배치 (304 B)
+cbuffer SpriteConstants : register(b0)
+{
+    float4x4 ViewProj; // 0
+    float4 CamRight; // 64
+    float4 CamUp; // 80
+    float4 CamPosition; // 96
+    float4 CamForward; // 112
+
+    uint PositionOffset; // 128 Particles.Position 의 offset (파티클 하나 기준 바이트)
+    uint ColorOffset; // 132 Particles.Color
+    uint SizeOffset; // 136 Particles.Size
+    uint Capacity; // 140 최대 파티클 수 (SoA 열 길이)
+
+    float4 DefaultColor; // 144
+    float3 DefaultPosition; // 160
+    float DefaultSize; // 172
+
+    uint SortEnabled; // 176 1 = sort, 0 = not sorted
+    uint SubImageOffset; // 180 SubImage의 Index
+    float DefaultSubImage; // 184
+    uint SubUVBlend; // 188 1 = 다음 프레임과 섞기
+
+    float2 SubImageSize; // 192 (가로 칸, 세로 칸)
+    uint SortStride; // 200 정렬 목록 한 칸 바이트 (CPU 4 = uint index / GPU 8 = uint2(index, key))
+    uint SpriteSizeOffset; // 204 연결이 없으면 (Size * 2, Size * 2)
+
+    uint SpriteRotationOffset; // 208
+    float DefaultSpriteRotation; // 212
+    uint VelocityOffset; // 216
+    uint SpriteFacingOffset; // 220
+
+    float3 DefaultVelocity; // 224
+    uint SpriteAlignmentOffset; // 236
+    float3 DefaultSpriteFacing; // 240
+    uint FacingMode; // 252
+    float3 DefaultSpriteAlignment; // 256
+    uint AlignmentMode; // 268
+
+    float2 Pivot; // 272
+    float CameraOffset; // 280
+    float VelocityStretch; // 284
+    float BlendNear; // 288
+    float BlendFar; // 292
+    float2 _Pad; // 296
+};
 
 ByteAddressBuffer ParticleData : register(t0);
 ByteAddressBuffer SortedIndices : register(t1); // 칸의 첫 uint = 파티클 번호 (GPU 는 뒤에 키가 붙음)
@@ -49,6 +73,11 @@ uint ColumnAddress(uint attrOffset, uint typeSize, uint particleIndex)
     return attrOffset * Capacity + particleIndex * typeSize;
 }
 
+// 칸이 연결되어 있으면 버퍼에서, 아니면 기본값 (cbuffer 값이라 draw 전체가 같은 쪽으로 분기)
+float  ReadF1(uint ofs, uint idx, float  def) { return (ofs == NO_ATTRIBUTE) ? def : asfloat(ParticleData.Load(ColumnAddress(ofs, 4, idx))); }
+float2 ReadF2(uint ofs, uint idx, float2 def) { return (ofs == NO_ATTRIBUTE) ? def : asfloat(ParticleData.Load2(ColumnAddress(ofs, 8, idx))); }
+float3 ReadF3(uint ofs, uint idx, float3 def) { return (ofs == NO_ATTRIBUTE) ? def : asfloat(ParticleData.Load3(ColumnAddress(ofs, 12, idx))); }
+float4 ReadF4(uint ofs, uint idx, float4 def) { return (ofs == NO_ATTRIBUTE) ? def : asfloat(ParticleData.Load4(ColumnAddress(ofs, 16, idx))); }
 
 // SubUV: 프레임 번호 -> 격자 칸 안의 uv (왼쪽 위 칸부터 가로로 0, 1, 2 ...)
 float2 SubImageUV(uint frame, float2 uv)
@@ -60,19 +89,39 @@ float2 SubImageUV(uint frame, float2 uv)
 VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
 {
     const uint idx = SortEnabled ? SortedIndices.Load(instanceId * SortStride) : instanceId;
-    
-    // 칸이 연결되어 있으면 버퍼에서, 아니면 기본값 (cbuffer 값이라 draw 전체가 같은 쪽으로 분기)
-    const float3 position = (PositionOffset == NO_ATTRIBUTE) ? DefaultPosition
-        : asfloat(ParticleData.Load3(ColumnAddress(PositionOffset, 12, idx)));
-    const float4 color = (ColorOffset == NO_ATTRIBUTE) ? DefaultColor
-        : asfloat(ParticleData.Load4(ColumnAddress(ColorOffset, 16, idx)));
-    const float size = (SizeOffset == NO_ATTRIBUTE) ? DefaultSize
-        : asfloat(ParticleData.Load(ColumnAddress(SizeOffset, 4, idx)));
-    const float subImage = (SubImageOffset == NO_ATTRIBUTE) ? DefaultSubImage
-        : asfloat(ParticleData.Load(ColumnAddress(SubImageOffset, 4, idx)));
+
+    const float4 color = ReadF4(ColorOffset, idx, DefaultColor);
+    const float size = ReadF1(SizeOffset, idx, DefaultSize);
+    const float subImage = ReadF1(SubImageOffset, idx, DefaultSubImage);
+
+    SpriteShape s;
+    s.Position = ReadF3(PositionOffset, idx, DefaultPosition);
+    s.Size = ReadF2(SpriteSizeOffset, idx, float2(size, size) * 2.f);
+    s.Rotation = ReadF1(SpriteRotationOffset, idx, DefaultSpriteRotation);
+    s.Velocity = ReadF3(VelocityOffset, idx, DefaultVelocity);
+    s.Facing = ReadF3(SpriteFacingOffset, idx, DefaultSpriteFacing);
+    s.Alignment = ReadF3(SpriteAlignmentOffset, idx, DefaultSpriteAlignment);
+
+    SpriteOptions o;
+    o.Facing = FacingMode;
+    o.Alignment = AlignmentMode;
+    o.Pivot = Pivot;
+    o.CameraOffset = CameraOffset;
+    o.VelocityStretch = VelocityStretch;
+    o.BlendNear = BlendNear;
+    o.BlendFar = BlendFar;
+
+    SpriteCamera cam;
+    cam.Position = CamPosition.xyz;
+    cam.Right = CamRight.xyz;
+    cam.Up = CamUp.xyz;
+    cam.Forward = CamForward.xyz;
+
+    float3 center, axisX, axisY;
+    ComputeSpriteAxes(s, o, cam, center, axisX, axisY);
 
     const float2 corner = kCorners[vertexId];
-    const float3 worldPos = position + (corner.x * CamRight.xyz + corner.y * CamUp.xyz) * size;
+    const float3 worldPos = center + corner.x * axisX + corner.y * axisY;
 
     VSOutput output;
     output.position = mul(ViewProj, float4(worldPos, 1.f));

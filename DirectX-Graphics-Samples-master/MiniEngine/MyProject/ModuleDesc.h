@@ -125,6 +125,8 @@ enum class ModuleId : uint32_t
     GravityForce,
     SolveForceAndVelocity,
     SubUVAnimation,
+    InitializeSprite,
+    SpriteRotationRate,
     Count,
     Unknown = 0xFFFFFFFFu       // ModuleLibrary 밖에서 만든 모듈 (공유 셰이더로 실행 불가)
 };

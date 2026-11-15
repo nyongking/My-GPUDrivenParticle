@@ -32,28 +32,49 @@ namespace
 		uint32_t useCountBuffer;   // 28
 		uint32_t emitterIndex;     // 32
 		uint32_t listCapacity;     // 36
-		uint32_t _pad0[2];         // 40
+		uint32_t spriteSizeOffset;      // 40
+		uint32_t spriteRotationOffset;  // 44
 		float4   defaultColor;     // 48
 		float3   defaultPosition;  // 64
 		float    defaultSize;      // 76
 		float    camPos[3];        // 80
 		float    defaultSubImage;  // 92
 		float    camForward[3];    // 96
-		float    _pad1;            // 108
+		float    defaultSpriteRotation; // 108
+		float    camRight[3];      // 112
+		uint32_t velocityOffset;   // 124
+		float    camUp[3];         // 128
+		uint32_t spriteFacingOffset;    // 140
+		float3   defaultVelocity;       // 144
+		uint32_t spriteAlignmentOffset; // 156
+		float3   defaultSpriteFacing;   // 160
+		uint32_t facingMode;            // 172
+		float3   defaultSpriteAlignment;// 176
+		uint32_t alignmentMode;         // 188
+		float2   pivot;            // 192
+		float    cameraOffset;     // 200
+		float    velocityStretch;  // 204
+		float    blendNear;        // 208
+		float    blendFar;         // 212
+		float    _pad0[2];         // 216
 	};
-	static_assert(sizeof(GatherConstants) == 112, "GatherConstants 112 B");
+	static_assert(sizeof(GatherConstants) == 224, "GatherConstants 224 B");
 	static_assert(offsetof(GatherConstants, defaultColor) == 48, "DefaultColor offset 48");
 	static_assert(offsetof(GatherConstants, camPos) == 80, "CamPos offset 80");
 	static_assert(offsetof(GatherConstants, camForward) == 96, "CamForward offset 96");
+	static_assert(offsetof(GatherConstants, camRight) == 112, "CamRight offset 112");
+	static_assert(offsetof(GatherConstants, camUp) == 128, "CamUp offset 128");
+	static_assert(offsetof(GatherConstants, defaultVelocity) == 144, "DefaultVelocity offset 144");
+	static_assert(offsetof(GatherConstants, defaultSpriteFacing) == 160, "DefaultSpriteFacing offset 160");
+	static_assert(offsetof(GatherConstants, defaultSpriteAlignment) == 176, "DefaultSpriteAlignment offset 176");
+	static_assert(offsetof(GatherConstants, pivot) == 192, "Pivot offset 192");
 
-	// ParticleListVS.hlsl 의 cbuffer ListDrawConstants 와 같은 배치
+	// ParticleListVS.hlsl 의 cbuffer ListDrawConstants 와 같은 배치 (빌보드 축은 Gather 가 계산)
 	struct alignas(16) DrawConstants
 	{
 		DirectX::XMFLOAT4X4 viewProj;   // 0
-		DirectX::XMFLOAT4   camRight;   // 64
-		DirectX::XMFLOAT4   camUp;      // 80
 	};
-	static_assert(sizeof(DrawConstants) == 96, "DrawConstants 96 B");
+	static_assert(sizeof(DrawConstants) == 64, "DrawConstants 64 B");
 
 	enum GatherRoot { kGatherCB, kGatherSRVs, kGatherUAVs, kNumGatherRoot };
 	enum DrawRoot { kDrawCB, kDrawSRVs, kDrawEmitters, kDrawTextures, kNumDrawRoot };
@@ -220,10 +241,30 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	gc.defaultPosition = src.defaultPosition;
 	gc.defaultSize = src.defaultSize;
 	gc.defaultSubImage = src.defaultSubImage;
+	gc.spriteSizeOffset = src.spriteSizeOffset;
+	gc.spriteRotationOffset = src.spriteRotationOffset;
+	gc.defaultSpriteRotation = src.defaultSpriteRotation;
+	gc.velocityOffset = src.velocityOffset;
+	gc.spriteFacingOffset = src.spriteFacingOffset;
+	gc.spriteAlignmentOffset = src.spriteAlignmentOffset;
+	gc.defaultVelocity = src.defaultVelocity;
+	gc.defaultSpriteFacing = src.defaultSpriteFacing;
+	gc.defaultSpriteAlignment = src.defaultSpriteAlignment;
+	gc.facingMode = src.facingMode;
+	gc.alignmentMode = src.alignmentMode;
+	gc.pivot = src.pivot;
+	gc.cameraOffset = src.cameraOffset;
+	gc.velocityStretch = src.velocityStretch;
+	gc.blendNear = src.blendNear;
+	gc.blendFar = src.blendFar;
+	const float camRight[3] = { m_CamRight.x, m_CamRight.y, m_CamRight.z };
+	const float camUp[3] = { m_CamUp.x, m_CamUp.y, m_CamUp.z };
 	for (int k = 0; k < 3; ++k)
 	{
 		gc.camPos[k] = m_CamPos[k];
 		gc.camForward[k] = m_CamForward[k];
+		gc.camRight[k] = camRight[k];
+		gc.camUp[k] = camUp[k];
 	}
 
 	ComputeContext& cc = gfx.GetComputeContext();
@@ -275,8 +316,6 @@ void ParticleRenderList::Render(GraphicsContext& gfx)
 	// 3) 그리기
 	DrawConstants dc = {};
 	dc.viewProj = m_ViewProj;
-	dc.camRight = m_CamRight;
-	dc.camUp = m_CamUp;
 
 	gfx.SetRootSignature(s_DrawRootSig);
 	gfx.SetPipelineState(s_DrawPSO);

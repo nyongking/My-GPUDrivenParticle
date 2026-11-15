@@ -32,7 +32,9 @@ namespace
 			ParticleState(false),
 			GravityForce(float3{ 0.f, 0.f, 0.f }),
 			SolveForceAndVelocity(0.f, 0.f),
-			SubUVAnimation(0.f, 0.f)
+			SubUVAnimation(0.f, 0.f),
+			InitializeSprite(float2{ 0.f, 0.f }, 0.f),
+			SpriteRotationRate(0.f)
 		};
 		for (uint32_t i = 0; i < uint32_t(m.size()); ++i)
 			ASSERT(uint32_t(m[i].id) == i, "ReferenceModules 순서가 ModuleId 와 다름");
@@ -40,7 +42,7 @@ namespace
 	}
 
 	// ParticleUber.hlsli 모듈 함수가 읽는 입력값 dword 수 (ModuleId 순서). 셰이더 주석의 표와 같다
-	constexpr uint32_t kExpectedRecordDwords[] = { 1, 20, 3, 17, 1, 3, 2, 4 };
+	constexpr uint32_t kExpectedRecordDwords[] = { 1, 20, 3, 17, 1, 3, 2, 4, 6, 1 };
 	static_assert(sizeof(kExpectedRecordDwords) / sizeof(kExpectedRecordDwords[0]) == size_t(ModuleId::Count), "kExpectedRecordDwords 개수");
 
 	// 공유 셰이더가 단계 함수에서 도는 단계 (b2 의 범위 순서)
@@ -155,7 +157,8 @@ namespace
 	const char* const kKnownParticleAttributes[] =
 	{
 		Particles::Position, Particles::Color, Particles::Size, Particles::Lifetime, Particles::Age,
-		Particles::Mass, Particles::NormalizedAge, Particles::Velocity, Particles::Acceleration, Particles::SubImageIndex
+		Particles::Mass, Particles::NormalizedAge, Particles::Velocity, Particles::Acceleration, Particles::SubImageIndex,
+		Particles::SpriteSize, Particles::SpriteRotation
 	};
 
 	std::string OfsText(uint32_t ofs)
@@ -169,7 +172,8 @@ const char* ModuleIdName(ModuleId id)
 	static const char* const kNames[] =
 	{
 		"SpawnRate", "InitializeParticle", "SphereLocation", "AddVelocityInCone",
-		"ParticleState", "GravityForce", "SolveForceAndVelocity", "SubUVAnimation"
+		"ParticleState", "GravityForce", "SolveForceAndVelocity", "SubUVAnimation",
+		"InitializeSprite", "SpriteRotationRate"
 	};
 	static_assert(sizeof(kNames) / sizeof(kNames[0]) == size_t(ModuleId::Count), "ModuleIdName 개수");
 	return ValidId(id) ? kNames[uint32_t(id)] : "Unknown";
@@ -219,6 +223,8 @@ UberEmitterData BuildUberEmitterData(const std::vector<ModuleDesc>& modules, con
 	L.ofsVelocity = FindOffset(compiled.particles, Particles::Velocity);
 	L.ofsAcceleration = FindOffset(compiled.particles, Particles::Acceleration);
 	L.ofsSubImageIndex = FindOffset(compiled.particles, Particles::SubImageIndex);
+	L.ofsSpriteSize = FindOffset(compiled.particles, Particles::SpriteSize);
+	L.ofsSpriteRotation = FindOffset(compiled.particles, Particles::SpriteRotation);
 
 	// 공유 셰이더가 모르는 열 (Previous/Initial 등): 셰이더가 읽지도 쓰지도 않는다
 	for (const Slot& s : compiled.particles.Slots())
@@ -272,7 +278,8 @@ std::string DescribeUber(const UberEmitterData& d)
 	s += "  Particles: Position " + OfsText(L.ofsPosition) + ", Color " + OfsText(L.ofsColor) + ", Size " + OfsText(L.ofsSize)
 		+ ", Lifetime " + OfsText(L.ofsLifetime) + ", Age " + OfsText(L.ofsAge) + ", Mass " + OfsText(L.ofsMass)
 		+ ", NormalizedAge " + OfsText(L.ofsNormalizedAge) + ", Velocity " + OfsText(L.ofsVelocity)
-		+ ", Acceleration " + OfsText(L.ofsAcceleration) + ", SubImageIndex " + OfsText(L.ofsSubImageIndex) + "\n";
+		+ ", Acceleration " + OfsText(L.ofsAcceleration) + ", SubImageIndex " + OfsText(L.ofsSubImageIndex)
+		+ ", SpriteSize " + OfsText(L.ofsSpriteSize) + ", SpriteRotation " + OfsText(L.ofsSpriteRotation) + "\n";
 
 	for (const std::string& w : d.warnings) s += "  [경고] " + w + "\n";
 	for (const std::string& e : d.errors)   s += "  [오류] " + e + "\n";
@@ -311,6 +318,8 @@ bool CheckUberShaderLayout(const ShaderCompiler& compiler, std::string& log)
 		{ "Ofs_Velocity",               uint32_t(offsetof(EmitterLayoutCB, ofsVelocity)) },
 		{ "Ofs_Acceleration",           uint32_t(offsetof(EmitterLayoutCB, ofsAcceleration)) },
 		{ "Ofs_SubImageIndex",          uint32_t(offsetof(EmitterLayoutCB, ofsSubImageIndex)) },
+		{ "Ofs_SpriteSize",             uint32_t(offsetof(EmitterLayoutCB, ofsSpriteSize)) },
+		{ "Ofs_SpriteRotation",         uint32_t(offsetof(EmitterLayoutCB, ofsSpriteRotation)) },
 	};
 
 	auto findVar = [](const ConstantBufferInfo& info, const std::string& name) -> const ConstantBufferInfo::Variable*

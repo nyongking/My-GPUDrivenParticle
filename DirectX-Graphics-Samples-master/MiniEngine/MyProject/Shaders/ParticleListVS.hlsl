@@ -1,12 +1,11 @@
 // 공용 렌더 목록 그리기 (ParticleRenderList::Render). 인스턴스 = 정렬된 목록의 칸 (먼 것부터)
-//   ParticleSpriteVS 와 같은 사각형 / SubUV 계산. 이미터별 설정은 EmitterInfo 에서 읽는다
+//   빌보드 축은 Gather 가 이미 계산했다 (Center + corner.x * AxisX + corner.y * AxisY)
+//   SubUV 계산은 ParticleSpriteVS 와 같다. 이미터별 설정은 EmitterInfo 에서 읽는다
 #include "ParticleListCommon.hlsli"
 
 cbuffer ListDrawConstants : register(b0)
 {
     float4x4 ViewProj;
-    float4 CamRight;
-    float4 CamUp;
 };
 
 ByteAddressBuffer RenderParticles : register(t0);
@@ -42,7 +41,7 @@ VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
     const EmitterInfo e = Emitters[p.EmitterIndex];
 
     const float2 corner = kCorners[vertexId];
-    const float3 worldPos = p.Position + (corner.x * CamRight.xyz + corner.y * CamUp.xyz) * p.Size;
+    const float3 worldPos = p.Center + corner.x * p.AxisX + corner.y * p.AxisY;
 
     VSOutput output;
     output.position = mul(ViewProj, float4(worldPos, 1.f));

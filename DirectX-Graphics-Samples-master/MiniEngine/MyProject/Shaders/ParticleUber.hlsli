@@ -21,6 +21,8 @@
 #define MODID_GRAVITY_FORCE             5   // ParticleUpdate
 #define MODID_SOLVE_FORCE_AND_VELOCITY  6   // ParticleUpdate
 #define MODID_SUBUV_ANIMATION           7   // ParticleUpdate
+#define MODID_INITIALIZE_SPRITE         8   // ParticleSpawn
+#define MODID_SPRITE_ROTATION_RATE      9   // ParticleUpdate
 
 // ---------------------------------------------------------------------
 // 1. 레이아웃 (b2). 이미터마다 다른 값. 전부 uint 라 C++ 구조체(EmitterLayoutCB) 와 그대로 맞는다
@@ -45,7 +47,8 @@ cbuffer EmitterLayout : register(b2)
     uint Ofs_Velocity; // 60
     uint Ofs_Acceleration; // 64
     uint Ofs_SubImageIndex; // 68
-    uint2 _LayoutPad; // 72  -> 전체 80 바이트
+    uint Ofs_SpriteSize; // 72
+    uint Ofs_SpriteRotation; // 76  -> 전체 80 바이트
     // 속성이 늘면 여기에 추가 (C++ EmitterLayoutCB 도 같이)
 };
 
@@ -83,6 +86,7 @@ ModuleInst LoadInst(uint i)
 // 입력값 읽기: m.Base 부터 k 번째 dword. 정렬 규칙 없이 4 바이트씩 이어 붙어 있다
 uint   ParamU(ModuleInst m, uint k)  { return ModuleData[m.Base + k]; }
 float  ParamF(ModuleInst m, uint k)  { return asfloat(ParamU(m, k)); }
+float2 ParamF2(ModuleInst m, uint k) { return float2(ParamF(m, k), ParamF(m, k + 1)); }
 float3 ParamF3(ModuleInst m, uint k) { return float3(ParamF(m, k), ParamF(m, k + 1), ParamF(m, k + 2)); }
 float4 ParamF4(ModuleInst m, uint k) { return float4(ParamF(m, k), ParamF(m, k + 1), ParamF(m, k + 2), ParamF(m, k + 3)); }
 bool   PerComp(ModuleInst m, uint paramIndex) { return (m.Flags & (1u << paramIndex)) != 0; }
@@ -99,6 +103,8 @@ bool   PerComp(ModuleInst m, uint paramIndex) { return (m.Flags & (1u << paramIn
 //   GravityForce         : Gravity 0~2
 //   SolveForceandVelocity: AccelLimit 0, SpeedLimit 1
 //   SubUVAnimation       : StartFrame 0, EndFrame 1, Loop 2, FramesPerSecond 3
+//   InitializeSprite     : SpriteSize 0~1/2~3, SpriteRotation 4/5
+//   SpriteRotationRate   : RotationRate 0
 
 // =====================================================================
 // 3. RandomRange
@@ -118,6 +124,15 @@ float RandomParam1(float mn, float mx, uint index, uint salt)
 {
     if (mn == mx)
         return mn;
+    return mn + (mx - mn) * Random01(index, salt);
+}
+
+float2 RandomParam2(float2 mn, float2 mx, uint index, uint salt, bool perComponent)
+{
+    if (all(mn == mx))
+        return mn;
+    if (perComponent)
+        return mn + (mx - mn) * float2(Random01(index, salt), Random01(index, salt + 1));
     return mn + (mx - mn) * Random01(index, salt);
 }
 
@@ -154,6 +169,8 @@ struct Particle
     float3 Velocity;
     float3 Acceleration;
     float SubImageIndex;
+    float2 SpriteSize;
+    float SpriteRotation;
 };
 
 struct EmitterState
@@ -188,6 +205,10 @@ Particle LoadParticle(RWByteAddressBuffer b, uint i)
         p.Acceleration = LoadF3(b, Ofs_Acceleration, i);
     if (HasAttr(Ofs_SubImageIndex))
         p.SubImageIndex = LoadF1(b, Ofs_SubImageIndex, i);
+    if (HasAttr(Ofs_SpriteSize))
+        p.SpriteSize = LoadF2(b, Ofs_SpriteSize, i);
+    if (HasAttr(Ofs_SpriteRotation))
+        p.SpriteRotation = LoadF1(b, Ofs_SpriteRotation, i);
     return p;
 }
 
@@ -213,6 +234,10 @@ void StoreParticle(RWByteAddressBuffer b, uint i, Particle p)
         StoreF3(b, Ofs_Acceleration, i, p.Acceleration);
     if (HasAttr(Ofs_SubImageIndex))
         StoreF1(b, Ofs_SubImageIndex, i, p.SubImageIndex);
+    if (HasAttr(Ofs_SpriteSize))
+        StoreF2(b, Ofs_SpriteSize, i, p.SpriteSize);
+    if (HasAttr(Ofs_SpriteRotation))
+        StoreF1(b, Ofs_SpriteRotation, i, p.SpriteRotation);
 }
 
 EmitterState LoadEmitter()
@@ -377,6 +402,24 @@ void Module_SubUVAnimation(inout Particle p, uint index, ModuleInst m)
     p.SubImageIndex = PARAM(StartFrame) + t;
 }
 
+// ---- [ParticleSpawn] Initialize Sprite ----
+void Module_InitializeSprite(inout Particle p, uint index, ModuleInst m)
+{
+    const float2 P_SpriteSize     = RandomParam2(ParamF2(m, 0), ParamF2(m, 2), index, ParamSalt(m.Slot, 0), PerComp(m, 0));
+    const float  P_SpriteRotation = RandomParam1(ParamF(m, 4),  ParamF(m, 5),  index, ParamSalt(m.Slot, 1));
+
+    p.SpriteSize = PARAM(SpriteSize);
+    p.SpriteRotation = PARAM(SpriteRotation);
+}
+
+// ---- [ParticleUpdate] Sprite Rotation Rate ----
+void Module_SpriteRotationRate(inout Particle p, uint index, ModuleInst m)
+{
+    const float P_RotationRate = ParamF(m, 0);
+
+    p.SpriteRotation = fmod(p.SpriteRotation + PARAM(RotationRate) * DeltaTime, 360.f);
+}
+
 #undef PARAM
 
 // =====================================================================
@@ -410,6 +453,7 @@ void ParticleSpawn(inout Particle p, uint index)
         case MODID_INITIALIZE_PARTICLE:  Module_InitializeParticle(p, index, m); break;
         case MODID_SPHERE_LOCATION:      Module_SphereLocation(p, index, m);     break;
         case MODID_ADD_VELOCITY_IN_CONE: Module_AddVelocityInCone(p, index, m);  break;
+        case MODID_INITIALIZE_SPRITE:    Module_InitializeSprite(p, index, m);   break;
         default: break;
         }
     }
@@ -429,6 +473,7 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
         case MODID_GRAVITY_FORCE:            Module_GravityForce(p, index, m);          break;
         case MODID_SOLVE_FORCE_AND_VELOCITY: Module_SolveForceandVelocity(p, index, m); break;
         case MODID_SUBUV_ANIMATION:          Module_SubUVAnimation(p, index, m);        break;
+        case MODID_SPRITE_ROTATION_RATE:     Module_SpriteRotationRate(p, index, m);    break;
         default: break;
         }
     }

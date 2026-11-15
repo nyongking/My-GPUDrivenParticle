@@ -545,3 +545,85 @@ p.SubImageIndex = PARAM(StartFrame) + t;
 }
 
 
+ModuleDesc InitializeSprite(Input<float2> spriteSize, Input<float> spriteRotation)
+{
+	ModuleDesc m;
+
+	m.name = "Initialize Sprite";
+	m.id = ModuleId::InitializeSprite;
+	m.stage = Stage::ParticleSpawn;
+	m.params =
+	{
+		MakeParam<float2>("SpriteSize", spriteSize).WithMin(0.f),
+		MakeParam<float>("SpriteRotation", spriteRotation)
+	};
+	m.writes =
+	{
+		{Particles::SpriteSize, &Types::Float2},
+		{Particles::SpriteRotation, &Types::Float}
+	};
+	m.hlsl = R"(
+p.SpriteSize = PARAM(SpriteSize);
+p.SpriteRotation = PARAM(SpriteRotation);
+)";
+
+	m.execute = [](ModuleContext& ctx)
+		{
+			const auto sizeParam = ctx.Param<float2>("SpriteSize");
+			const auto rotParam = ctx.Param<float>("SpriteRotation");
+
+			const bool hasSize = ctx.HasParticle(Particles::SpriteSize);
+			const bool hasRot = ctx.HasParticle(Particles::SpriteRotation);
+			StridedView<float2> sizes = {};
+			StridedView<float> rots = {};
+			if (hasSize) sizes = ctx.Particles<float2>(Particles::SpriteSize);
+			if (hasRot)  rots = ctx.Particles<float>(Particles::SpriteRotation);
+
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+			{
+				if (hasSize) sizes[i] = sizeParam(i);
+				if (hasRot)  rots[i] = rotParam(i);
+			}
+		};
+
+	return m;
+}
+
+ModuleDesc SpriteRotationRate(float degreesPerSecond)
+{
+	ModuleDesc m;
+
+	m.name = "Sprite Rotation Rate";
+	m.id = ModuleId::SpriteRotationRate;
+	m.stage = Stage::ParticleUpdate;
+	m.params =
+	{
+		MakeParam<float>("RotationRate", degreesPerSecond)
+	};
+	m.reads =
+	{
+		{Engine::DeltaTime, &Types::Float},
+		{Particles::SpriteRotation, &Types::Float}
+	};
+	m.writes =
+	{
+		{Particles::SpriteRotation, &Types::Float}
+	};
+	// 360 으로 감아서 오래 살아도 float 정밀도가 떨어지지 않게
+	m.hlsl = R"(
+p.SpriteRotation = fmod(p.SpriteRotation + PARAM(RotationRate) * DeltaTime, 360.f);
+)";
+
+	m.execute = [](ModuleContext& ctx)
+		{
+			const float rate = ctx.Param<float>("RotationRate")(0);
+			const float dt = ctx.DeltaTime();
+			auto rot = ctx.Particles<float>(Particles::SpriteRotation);
+
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+				rot[i] = std::fmod(rot[i] + rate * dt, 360.f);
+		};
+
+	return m;
+}
+

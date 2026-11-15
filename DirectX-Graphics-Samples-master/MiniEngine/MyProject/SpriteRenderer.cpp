@@ -36,32 +36,57 @@ namespace
 		DirectX::XMFLOAT4X4 viewProj;        // 0
 		DirectX::XMFLOAT4   camRight;        // 64
 		DirectX::XMFLOAT4   camUp;           // 80
+		DirectX::XMFLOAT4   camPosition;     // 96
+		DirectX::XMFLOAT4   camForward;      // 112
 
-		uint32_t            positionOffset;  // 96   (0xFFFFFFFF = 연결 없음 -> 기본값)
-		uint32_t            colorOffset;     // 100
-		uint32_t            sizeOffset;      // 104
-		uint32_t            capacity;        // 108
+		uint32_t            positionOffset;  // 128  (0xFFFFFFFF = 연결 없음 -> 기본값)
+		uint32_t            colorOffset;     // 132
+		uint32_t            sizeOffset;      // 136
+		uint32_t            capacity;        // 140
 
-		float4              defaultColor;    // 112
-		float3              defaultPosition; // 128
-		float               defaultSize;     // 140
+		float4              defaultColor;    // 144
+		float3              defaultPosition; // 160
+		float               defaultSize;     // 172
 
-		uint32_t            sortEnabled;     // 144
-		uint32_t            subImageOffset;  // 148  (T2) Particles.SubImageIndex
-		float               defaultSubImage; // 152
-		uint32_t            subUVBlend;      // 156
+		uint32_t            sortEnabled;     // 176
+		uint32_t            subImageOffset;  // 180  (T2) Particles.SubImageIndex
+		float               defaultSubImage; // 184
+		uint32_t            subUVBlend;      // 188
 
-		float               subImageSize[2]; // 160  (가로 칸, 세로 칸)
-		uint32_t            sortStride;      // 168  정렬 목록 한 칸 바이트 (CPU 4 / GPU 8)
-		float               _pad;            // 172
+		float               subImageSize[2]; // 192  (가로 칸, 세로 칸)
+		uint32_t            sortStride;      // 200  정렬 목록 한 칸 바이트 (CPU 4 / GPU 8)
+		uint32_t            spriteSizeOffset;// 204  연결이 없으면 (Size * 2, Size * 2)
+
+		uint32_t            spriteRotationOffset;   // 208
+		float               defaultSpriteRotation;  // 212
+		uint32_t            velocityOffset;         // 216
+		uint32_t            spriteFacingOffset;     // 220
+
+		float3              defaultVelocity;        // 224
+		uint32_t            spriteAlignmentOffset;  // 236
+		float3              defaultSpriteFacing;    // 240
+		uint32_t            facingMode;             // 252
+		float3              defaultSpriteAlignment; // 256
+		uint32_t            alignmentMode;          // 268
+
+		float2              pivot;                  // 272
+		float               cameraOffset;           // 280
+		float               velocityStretch;        // 284
+		float               blendNear;              // 288
+		float               blendFar;               // 292
+		float               _pad[2];                // 296
 	};
-	static_assert(sizeof(SpriteConstants) == 176, "HLSL cbuffer SpriteConstants(160 B)와 일치해야 함");
-	static_assert(offsetof(SpriteConstants, defaultColor) == 112, "DefaultColor offset 112");
-	static_assert(offsetof(SpriteConstants, defaultPosition) == 128, "DefaultPosition offset 128");
-	static_assert(offsetof(SpriteConstants, sortEnabled) == 144, "SortEnabled offset 144");
-	static_assert(offsetof(SpriteConstants, subImageOffset) == 148, "SubImageOffset offset 148");
-	static_assert(offsetof(SpriteConstants, subImageSize) == 160, "SubImageSize offset 160");
-	static_assert(offsetof(SpriteConstants, sortStride) == 168, "SortStride offset 168");
+	static_assert(sizeof(SpriteConstants) == 304, "HLSL cbuffer SpriteConstants(304 B)와 일치해야 함");
+	static_assert(offsetof(SpriteConstants, positionOffset) == 128, "PositionOffset offset 128");
+	static_assert(offsetof(SpriteConstants, defaultColor) == 144, "DefaultColor offset 144");
+	static_assert(offsetof(SpriteConstants, sortEnabled) == 176, "SortEnabled offset 176");
+	static_assert(offsetof(SpriteConstants, subImageSize) == 192, "SubImageSize offset 192");
+	static_assert(offsetof(SpriteConstants, spriteRotationOffset) == 208, "SpriteRotationOffset offset 208");
+	static_assert(offsetof(SpriteConstants, defaultVelocity) == 224, "DefaultVelocity offset 224");
+	static_assert(offsetof(SpriteConstants, defaultSpriteFacing) == 240, "DefaultSpriteFacing offset 240");
+	static_assert(offsetof(SpriteConstants, defaultSpriteAlignment) == 256, "DefaultSpriteAlignment offset 256");
+	static_assert(offsetof(SpriteConstants, pivot) == 272, "Pivot offset 272");
+	static_assert(offsetof(SpriteConstants, blendFar) == 292, "BlendFar offset 292");
 
 	// GPU 정렬 키 생성 (ParticleSortKeyCS.hlsl 의 cbuffer SortKeyConstants 와 같은 배치)
 	struct SortKeyConstants
@@ -176,10 +201,39 @@ RendererDesc SpriteRenderer::Desc()
 		MakeRenderBinding<float3>("Position", Particles::Position, float3{ 0.f, 0.f, 0.f }),
 		MakeRenderBinding<float4>("Color",    Particles::Color,    float4{ 1.f, 1.f, 1.f, 1.f }),
 		MakeRenderBinding<float>("Size",      Particles::Size,     0.1f),
-		MakeRenderBinding<float>("SubImageIndex",	Particles::SubImageIndex, 0.f)
+		MakeRenderBinding<float>("SubImageIndex",	Particles::SubImageIndex, 0.f),
+		// 빌보드: SpriteSize 기본값은 쓰지 않는다 (연결이 없으면 Size 로 정사각형)
+		MakeRenderBinding<float2>("SpriteSize",      Particles::SpriteSize,      float2{ 0.2f, 0.2f }),
+		MakeRenderBinding<float>("SpriteRotation",   Particles::SpriteRotation,  0.f),
+		MakeRenderBinding<float3>("Velocity",        Particles::Velocity,        float3{ 0.f, 0.f, 0.f }),
+		MakeRenderBinding<float3>("SpriteFacing",    Particles::SpriteFacing,    float3{ 0.f, 1.f, 0.f }),
+		MakeRenderBinding<float3>("SpriteAlignment", Particles::SpriteAlignment, float3{ 0.f, 1.f, 0.f })
 	};
 
 	return desc;
+}
+
+const char* SpriteFacingName(SpriteFacingMode mode)
+{
+	switch (mode)
+	{
+	case SpriteFacingMode::FaceCameraPlane:         return "Face Camera Plane";
+	case SpriteFacingMode::FaceCameraPosition:      return "Face Camera Position";
+	case SpriteFacingMode::CustomFacingVector:      return "Custom Facing Vector";
+	case SpriteFacingMode::FaceCameraDistanceBlend: return "Face Camera Distance Blend";
+	default:                                        return "?";
+	}
+}
+
+const char* SpriteAlignmentName(SpriteAlignment mode)
+{
+	switch (mode)
+	{
+	case SpriteAlignment::Unaligned:       return "Unaligned";
+	case SpriteAlignment::VelocityAligned: return "Velocity Aligned";
+	case SpriteAlignment::CustomAlignment: return "Custom Alignment";
+	default:                               return "?";
+	}
 }
 
 bool SpriteRenderer::Initialize(const EmitterInstance& emitter, const RendererDesc& desc)
@@ -246,7 +300,11 @@ void SpriteRenderer::Render(GraphicsContext& gfx, const Math::Camera& camera, co
 bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity, const RendererDesc& desc)
 {
 	// Desc() 와 같은 칸 구성인지 (칸 순서 = 셰이더 cbuffer 순서)
-	static const TypeInfo* kSlotTypes[kNumSlots] = { &Types::Float3, &Types::Float4, &Types::Float, &Types::Float };
+	static const TypeInfo* kSlotTypes[kNumSlots] =
+	{
+		&Types::Float3, &Types::Float4, &Types::Float, &Types::Float,
+		&Types::Float2, &Types::Float, &Types::Float3, &Types::Float3, &Types::Float3
+	};
 	if (desc.bindings.size() != kNumSlots)
 	{
 		m_Log = "[SpriteRenderer] 바인딩 칸 수가 다름 (SpriteRenderer::Desc() 로 만든 desc 를 넘겨야 함)\n";
@@ -305,6 +363,10 @@ void SpriteRenderer::SetDefaults(const RendererDesc& desc)
 	std::memcpy(&m_DefaultColor, desc.bindings[kColor].defaultValue.data(), sizeof(float4));
 	std::memcpy(&m_DefaultSize, desc.bindings[kSize].defaultValue.data(), sizeof(float));
 	std::memcpy(&m_DefaultSubImage, desc.bindings[kSubImageIndex].defaultValue.data(), sizeof(float));
+	std::memcpy(&m_DefaultSpriteRotation, desc.bindings[kSpriteRotation].defaultValue.data(), sizeof(float));
+	std::memcpy(&m_DefaultVelocity, desc.bindings[kVelocity].defaultValue.data(), sizeof(float3));
+	std::memcpy(&m_DefaultSpriteFacing, desc.bindings[kSpriteFacing].defaultValue.data(), sizeof(float3));
+	std::memcpy(&m_DefaultSpriteAlignment, desc.bindings[kSpriteAlignment].defaultValue.data(), sizeof(float3));
 }
 
 
@@ -403,6 +465,22 @@ ParticleRenderList::Source SpriteRenderer::MakeListSource() const
 	src.defaultColor = m_DefaultColor;
 	src.defaultSize = m_DefaultSize;
 	src.defaultSubImage = m_DefaultSubImage;
+	src.spriteSizeOffset = m_Offsets[kSpriteSize];
+	src.spriteRotationOffset = m_Offsets[kSpriteRotation];
+	src.velocityOffset = m_Offsets[kVelocity];
+	src.spriteFacingOffset = m_Offsets[kSpriteFacing];
+	src.spriteAlignmentOffset = m_Offsets[kSpriteAlignment];
+	src.defaultSpriteRotation = m_DefaultSpriteRotation;
+	src.defaultVelocity = m_DefaultVelocity;
+	src.defaultSpriteFacing = m_DefaultSpriteFacing;
+	src.defaultSpriteAlignment = m_DefaultSpriteAlignment;
+	src.facingMode = static_cast<uint32_t>(m_Settings.facing);
+	src.alignmentMode = static_cast<uint32_t>(m_Settings.alignment);
+	src.pivot = m_Settings.pivot;
+	src.cameraOffset = m_Settings.cameraOffset;
+	src.velocityStretch = m_Settings.velocityStretch;
+	src.blendNear = m_Settings.blendNear;
+	src.blendFar = m_Settings.blendFar;
 	src.subImageCols = m_Settings.subImageCols;
 	src.subImageRows = m_Settings.subImageRows;
 	src.subUVBlend = m_Settings.subUVBlend;
@@ -420,6 +498,12 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	DirectX::XMStoreFloat4(&sc.camUp, camera.GetUpVec());
 	sc.camRight.w = 0.f;
 	sc.camUp.w = 0.f;
+	{
+		const float3 camPos = ToFloat3(camera.GetPosition());
+		const float3 camFwd = ToFloat3(camera.GetForwardVec());
+		sc.camPosition = { camPos.x, camPos.y, camPos.z, 0.f };
+		sc.camForward = { camFwd.x, camFwd.y, camFwd.z, 0.f };
+	}
 	sc.positionOffset = m_Offsets[kPosition];
 	sc.colorOffset = m_Offsets[kColor];
 	sc.sizeOffset = m_Offsets[kSize];
@@ -434,7 +518,24 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	sc.subImageSize[0] = static_cast<float>(m_Settings.subImageCols);
 	sc.subImageSize[1] = static_cast<float>(m_Settings.subImageRows);
 	sc.sortStride = sortStride;
-		
+
+	sc.spriteSizeOffset = m_Offsets[kSpriteSize];
+	sc.spriteRotationOffset = m_Offsets[kSpriteRotation];
+	sc.defaultSpriteRotation = m_DefaultSpriteRotation;
+	sc.velocityOffset = m_Offsets[kVelocity];
+	sc.spriteFacingOffset = m_Offsets[kSpriteFacing];
+	sc.defaultVelocity = m_DefaultVelocity;
+	sc.spriteAlignmentOffset = m_Offsets[kSpriteAlignment];
+	sc.defaultSpriteFacing = m_DefaultSpriteFacing;
+	sc.facingMode = static_cast<uint32_t>(m_Settings.facing);
+	sc.defaultSpriteAlignment = m_DefaultSpriteAlignment;
+	sc.alignmentMode = static_cast<uint32_t>(m_Settings.alignment);
+	sc.pivot = m_Settings.pivot;
+	sc.cameraOffset = m_Settings.cameraOffset;
+	sc.velocityStretch = m_Settings.velocityStretch;
+	sc.blendNear = m_Settings.blendNear;
+	sc.blendFar = m_Settings.blendFar;
+
 	gfx.SetRootSignature(s_RootSig);
 	gfx.SetPipelineState(s_PSO);
 	gfx.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

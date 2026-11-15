@@ -9,6 +9,7 @@ ModuleDesc SpawnRate(float rate); // Rate에 따라 Spawn 개수를 계산하는 Module
 // Particle Spawn
 ModuleDesc InitializeParticle(Input<float> size, Input<float> mass, Input<float> lifeTime, Input<float3> pos, Input<float4> color); // Particle의 입자
 ModuleDesc SphereLocation(Input<float> radius, bool surfaceOnly = false);
+ModuleDesc InitializeSprite(Input<float2> spriteSize, Input<float> spriteRotation);   // SpriteSize (가로/세로 전체 길이), SpriteRotation (도)
 ModuleDesc AddVelocityInCone(Input<float> speed, float coneAngleDeg, float3 coneAxis, float InnerConeAngle = 0.f, float speedfalloff = 0.f, float distribution = 1.f, bool localSpace = false);
 
 // Particle Update
@@ -16,3 +17,4 @@ ModuleDesc ParticleState(bool killOnLifeTime = true);
 ModuleDesc SolveForceAndVelocity(Input<float> speedLimit, Input<float> accelLimit);
 ModuleDesc GravityForce(float3 gravity);
 ModuleDesc SubUVAnimation(float startFrame, float endFrame, bool loop = false, float framePerSecond = 30.f);
+ModuleDesc SpriteRotationRate(float degreesPerSecond);  // SpriteRotation += rate * dt

@@ -23,7 +23,9 @@ namespace
 			ParticleState(true),
 			GravityForce(float3{ 0.f, -9.8f, 0.f }),
 			SolveForceAndVelocity(0.f, 0.f),      // 0 = 제한 없음
-			SubUVAnimation(0.f, 63.f)
+			SubUVAnimation(0.f, 63.f),
+			InitializeSprite(float2{ 0.2f, 0.2f }, RandomRange<float>(0.f, 360.f)),
+			SpriteRotationRate(90.f)
 		};
 		return s_Catalog;
 	}
@@ -179,6 +181,91 @@ namespace
 		{
 			s.blend = static_cast<SpriteBlendMode>(blend);
 			changed = true;
+		}
+
+		// ---- 빌보드 ----
+		ImGui::SeparatorText("Billboard");
+
+		auto enumCombo = [](const char* label, uint32_t& value, uint32_t count, const char* (*name)(uint32_t))
+			{
+				bool c = false;
+				ImGui::SetNextItemWidth(220.f);
+				if (ImGui::BeginCombo(label, name(value)))
+				{
+					for (uint32_t i = 0; i < count; ++i)
+						if (ImGui::Selectable(name(i), i == value)) { value = i; c = true; }
+					ImGui::EndCombo();
+				}
+				return c;
+			};
+
+		uint32_t facing = static_cast<uint32_t>(s.facing);
+		if (enumCombo("Facing", facing, uint32_t(SpriteFacingMode::Count),
+			[](uint32_t i) { return SpriteFacingName(SpriteFacingMode(i)); }))
+		{
+			s.facing = SpriteFacingMode(facing);
+			changed = true;
+		}
+		uint32_t alignment = static_cast<uint32_t>(s.alignment);
+		if (enumCombo("Alignment", alignment, uint32_t(SpriteAlignment::Count),
+			[](uint32_t i) { return SpriteAlignmentName(SpriteAlignment(i)); }))
+		{
+			s.alignment = SpriteAlignment(alignment);
+			changed = true;
+		}
+
+		// 자주 쓰는 조합 (Unity 의 Horizontal / Vertical Billboard)
+		if (ImGui::SmallButton("Preset: Camera"))
+		{
+			s.facing = SpriteFacingMode::FaceCameraPlane; s.alignment = SpriteAlignment::Unaligned; changed = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Preset: Horizontal"))
+		{
+			s.facing = SpriteFacingMode::CustomFacingVector; s.alignment = SpriteAlignment::Unaligned; changed = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Preset: Vertical"))
+		{
+			s.facing = SpriteFacingMode::FaceCameraPosition; s.alignment = SpriteAlignment::CustomAlignment; changed = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Preset: Streak"))
+		{
+			s.facing = SpriteFacingMode::FaceCameraPosition; s.alignment = SpriteAlignment::VelocityAligned; changed = true;
+		}
+		if (s.facing == SpriteFacingMode::CustomFacingVector)
+			ImGui::TextDisabled("Facing vector = 'SpriteFacing' binding (default (0,1,0) = lying flat)");
+		if (s.alignment == SpriteAlignment::CustomAlignment)
+			ImGui::TextDisabled("Up axis = 'SpriteAlignment' binding (default (0,1,0) = standing upright)");
+		if (s.alignment == SpriteAlignment::VelocityAligned)
+			ImGui::TextDisabled("Up axis = 'Velocity' binding (needs a module that writes Particles.Velocity)");
+
+		float pivot[2] = { s.pivot.x, s.pivot.y };
+		ImGui::SetNextItemWidth(160.f);
+		if (ImGui::SliderFloat2("Pivot (uv)", pivot, 0.f, 1.f))
+		{
+			s.pivot = { pivot[0], pivot[1] };
+			changed = true;
+		}
+		ImGui::SetNextItemWidth(160.f);
+		changed |= ImGui::DragFloat("Camera Offset (m)", &s.cameraOffset, 0.01f, -10.f, 10.f);
+
+		if (s.alignment == SpriteAlignment::VelocityAligned)
+		{
+			ImGui::SetNextItemWidth(160.f);
+			changed |= ImGui::DragFloat("Velocity Stretch (s)", &s.velocityStretch, 0.001f, 0.f, 1.f);
+		}
+		if (s.facing == SpriteFacingMode::FaceCameraDistanceBlend)
+		{
+			float range[2] = { s.blendNear, s.blendFar };
+			ImGui::SetNextItemWidth(160.f);
+			if (ImGui::DragFloat2("Blend Near/Far (m)", range, 0.1f, 0.f, 1000.f))
+			{
+				s.blendNear = (std::max)(range[0], 0.f);
+				s.blendFar = (std::max)(range[1], s.blendNear);
+				changed = true;
+			}
 		}
 
 		if (changed)

@@ -22,19 +22,61 @@ enum class SpriteBlendMode : uint32_t
     Additive
 };
 
+// 사각형 앞면이 어디를 보는가 (HLSL SpriteFacing.hlsli 의 FACING_ 와 같은 번호)
+enum class SpriteFacingMode : uint32_t
+{
+    FaceCameraPlane,        // 카메라 평면과 나란히 (기존 방식)
+    FaceCameraPosition,     // 카메라 위치를 바라봄
+    CustomFacingVector,     // SpriteFacing 바인딩 벡터를 바라봄 (예: (0,1,0) = 바닥에 눕힘)
+    FaceCameraDistanceBlend,// 가까우면 CameraPosition, 멀면 CameraPlane
+    Count
+};
+
+// 사각형 위쪽 축을 어디에 맞추는가 (HLSL ALIGN_)
+enum class SpriteAlignment : uint32_t
+{
+    Unaligned,              // 카메라 위쪽
+    VelocityAligned,        // Velocity 바인딩 방향 (+ velocityStretch)
+    CustomAlignment,        // SpriteAlignment 바인딩 벡터 (예: (0,1,0) = 세로로 선 빌보드)
+    Count
+};
+
+const char* SpriteFacingName(SpriteFacingMode mode);
+const char* SpriteAlignmentName(SpriteAlignment mode);
+
 struct SpriteSettings
 {
     uint32_t    subImageCols = 1;
     uint32_t    subImageRows = 1;
     bool        subUVBlend = false;
     SpriteBlendMode blend = SpriteBlendMode::Transculent;
+
+    // ---- 빌보드 ----
+    SpriteFacingMode facing = SpriteFacingMode::FaceCameraPlane;
+    SpriteAlignment  alignment = SpriteAlignment::Unaligned;
+    float2      pivot = { 0.5f, 0.5f };     // uv 기준 (0.5, 0.5 = 가운데 / 0.5, 1 = 아래 가운데가 파티클 위치)
+    float       cameraOffset = 0.f;         // 카메라 쪽으로 당기는 거리 (m)
+    float       velocityStretch = 0.f;      // VelocityAligned: 세로 길이 += 속력 * 이 값 (초)
+    float       blendNear = 1.f;            // FaceCameraDistanceBlend: 이 거리까지 CameraPosition
+    float       blendFar = 10.f;            //                          이 거리부터 CameraPlane
 };
 
 
 class SpriteRenderer
 {
 public:
-    enum BindingSlot { kPosition, kColor, kSize, kSubImageIndex, kNumSlots };
+    // 칸 순서 = Desc() 의 bindings 순서
+    //   SpriteSize 가 연결되어 있지 않으면 (Size * 2, Size * 2) 로 그린다 (Size = 반지름, 기존 크기 그대로)
+    enum BindingSlot
+    {
+        kPosition, kColor, kSize, kSubImageIndex,
+        kSpriteSize,        // float2 가로 / 세로 전체 길이
+        kSpriteRotation,    // float  도
+        kVelocity,          // float3 VelocityAligned 용
+        kSpriteFacing,      // float3 CustomFacingVector 용 (연결이 없으면 기본값이 상수 벡터)
+        kSpriteAlignment,   // float3 CustomAlignment 용
+        kNumSlots
+    };
 
     // SpriteRenderer의 기본값에 해당하는 Desc, 이미터마다 원하는 바인딩이 다를 경우 직접 RendererDesc를 지정해야 한다.
     static RendererDesc Desc();
@@ -100,6 +142,10 @@ private:
     float4              m_DefaultColor = { 1.f, 1.f, 1.f, 1.f };
     float               m_DefaultSize = 0.1f;
     float               m_DefaultSubImage = 0.f;
+    float               m_DefaultSpriteRotation = 0.f;
+    float3              m_DefaultVelocity = { 0.f, 0.f, 0.f };
+    float3              m_DefaultSpriteFacing = { 0.f, 1.f, 0.f };
+    float3              m_DefaultSpriteAlignment = { 0.f, 1.f, 0.f };
 
     SpriteSettings      m_Settings;
 

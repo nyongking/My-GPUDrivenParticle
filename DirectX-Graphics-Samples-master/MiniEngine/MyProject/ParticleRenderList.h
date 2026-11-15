@@ -25,7 +25,7 @@ class ParticleRenderList
 public:
 	static const uint32_t kNoAttribute = 0xFFFFFFFFu;
 	static const uint32_t kMaxTextures = 16;          // 한 목록에서 쓸 수 있는 서로 다른 텍스처 수 (넘으면 0 번 텍스처)
-	static const uint32_t kRenderParticleBytes = 48;  // HLSL RenderParticle 과 같음
+	static const uint32_t kRenderParticleBytes = 64;  // HLSL RenderParticle 과 같음 (중심 + 색 + 빌보드 축 2개)
 
 	// 이미터 하나를 목록에 넣을 때 필요한 정보 (SpriteRenderer 가 채운다)
 	struct Source
@@ -40,11 +40,29 @@ public:
 		uint32_t colorOffset = kNoAttribute;
 		uint32_t sizeOffset = kNoAttribute;
 		uint32_t subImageOffset = kNoAttribute;
+		uint32_t spriteSizeOffset = kNoAttribute;       // 없으면 (Size * 2, Size * 2)
+		uint32_t spriteRotationOffset = kNoAttribute;
+		uint32_t velocityOffset = kNoAttribute;
+		uint32_t spriteFacingOffset = kNoAttribute;
+		uint32_t spriteAlignmentOffset = kNoAttribute;
 
 		float3   defaultPosition = { 0.f, 0.f, 0.f };
 		float4   defaultColor = { 1.f, 1.f, 1.f, 1.f };
 		float    defaultSize = 0.1f;
 		float    defaultSubImage = 0.f;
+		float    defaultSpriteRotation = 0.f;
+		float3   defaultVelocity = { 0.f, 0.f, 0.f };
+		float3   defaultSpriteFacing = { 0.f, 1.f, 0.f };
+		float3   defaultSpriteAlignment = { 0.f, 1.f, 0.f };
+
+		// 빌보드 (SpriteSettings 와 같은 뜻, 번호 = SpriteFacingMode / SpriteAlignment)
+		uint32_t facingMode = 0;
+		uint32_t alignmentMode = 0;
+		float2   pivot = { 0.5f, 0.5f };
+		float    cameraOffset = 0.f;
+		float    velocityStretch = 0.f;
+		float    blendNear = 1.f;
+		float    blendFar = 10.f;
 
 		uint32_t subImageCols = 1;
 		uint32_t subImageRows = 1;
