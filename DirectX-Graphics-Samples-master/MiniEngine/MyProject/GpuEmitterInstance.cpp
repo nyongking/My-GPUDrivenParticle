@@ -240,9 +240,6 @@ bool GpuEmitterInstance::BeginTick(float deltaTime, const OwnerTransform& t)
 	return true;
 }
 
-// ------------------------------
-// 단계별 Barrier로 인해 차이가 두드러짐
-// ------------------------------
 void GpuEmitterInstance::StageBarriers(ComputeContext& ctx, GpuSimStage stage)
 {
 	if (!m_TickActive)
@@ -358,8 +355,9 @@ void GpuEmitterInstance::BindRoot(ComputeContext& ctx, bool finalizeStage)
 {
 	ctx.SetRootSignature(EmitterGpuProgram::RootSig());
 	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootEngineCB, sizeof(m_TickEngineCB), m_TickEngineCB);
+	// Uber 는 t0 루트 SRV, 생성 방식은 b1. 각자 안 쓰는 쪽은 묶지 않는다 (셰이더가 읽지 않으면 괜찮다)
 	if (m_TickUber)
-		ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootModuleCB, m_UberParams.size() * sizeof(Chunk16), m_UberParams.data());
+		ctx.SetDynamicSRV(EmitterGpuProgram::kRootModuleData, m_UberParams.size() * sizeof(Chunk16), m_UberParams.data());
 	else
 		ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootModuleCB, m_ModuleParams.size() * sizeof(Chunk16), m_ModuleParams.data());
 	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootLayoutCB, sizeof(m_UberLayout), &m_UberLayout);

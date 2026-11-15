@@ -3,27 +3,35 @@
 #define NO_ATTRIBUTE 0xFFFFFFFF      // 렌더러(ParticleSpriteVS) 와 같은 규칙
 
 // =====================================================================
-// 0. 모듈 번호, C++의 ModuleID
+// 모듈 데이터 = "모듈 인스턴스 목록 + 입력값 풀" (같은 모듈을 여러 번 쓸 수 있다)
+//      t0 ModuleData = [인스턴스 uint4 x N][입력값 dword ...]   (StructuredBuffer)
+//        인스턴스 = { 모듈 번호, 스택 순번(salt), 입력값 시작 위치(dword), 플래그(perComponent) }
+//      b2 EmitterLayout = 단계별 인스턴스 범위 + 속성 열 위치
+//   모듈 본문(ModuleLibrary 의 hlsl) 은 그대로. 모듈 함수 앞부분에서 자기 인스턴스의 입력값을 읽는다
 // =====================================================================
-#define MODID_SPAWN_RATE                0
-#define MODID_INITIALIZE_PARTICLE       1
-#define MODID_SPHERE_LOCATION           2
-#define MODID_ADD_VELOCITY_IN_CONE      3
-#define MODID_PARTICLE_STATE            4
-#define MODID_GRAVITY_FORCE             5
-#define MODID_SOLVE_FORCE_AND_VELOCITY  6
-#define MODID_SUBUV_ANIMATION           7
 
-// =====================================================================
-// 1. 레이아웃 (b2). 이미터마다 다른 값. 전부 uint 라 C++ 구조체와 그대로 맞는다
-// =====================================================================
+// ---------------------------------------------------------------------
+// 0. 모듈 번호 = C++ ModuleId (인스턴스의 Id 에 들어가는 값)
+// ---------------------------------------------------------------------
+#define MODID_SPAWN_RATE                0   // EmitterUpdate
+#define MODID_INITIALIZE_PARTICLE       1   // ParticleSpawn
+#define MODID_SPHERE_LOCATION           2   // ParticleSpawn
+#define MODID_ADD_VELOCITY_IN_CONE      3   // ParticleSpawn
+#define MODID_PARTICLE_STATE            4   // ParticleUpdate
+#define MODID_GRAVITY_FORCE             5   // ParticleUpdate
+#define MODID_SOLVE_FORCE_AND_VELOCITY  6   // ParticleUpdate
+#define MODID_SUBUV_ANIMATION           7   // ParticleUpdate
+
+// ---------------------------------------------------------------------
+// 1. 레이아웃 (b2). 이미터마다 다른 값. 전부 uint 라 C++ 구조체(EmitterLayoutCB) 와 그대로 맞는다
+// ---------------------------------------------------------------------
 cbuffer EmitterLayout : register(b2)
 {
-    uint EmitterInstBegin;
-    uint EmitterInstCount;
-    uint SpawnInstBegin;
-    uint SpawnInstCount;
-    uint UpdateInstBegin;
+    uint EmitterInstBegin; // 0   단계별 인스턴스 범위 (ModuleData 의 인스턴스 번호). 범위 안은 스택 순서
+    uint EmitterInstCount; // 4
+    uint SpawnInstBegin; // 8
+    uint SpawnInstCount; // 12
+    uint UpdateInstBegin; // 16
     uint UpdateInstCount; // 20
     uint Ofs_Emitter_SpawnCount; // 24  Emitter 블록
     uint Ofs_Emitter_SpawnRemainder; // 28
@@ -37,7 +45,8 @@ cbuffer EmitterLayout : register(b2)
     uint Ofs_Velocity; // 60
     uint Ofs_Acceleration; // 64
     uint Ofs_SubImageIndex; // 68
-    uint2 _LayoutPad; // 72
+    uint2 _LayoutPad; // 72  -> 전체 80 바이트
+    // 속성이 늘면 여기에 추가 (C++ EmitterLayoutCB 도 같이)
 };
 
 bool HasAttr(uint ofs)
@@ -45,14 +54,20 @@ bool HasAttr(uint ofs)
     return ofs != NO_ATTRIBUTE;
 }
 
+// ---------------------------------------------------------------------
+// 2. 모듈 데이터 = 인스턴스 목록 + 입력값 풀
+// 루트 SRV 로 묶는 StructuredBuffer (t0). 크기 한계가 없고 dword 하나씩 바로 읽는다
+//   바이트 배치: 인스턴스 = dword 4개, 입력값 = dword 이어 붙임
+//   주의: 루트 SRV 는 크기 정보가 없어 범위 밖 읽기를 막아 주지 않는다. 번호는 C++ 이 보장한다
+// ---------------------------------------------------------------------
 StructuredBuffer<uint> ModuleData : register(t0);
 
 struct ModuleInst
 {
-    uint Id;
-    uint Slot;
-    uint Base;
-    uint Flags;
+    uint Id;        // MODID_
+    uint Slot;      // 스택 순번 (RandomRange salt 를 생성 방식과 같게)
+    uint Base;      // 입력값 시작 위치 (ModuleData 의 dword 번호)
+    uint Flags;     // bit k = k 번째 입력값의 perComponent
 };
 
 ModuleInst LoadInst(uint i)
@@ -65,26 +80,25 @@ ModuleInst LoadInst(uint i)
     return m;
 }
 
-uint ParamU(ModuleInst m, uint k)
-{
-    return ModuleData[m.Base + k];
-}
-float ParamF(ModuleInst m, uint k)
-{
-    return asfloat(ParamU(m, k));
-}
-float3 ParamF3(ModuleInst m, uint k)
-{
-    return float3(ParamF(m, k), ParamF(m, k + 1), ParamF(m, k + 2));
-}
-float4 ParamF4(ModuleInst m, uint k)
-{
-    return float4(ParamF(m, k), ParamF(m, k + 1), ParamF(m, k + 2), ParamF(m, k + 3));
-}
-bool PerComp(ModuleInst m, uint paramIndex)
-{
-    return (m.Flags & (1u << paramIndex)) != 0;
-}
+// 입력값 읽기: m.Base 부터 k 번째 dword. 정렬 규칙 없이 4 바이트씩 이어 붙어 있다
+uint   ParamU(ModuleInst m, uint k)  { return ModuleData[m.Base + k]; }
+float  ParamF(ModuleInst m, uint k)  { return asfloat(ParamU(m, k)); }
+float3 ParamF3(ModuleInst m, uint k) { return float3(ParamF(m, k), ParamF(m, k + 1), ParamF(m, k + 2)); }
+float4 ParamF4(ModuleInst m, uint k) { return float4(ParamF(m, k), ParamF(m, k + 1), ParamF(m, k + 2), ParamF(m, k + 3)); }
+bool   PerComp(ModuleInst m, uint paramIndex) { return (m.Flags & (1u << paramIndex)) != 0; }
+
+// 모듈별 입력값 배치 (dword 단위, ModuleLibrary 의 m.params 순서).
+//   ParticleSpawn 모듈의 float 계열은 Min, Max 두 벌 (상수면 Min == Max). NBool 은 uint 1 칸.
+//   C++ UberParamRecord() 가 같은 규칙으로 계산한다 (검사: 리눅스 대조 테스트)
+//   SpawnRate            : Rate 0
+//   InitializeParticle   : Size 0/1, Mass 2/3, Lifetime 4/5, Pos 6~8/9~11, Color 12~15/16~19
+//   SphereLocation       : Radius 0/1, SurfaceOnly 2
+//   AddVelocityInCone    : Speed 0/1, ConeAngle 2/3, ConeAxis 4~6/7~9, InnerConeAngle 10/11,
+//                          SpeedFalloff 12/13, Distribution 14/15, LocalSpace 16
+//   ParticleState        : KillOnLifetime 0
+//   GravityForce         : Gravity 0~2
+//   SolveForceandVelocity: AccelLimit 0, SpeedLimit 1
+//   SubUVAnimation       : StartFrame 0, EndFrame 1, Loop 2, FramesPerSecond 3
 
 // =====================================================================
 // 3. RandomRange
@@ -221,9 +235,8 @@ void StoreEmitter(EmitterState e)
 
 // =====================================================================
 // 6. 모듈 (ModuleLibrary.cpp 의 m.hlsl 본문을 그대로 옮김)
-//   본문 안의 PARAM(n) 과 KILL() 은 바꾸지 않는다. 함수 앞에서 P_<입력값> 지역 변수를 만들고
-//   PARAM(n) 을 P_##n 으로 펼친다. RandomRange 는 이 지역 변수를 만들 때 한 번만 계산된다.
-//   ModuleLibrary 의 hlsl 을 고치면 여기도 같이 고친다.
+//   P_ 변수는 인스턴스(m) 의 입력값 풀 위치에서 읽는다. salt 는 m.Slot, perComponent 는 m.Flags
+//   본문 안의 PARAM(n) 과 KILL() 은 바꾸지 않는다. ModuleLibrary 의 hlsl 을 고치면 여기도 같이 고친다.
 // =====================================================================
 #define PARAM(n) P_##n
 
@@ -241,11 +254,11 @@ void Module_SpawnRate(inout EmitterState e, ModuleInst m)
 // ---- [ParticleSpawn] Initialize Particle ----
 void Module_InitializeParticle(inout Particle p, uint index, ModuleInst m)
 {
-    const float P_Size = RandomParam1(ParamF(m, 0), ParamF(m, 1), index, ParamSalt(m.Slot, 0));
-    const float P_Mass = RandomParam1(ParamF(m, 2), ParamF(m, 3), index, ParamSalt(m.Slot, 1));
-    const float P_Lifetime = RandomParam1(ParamF(m, 4), ParamF(m, 5), index, ParamSalt(m.Slot, 2));
-    const float3 P_Pos = RandomParam3(ParamF3(m, 6), ParamF3(m, 9), index, ParamSalt(m.Slot, 3), PerComp(m, 3));
-    const float4 P_Color = RandomParam4(ParamF4(m, 12), ParamF4(m, 16), index, ParamSalt(m.Slot, 4), PerComp(m, 4));
+    const float  P_Size     = RandomParam1(ParamF(m, 0),   ParamF(m, 1),   index, ParamSalt(m.Slot, 0));
+    const float  P_Mass     = RandomParam1(ParamF(m, 2),   ParamF(m, 3),   index, ParamSalt(m.Slot, 1));
+    const float  P_Lifetime = RandomParam1(ParamF(m, 4),   ParamF(m, 5),   index, ParamSalt(m.Slot, 2));
+    const float3 P_Pos      = RandomParam3(ParamF3(m, 6),  ParamF3(m, 9),  index, ParamSalt(m.Slot, 3), PerComp(m, 3));
+    const float4 P_Color    = RandomParam4(ParamF4(m, 12), ParamF4(m, 16), index, ParamSalt(m.Slot, 4), PerComp(m, 4));
 
     p.Position = OwnerPosition + PARAM(Pos);
     p.Mass = PARAM(Mass);
@@ -258,14 +271,14 @@ void Module_InitializeParticle(inout Particle p, uint index, ModuleInst m)
 // ---- [ParticleSpawn] Sphere Location ----
 void Module_SphereLocation(inout Particle p, uint index, ModuleInst m)
 {
-    const float P_Radius = RandomParam1(ParamF(m, 0), ParamF(m, 1), index, ParamSalt(m.Slot, 0));
-    const uint P_SurfaceOnly = ParamU(m, 2);
-    
+    const float P_Radius      = RandomParam1(ParamF(m, 0), ParamF(m, 1), index, ParamSalt(m.Slot, 0));
+    const uint  P_SurfaceOnly = ParamU(m, 2);
+
     const float kTwoPi = 6.28318530f;
     const float z = Random01(index, 0) * 2.f - 1.f;
     const float phi = Random01(index, 1) * kTwoPi;
     const float r = sqrt(max(0.f, 1.f - z * z));
-    const float dist = (PARAM(SurfaceOnly) != 0) ? PARAM(Radius) :
+    const float dist = (PARAM(SurfaceOnly) != 0) ? PARAM(Radius) : 
     		PARAM(Radius) * pow(Random01(index, 2), 1.f / 3.f);
     p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
 }
@@ -273,13 +286,13 @@ void Module_SphereLocation(inout Particle p, uint index, ModuleInst m)
 // ---- [ParticleSpawn] Add Velocity In Cone ----
 void Module_AddVelocityInCone(inout Particle p, uint index, ModuleInst m)
 {
-    const float P_Speed = RandomParam1(ParamF(m, 0), ParamF(m, 1), index, ParamSalt(m.Slot, 0));
-    const float P_ConeAngle = RandomParam1(ParamF(m, 2), ParamF(m, 3), index, ParamSalt(m.Slot, 1));
-    const float3 P_ConeAxis = RandomParam3(ParamF3(m, 4), ParamF(m, 7), index, ParamSalt(m.Slot, 2), PerComp(m, 2));
-    const float P_InnerConeAngle = RandomParam1(ParamF(m, 10), ParamF(m, 11), index, ParamSalt(m.Slot, 3));
-    const float P_SpeedFalloff = RandomParam1(ParamF(m, 12), ParamF(m, 13), index, ParamSalt(m.Slot, 4));
-    const float P_Distribution = RandomParam1(ParamF(m, 14), ParamF(m, 15), index, ParamSalt(m.Slot, 5));
-    const uint P_LocalSpace = ParamU(m, 16);
+    const float  P_Speed          = RandomParam1(ParamF(m, 0),  ParamF(m, 1),  index, ParamSalt(m.Slot, 0));
+    const float  P_ConeAngle      = RandomParam1(ParamF(m, 2),  ParamF(m, 3),  index, ParamSalt(m.Slot, 1));
+    const float3 P_ConeAxis       = RandomParam3(ParamF3(m, 4), ParamF3(m, 7), index, ParamSalt(m.Slot, 2), PerComp(m, 2));
+    const float  P_InnerConeAngle = RandomParam1(ParamF(m, 10), ParamF(m, 11), index, ParamSalt(m.Slot, 3));
+    const float  P_SpeedFalloff   = RandomParam1(ParamF(m, 12), ParamF(m, 13), index, ParamSalt(m.Slot, 4));
+    const float  P_Distribution   = RandomParam1(ParamF(m, 14), ParamF(m, 15), index, ParamSalt(m.Slot, 5));
+    const uint   P_LocalSpace     = ParamU(m, 16);
 
     const float outerA = radians(clamp(PARAM(ConeAngle), 0.f, 180.f));
     const float innerA = radians(clamp(PARAM(InnerConeAngle), 0.f, clamp(PARAM(ConeAngle), 0.f, 180.f)));
@@ -335,13 +348,13 @@ void Module_SolveForceandVelocity(inout Particle p, uint index, ModuleInst m)
     float3 accel = p.Acceleration;
     const float aLen = length(accel);
     if (PARAM(AccelLimit) > 0.f && aLen > PARAM(AccelLimit))
-        accel *= PARAM(AccelLimit) / aLen;
+    	accel *= PARAM(AccelLimit) / aLen;
 
     p.Velocity += accel * DeltaTime;
 
     const float sLen = length(p.Velocity);
     if (PARAM(SpeedLimit) > 0.f && sLen > PARAM(SpeedLimit))
-        p.Velocity *= PARAM(SpeedLimit) / sLen;
+    	p.Velocity *= PARAM(SpeedLimit) / sLen;
 
     p.Position += p.Velocity * DeltaTime;
     p.Acceleration = float3(0.f, 0.f, 0.f);
@@ -350,27 +363,27 @@ void Module_SolveForceandVelocity(inout Particle p, uint index, ModuleInst m)
 // ---- [ParticleUpdate] SubUV Animation ----
 void Module_SubUVAnimation(inout Particle p, uint index, ModuleInst m)
 {
-    const float P_StartFrame = ParamF(m, 0);
-    const float P_EndFrame = ParamF(m, 1);
-    const uint P_Loop = ParamU(m, 2);
-    const float P_FramesPerSecond = ParamU(m, 3);
+    const float P_StartFrame      = ParamF(m, 0);
+    const float P_EndFrame        = ParamF(m, 1);
+    const uint  P_Loop            = ParamU(m, 2);
+    const float P_FramesPerSecond = ParamF(m, 3);
 
     const float count = max(PARAM(EndFrame) - PARAM(StartFrame) + 1.f, 1.f);
     float t;
     if (PARAM(Loop) != 0)
-        t = frac(p.Age * PARAM(FramesPerSecond) / count) * count;
+    	t = frac(p.Age * PARAM(FramesPerSecond) / count) * count;
     else
-        t = min(p.NormalizedAge * count, count - 1.f);
+    	t = min(p.NormalizedAge * count, count - 1.f);
     p.SubImageIndex = PARAM(StartFrame) + t;
 }
 
 #undef PARAM
 
 // =====================================================================
-// 7. 단계 함수. 실행 순서는 여기서 고정된다 (스택 순서와 다르면 3단계에서 경고)
-//   Emitter Update : SpawnRate
-//   Particle Spawn : InitializeParticle -> SphereLocation -> AddVelocityInCone
-//   Particle Update: ParticleState -> GravityForce -> SolveForceandVelocity -> SubUVAnimation
+// 7. 단계 함수
+//   단계별 인스턴스 범위를 스택 순서대로 돈다. 같은 모듈이 여러 번 있으면 여러 번 실행
+//      반복 범위와 switch 값이 cbuffer 값이라 한 Dispatch 안의 모든 스레드가 같은 길로 간다 (발산 없음)
+//      KILL() 은 alive 만 끄고 뒤 모듈은 계속 실행된다 (생성 방식과 같음)
 // =====================================================================
 void EmitterUpdate(inout EmitterState e)
 {
@@ -380,14 +393,10 @@ void EmitterUpdate(inout EmitterState e)
         const ModuleInst m = LoadInst(EmitterInstBegin + i);
         switch (m.Id)
         {
-            case MODID_SPAWN_RATE:
-                Module_SpawnRate(e, m);
-                break;
-            default:
-                break;
+        case MODID_SPAWN_RATE: Module_SpawnRate(e, m); break;
+        default: break;
         }
-    }  
-
+    }
 }
 
 void ParticleSpawn(inout Particle p, uint index)
@@ -398,42 +407,31 @@ void ParticleSpawn(inout Particle p, uint index)
         const ModuleInst m = LoadInst(SpawnInstBegin + i);
         switch (m.Id)
         {
-            case MODID_INITIALIZE_PARTICLE:
-                Module_InitializeParticle(p, index, m);
-                break;
-            case MODID_SPHERE_LOCATION:
-                Module_SphereLocation(p, index, m);
-                break;
-            case MODID_ADD_VELOCITY_IN_CONE:
-                Module_AddVelocityInCone(p, index, m);
-                break;
+        case MODID_INITIALIZE_PARTICLE:  Module_InitializeParticle(p, index, m); break;
+        case MODID_SPHERE_LOCATION:      Module_SphereLocation(p, index, m);     break;
+        case MODID_ADD_VELOCITY_IN_CONE: Module_AddVelocityInCone(p, index, m);  break;
+        default: break;
         }
     }
+    // [Initial copy] 이번 범위에서는 지원하지 않음 (3단계에서 경고)
 }
 
 void ParticleUpdate(inout Particle p, uint index, inout bool alive)
 {
+    // [Previous copy] 이번 범위에서는 지원하지 않음 (3단계에서 경고)
     [loop]
     for (uint i = 0; i < UpdateInstCount; ++i)
     {
         const ModuleInst m = LoadInst(UpdateInstBegin + i);
         switch (m.Id)
         {
-            case MODID_PARTICLE_STATE:
-                Module_ParticleState(p, index, alive, m);
-            break;
-            case MODID_GRAVITY_FORCE:
-                Module_GravityForce(p, index, m);
-                break;
-            case MODID_SOLVE_FORCE_AND_VELOCITY:
-                Module_SolveForceandVelocity(p, index, m);
-                break;
-             case MODID_SUBUV_ANIMATION:
-                Module_SubUVAnimation(p, index, m);
-                break;
+        case MODID_PARTICLE_STATE:           Module_ParticleState(p, index, alive, m);  break;
+        case MODID_GRAVITY_FORCE:            Module_GravityForce(p, index, m);          break;
+        case MODID_SOLVE_FORCE_AND_VELOCITY: Module_SolveForceandVelocity(p, index, m); break;
+        case MODID_SUBUV_ANIMATION:          Module_SubUVAnimation(p, index, m);        break;
+        default: break;
         }
     }
-
 }
 
 // =====================================================================

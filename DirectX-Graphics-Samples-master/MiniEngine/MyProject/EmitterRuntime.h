@@ -29,7 +29,9 @@ public:
 	void Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& owner);
 	void Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition);
 	void Render(GraphicsContext& gfx, const Math::Camera& camera);
-	
+	// 공용 렌더 목록에 넣기 (그리기는 list.Render). 여러 이미터를 섞어서 정렬할 때 Render 대신 쓴다
+	void SubmitTo(GraphicsContext& gfx, ParticleRenderList& list);
+
 	GpuEmitterInstance* StagedGpu() { return (m_Ready && m_ActiveBackend == EmitterBackend::Gpu) ? &m_Gpu : nullptr; }
 	
 	void OnSubmitted(uint64_t fence);

@@ -63,6 +63,10 @@ public:
 	void SetStageMajor(bool stageMajor) { m_StageMajor = stageMajor; }
 	bool StageMajor() const { return m_StageMajor; }
 
+	// true = 모든 이미터의 파티클을 한 목록에서 정렬해서 한 번에 그림 / false = 이미터마다 따로 정렬, 따로 그림
+	void SetGlobalSort(bool globalSort) { m_GlobalSort = globalSort; }
+	bool GlobalSort() const { return m_GlobalSort; }
+
 	bool                Empty() const { return m_Items.empty(); }
 	uint32_t            Count() const { return uint32_t(m_Items.size()); }
 	uint32_t            AliveTotal() const;
@@ -86,4 +90,7 @@ private:
 
 	bool			  m_StageMajor = false;
 	std::vector<GpuEmitterInstance*> m_StagedScratch;
+
+	bool               m_GlobalSort = true;
+	ParticleRenderList m_RenderList;      // 크기 = 이미터 capacity 합 (Build 에서 잡음)
 };

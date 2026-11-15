@@ -350,6 +350,13 @@ void MyProject::UpdateTestSceneImGui()
     }
 
     {
+        // 렌더: 이미터 사이까지 섞어서 정렬 (한 목록, Draw 1번) / 이미터마다 따로 정렬 (Draw N번)
+        bool globalSort = m_TestScene.GlobalSort();
+        if (ImGui::Checkbox("Global particle sort (across emitters)", &globalSort))
+            m_TestScene.SetGlobalSort(globalSort);
+    }
+
+    {
         int mode = int(UberGpuProgram::Mode());
         ImGui::TextUnformatted("Sim mode:");
         ImGui::SameLine();

@@ -3,6 +3,7 @@
 
 #include "EmitterInstance.h"
 #include "GpuEmitterInstance.h"
+#include "ParticleRenderList.h"
 
 #include "GraphicsCore.h"
 #include "GraphicsCommon.h"
@@ -15,9 +16,11 @@
 #include "TextureConvert.h"
 
 #include "TagLibrary.h"
+#include "BitonicSort.h"
 
 #include "CompiledShaders/ParticleSpritePS.h"
 #include "CompiledShaders/ParticleSpriteVS.h"
+#include "CompiledShaders/ParticleSortKeyCS.h"
 
 #include <DirectXMath.h>
 #include <numeric>
@@ -49,7 +52,8 @@ namespace
 		uint32_t            subUVBlend;      // 156
 
 		float               subImageSize[2]; // 160  (가로 칸, 세로 칸)
-		float               _pad[2];         // 168
+		uint32_t            sortStride;      // 168  정렬 목록 한 칸 바이트 (CPU 4 / GPU 8)
+		float               _pad;            // 172
 	};
 	static_assert(sizeof(SpriteConstants) == 176, "HLSL cbuffer SpriteConstants(160 B)와 일치해야 함");
 	static_assert(offsetof(SpriteConstants, defaultColor) == 112, "DefaultColor offset 112");
@@ -57,6 +61,25 @@ namespace
 	static_assert(offsetof(SpriteConstants, sortEnabled) == 144, "SortEnabled offset 144");
 	static_assert(offsetof(SpriteConstants, subImageOffset) == 148, "SubImageOffset offset 148");
 	static_assert(offsetof(SpriteConstants, subImageSize) == 160, "SubImageSize offset 160");
+	static_assert(offsetof(SpriteConstants, sortStride) == 168, "SortStride offset 168");
+
+	// GPU 정렬 키 생성 (ParticleSortKeyCS.hlsl 의 cbuffer SortKeyConstants 와 같은 배치)
+	struct SortKeyConstants
+	{
+		uint32_t positionOffset;  // 0
+		uint32_t capacity;        // 4
+		uint32_t countOffset;     // 8   개수 버퍼(DrawArgs) 안의 alive 위치
+		uint32_t _pad0;           // 12
+		float    camPos[3];       // 16
+		float    _pad1;           // 28
+		float    camForward[3];   // 32
+		float    _pad2;           // 44
+	};
+	static_assert(sizeof(SortKeyConstants) == 48, "SortKeyConstants 48 B");
+
+	enum SortKeyRootParams { kSortKeyCB, kSortKeySRVs, kSortKeyUAV, kNumSortKeyRootParams };
+	const uint32_t kSortKeyGroupSize = 256;            // ParticleSortKeyCS 의 numthreads
+	const uint32_t kDrawArgsInstanceCountOffset = 4;   // D3D12_DRAW_ARGUMENTS::InstanceCount (= alive)
 
 
 	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kNumRootParams };
@@ -66,6 +89,10 @@ namespace
 	bool          s_PipelineReady = false;
 	RootSignature s_RootSig;
 	GraphicsPSO   s_PSO(L"Particle Sprite PSO");
+
+	// GPU 정렬 키 생성용 (모든 SpriteRenderer 공용)
+	RootSignature s_SortKeyRootSig;
+	ComputePSO    s_SortKeyPSO(L"Particle Sort Key CS");
 
 	// 텍스처를 고르지 않았을 때 쓰는 기본 원형 (예전 PS 의 falloff 를 텍스처로 구운 것)
 	Texture       s_SoftCircle;
@@ -122,6 +149,17 @@ namespace
 		s_PSO.SetPixelShader(g_pParticleSpritePS, sizeof(g_pParticleSpritePS));
 		s_PSO.Finalize();
 
+		// b0 = SortKeyConstants, t0 = 파티클, t1 = 개수 버퍼(DrawArgs), u0 = 정렬 목록
+		s_SortKeyRootSig.Reset(kNumSortKeyRootParams, 0);
+		s_SortKeyRootSig[kSortKeyCB].InitAsConstants(0, sizeof(SortKeyConstants) / 4);
+		s_SortKeyRootSig[kSortKeySRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 2);
+		s_SortKeyRootSig[kSortKeyUAV].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 1);
+		s_SortKeyRootSig.Finalize(L"Particle Sort Key RootSig");
+
+		s_SortKeyPSO.SetRootSignature(s_SortKeyRootSig);
+		s_SortKeyPSO.SetComputeShader(g_pParticleSortKeyCS, sizeof(g_pParticleSortKeyCS));
+		s_SortKeyPSO.Finalize();
+
 		CreateSoftCircle();
 
 		s_PipelineReady = true;
@@ -171,6 +209,7 @@ bool SpriteRenderer::Initialize(const EmitterInstance& emitter, const RendererDe
 void SpriteRenderer::Shutdown()
 {
 	m_SortedIndexBuffer.Destroy();
+	m_GpuSortBuffer.Destroy();
 	m_ParticleBuffer.Destroy();
 
 	m_SortedIndices.clear();
@@ -197,7 +236,7 @@ void SpriteRenderer::Render(GraphicsContext& gfx, const Math::Camera& camera, co
 		gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
 
 	// 3) 상수 버퍼 / 파이프라인 / SRV
-	BindForDraw(gfx, camera, m_ParticleBuffer, m_SortMode == SortMode::ViewDepth);
+	BindForDraw(gfx, camera, m_ParticleBuffer, m_SortedIndexBuffer, sorted, sizeof(uint32_t));
 
 	// 4) 그리기: 파티클 하나 = 사각형(정점 6개), 인스턴스 = 파티클 수
 	gfx.DrawInstanced(6, emitter.Count());
@@ -247,9 +286,9 @@ bool SpriteRenderer::InitializeGpu(const GpuEmitterInstance& emitter, const Rend
 		return false;
 
 	// 파티클 버퍼는 GPU 이미터 것을 쓰므로 만들지 않는다.
-	// t1 은 정렬을 끈 상태라 읽지 않지만, SRV 테이블을 채우려고 작은 버퍼를 하나 둔다 (G3 에서 정렬 결과로 바뀜)
-	alignas(16) const uint32_t dummy[4] = { 0, 1, 2, 3 };
-	m_SortedIndexBuffer.Create(L"Sorted Index Buffer (GPU, unused)", 4, sizeof(uint32_t), dummy);
+	// t1 = GPU 정렬 목록 uint2(index, key). 개수는 GPU 만 알기 때문에 capacity 만큼 잡는다
+	//   BitonicSort 는 개수 버퍼의 alive 까지만 읽고 쓰므로 초기값은 필요 없다 (정렬을 끈 상태에서도 SRV 자리를 채움)
+	m_GpuSortBuffer.Create(L"GPU Sort Key-Index List", (std::max)(m_Capacity, 1u), sizeof(uint32_t) * 2);
 	m_BufferBytes = 0;
 
 	InitializePipeline();
@@ -276,16 +315,104 @@ void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera,
 
 	// GPU 이미터의 Tick 이 이미 전환해 두지만, 비교(CompareWithCpu) 등으로 상태가 바뀌었을 수 있어 한 번 더
 	gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	gfx.TransitionResource(emitter.DrawArgs(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-	gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
 
-	BindForDraw(gfx, camera, emitter.ParticleBuffer(), false);
+	// 정렬 (CPU 경로와 같은 조건). 개수를 CPU 로 읽지 않고 DrawArgs 의 alive 를 GPU 에서 바로 쓴다
+	const bool sorted = (m_SortMode == SortMode::ViewDepth) && (m_Offsets[kPosition] != kNoAttribute);
+	if (sorted)
+		SortOnGpu(gfx, camera, emitter);
+
+	gfx.TransitionResource(emitter.DrawArgs(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+	gfx.TransitionResource(m_GpuSortBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
+
+	BindForDraw(gfx, camera, emitter.ParticleBuffer(), m_GpuSortBuffer, sorted, sizeof(uint32_t) * 2);
 
 	// 개수는 Finalize 가 Draw 인자 (6, alive, 0, 0) 로 써둔 것. CPU 는 개수를 몰라도 된다
 	gfx.DrawIndirect(emitter.DrawArgs());
 }
 
-void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camera, ByteAddressBuffer& particles, bool sorted)
+void SpriteRenderer::SortOnGpu(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter)
+{
+	ComputeContext& cc = gfx.GetComputeContext();
+	IndirectArgsBuffer& countBuffer = emitter.DrawArgs();   // [4] = alive (Finalize 가 씀)
+
+	// 1) 키 생성: 파티클 i -> uint2(i, 깊이 키). alive 이후 칸은 셰이더가 건너뛴다
+	SortKeyConstants kc = {};
+	kc.positionOffset = m_Offsets[kPosition];
+	kc.capacity = m_Capacity;
+	kc.countOffset = kDrawArgsInstanceCountOffset;
+	const float3 camPos = ToFloat3(camera.GetPosition());
+	const float3 camFwd = ToFloat3(camera.GetForwardVec());
+	kc.camPos[0] = camPos.x; kc.camPos[1] = camPos.y; kc.camPos[2] = camPos.z;
+	kc.camForward[0] = camFwd.x; kc.camForward[1] = camFwd.y; kc.camForward[2] = camFwd.z;
+
+	cc.TransitionResource(countBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	cc.TransitionResource(m_GpuSortBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+
+	cc.SetRootSignature(s_SortKeyRootSig);
+	cc.SetPipelineState(s_SortKeyPSO);
+	cc.SetConstantArray(kSortKeyCB, sizeof(kc) / 4, &kc);
+	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[2] = { emitter.ParticleBuffer().GetSRV(), countBuffer.GetSRV() };
+	cc.SetDynamicDescriptors(kSortKeySRVs, 0, 2, srvs);
+	cc.SetDynamicDescriptor(kSortKeyUAV, 0, m_GpuSortBuffer.GetUAV());
+	// 개수를 CPU 가 모르므로 capacity 기준으로 띄우고, alive 를 넘는 스레드는 바로 끝난다
+	cc.Dispatch((m_Capacity + kSortKeyGroupSize - 1) / kSortKeyGroupSize, 1, 1);
+
+	// 2) 정렬: 키 내림차순 = 카메라에서 먼 것부터 (CPU SortBackToFront 와 같은 순서)
+	//    BitonicSort 가 키 목록 UAV 배리어 / 개수 버퍼 SRV 전환을 직접 한다
+	BitonicSort::Sort(cc, m_GpuSortBuffer, countBuffer, kDrawArgsInstanceCountOffset, false, false);
+}
+
+void SpriteRenderer::SubmitToList(GraphicsContext& gfx, ParticleRenderList& list, const EmitterInstance& emitter)
+{
+	if (!m_Ready || emitter.Count() == 0)
+		return;
+
+	// CPU 시뮬레이션 결과를 올린다 (Render 의 1 단계와 같음). 개수는 CPU 가 알고 있으므로 상수로 넘긴다
+	gfx.TransitionResource(m_ParticleBuffer, D3D12_RESOURCE_STATE_COPY_DEST, true);
+	gfx.WriteBuffer(m_ParticleBuffer, 0, emitter.ParticleData(), m_BufferBytes);
+	gfx.TransitionResource(m_ParticleBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
+
+	ParticleRenderList::Source src = MakeListSource();
+	src.particles = &m_ParticleBuffer;
+	src.constCount = emitter.Count();
+	list.Add(gfx, src);
+}
+
+void SpriteRenderer::SubmitToListGpu(GraphicsContext& gfx, ParticleRenderList& list, GpuEmitterInstance& emitter)
+{
+	if (!m_Ready || !emitter.Ready())
+		return;
+
+	// 개수는 Finalize 가 DrawArgs.InstanceCount 에 써 둔 alive 를 GPU 에서 바로 읽는다
+	ParticleRenderList::Source src = MakeListSource();
+	src.particles = &emitter.ParticleBuffer();
+	src.countBuffer = &emitter.DrawArgs();
+	src.countOffset = kDrawArgsInstanceCountOffset;
+	list.Add(gfx, src);
+}
+
+ParticleRenderList::Source SpriteRenderer::MakeListSource() const
+{
+	ParticleRenderList::Source src;
+	src.capacity = m_Capacity;
+	src.positionOffset = m_Offsets[kPosition];
+	src.colorOffset = m_Offsets[kColor];
+	src.sizeOffset = m_Offsets[kSize];
+	src.subImageOffset = m_Offsets[kSubImageIndex];
+	src.defaultPosition = m_DefaultPosition;
+	src.defaultColor = m_DefaultColor;
+	src.defaultSize = m_DefaultSize;
+	src.defaultSubImage = m_DefaultSubImage;
+	src.subImageCols = m_Settings.subImageCols;
+	src.subImageRows = m_Settings.subImageRows;
+	src.subUVBlend = m_Settings.subUVBlend;
+	src.blendMode = static_cast<uint32_t>(m_Settings.blend);
+	src.texture = TextureSRV();
+	return src;
+}
+
+void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camera, ByteAddressBuffer& particles,
+	ByteAddressBuffer& sortedIndices, bool sorted, uint32_t sortStride)
 {
 	SpriteConstants sc = {};
 	DirectX::XMStoreFloat4x4(&sc.viewProj, camera.GetViewProjMatrix());
@@ -306,13 +433,14 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	sc.subUVBlend = m_Settings.subUVBlend ? 1u : 0u;
 	sc.subImageSize[0] = static_cast<float>(m_Settings.subImageCols);
 	sc.subImageSize[1] = static_cast<float>(m_Settings.subImageRows);
+	sc.sortStride = sortStride;
 		
 	gfx.SetRootSignature(s_RootSig);
 	gfx.SetPipelineState(s_PSO);
 	gfx.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	gfx.SetDynamicConstantBufferView(kRootCBV, sizeof(sc), &sc);
 
-	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), m_SortedIndexBuffer.GetSRV() };
+	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), sortedIndices.GetSRV() };
 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
 	gfx.SetDynamicDescriptor(kRootTexture, 0, TextureSRV());
 	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend));

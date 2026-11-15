@@ -111,6 +111,9 @@
     <ClCompile Include="SpriteRenderer.cpp">
       <Filter>Particle\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="ParticleRenderList.cpp">
+      <Filter>Particle\Renderer</Filter>
+    </ClCompile>
     <ClCompile Include="ParticleSorter.cpp">
       <Filter>Particle\Sorter</Filter>
     </ClCompile>
@@ -207,6 +210,9 @@
     <ClInclude Include="SpriteRenderer.h">
       <Filter>Particle\Renderer</Filter>
     </ClInclude>
+    <ClInclude Include="ParticleRenderList.h">
+      <Filter>Particle\Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="ParticleSorter.h">
       <Filter>Particle\Sorter</Filter>
     </ClInclude>
@@ -270,6 +276,9 @@
     <None Include="Shaders\ModuleCommon.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
+    <None Include="Shaders\ParticleListCommon.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
     <None Include="Shaders\ParticleUber.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
@@ -306,6 +315,18 @@
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\ParticleSpriteVS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleSortKeyCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleGatherCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleListVS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleListPS.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\EmitterFinalizeCS.hlsl">

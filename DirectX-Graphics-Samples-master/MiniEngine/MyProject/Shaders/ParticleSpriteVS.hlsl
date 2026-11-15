@@ -19,13 +19,14 @@ cbuffer SpriteConstants : register(b0)
     uint SubUVBlend; // 156 1 = 다음 프레임과 섞기
     
     float2 SubImageSize; // 160 (가로 칸, 세로 칸)
-    float2 _pad; // 168
+    uint SortStride; // 168 정렬 목록 한 칸 바이트 (CPU 4 = uint index / GPU 8 = uint2(index, key))
+    float _pad; // 172
 };
 
 #define NO_ATTRIBUTE 0xFFFFFFFF
 
 ByteAddressBuffer ParticleData : register(t0);
-StructuredBuffer<uint> SortedIndices : register(t1);
+ByteAddressBuffer SortedIndices : register(t1); // 칸의 첫 uint = 파티클 번호 (GPU 는 뒤에 키가 붙음)
 
 
 struct VSOutput
@@ -58,7 +59,7 @@ float2 SubImageUV(uint frame, float2 uv)
 
 VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
 {
-    const uint idx = SortEnabled ? SortedIndices[instanceId] : instanceId;
+    const uint idx = SortEnabled ? SortedIndices.Load(instanceId * SortStride) : instanceId;
     
     // 칸이 연결되어 있으면 버퍼에서, 아니면 기본값 (cbuffer 값이라 draw 전체가 같은 쪽으로 분기)
     const float3 position = (PositionOffset == NO_ATTRIBUTE) ? DefaultPosition

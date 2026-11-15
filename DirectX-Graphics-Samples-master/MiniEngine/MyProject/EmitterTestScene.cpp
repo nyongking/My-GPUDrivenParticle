@@ -162,6 +162,13 @@ bool EmitterTestScene::Build(const Settings& settings)
 		m_Items.push_back(std::move(item));
 	}
 
+	// 공용 렌더 목록: 모든 이미터가 꽉 차도 들어가는 크기 (Shutdown 에서 GPU idle 을 거쳤으므로 다시 만들어도 안전)
+	uint32_t listCapacity = 0;
+	for (const Item& item : m_Items)
+		listCapacity += item.runtime->Capacity();
+	if (!m_Items.empty())
+		m_RenderList.Reserve(listCapacity);
+
 	m_LastBuild.created = uint32_t(m_Items.size());
 	m_LastBuild.setupMs = SystemTime::TimeBetweenTicks(startTick, SystemTime::GetCurrentTick()) * 1000.0;
 	m_LastBuild.shaderBuildMs = EmitterGpuProgram::GetStats().buildMs;
@@ -182,6 +189,7 @@ void EmitterTestScene::Shutdown()
 	for (Item& item : m_Items)
 		item.runtime->Shutdown();
 	m_Items.clear();
+	m_RenderList.Shutdown();
 }
 
 void EmitterTestScene::Tick(ComputeContext& ctx, float deltaTime)
@@ -225,6 +233,20 @@ void EmitterTestScene::OnSubmitted(uint64_t fence)
 
 void EmitterTestScene::Render(GraphicsContext& gfx, const Math::Camera& camera)
 {
+	if (m_Items.empty())
+		return;
+
+	// 전체 정렬: 모든 이미터 파티클을 한 목록에 모아 정렬 1번 + Draw 1번 (이미터 사이 앞뒤도 맞음)
+	if (m_GlobalSort && m_RenderList.ReservedCapacity() > 0)
+	{
+		m_RenderList.Begin(gfx, camera);
+		for (Item& item : m_Items)
+			item.runtime->SubmitTo(gfx, m_RenderList);
+		m_RenderList.Render(gfx);
+		return;
+	}
+
+	// 이미터별: 각자 정렬해서 각자 그림 (이미터 사이 순서 = 그리는 순서)
 	for (Item& item : m_Items)
 		item.runtime->Render(gfx, camera);
 }

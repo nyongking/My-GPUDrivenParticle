@@ -118,6 +118,17 @@ void EmitterRuntime::Render(GraphicsContext& gfx, const Math::Camera& camera)
 		m_GpuRenderer.RenderGpu(gfx, camera, m_Gpu);
 }
 
+void EmitterRuntime::SubmitTo(GraphicsContext& gfx, ParticleRenderList& list)
+{
+	if (!m_Ready)
+		return;
+
+	if (m_ActiveBackend == EmitterBackend::Cpu)
+		m_CpuRenderer.SubmitToList(gfx, list, m_Cpu);
+	else
+		m_GpuRenderer.SubmitToListGpu(gfx, list, m_Gpu);
+}
+
 void EmitterRuntime::OnSubmitted(uint64_t fence)
 {
 	if (m_Ready && m_ActiveBackend == EmitterBackend::Gpu)

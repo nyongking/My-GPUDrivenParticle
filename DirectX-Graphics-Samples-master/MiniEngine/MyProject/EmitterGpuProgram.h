@@ -14,7 +14,8 @@ class EmitterGpuProgram
 public:
 	// 각 단계의 main 번호
 	enum Kernel { kEmitterUpdate, kParticleUpdate, kParticleSpawn, kNumKernels };
-	enum RootParam { kRootEngineCB, kRootModuleCB, kRootUAVs, kRootLayoutCB, kNumRootParams };
+	// kRootModuleData = t0 루트 SRV (공유 셰이더의 모듈 인스턴스 + 입력값). 생성 방식 셰이더는 쓰지 않는다
+	enum RootParam { kRootEngineCB, kRootModuleCB, kRootUAVs, kRootLayoutCB, kRootModuleData, kNumRootParams };
 	static const uint32_t kNumUAVs = 5;
 
 	struct Stats
