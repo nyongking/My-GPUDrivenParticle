@@ -688,11 +688,11 @@ p.Color = p.Initial_Color * float4(PARAM(ScaleRGB), PARAM(ScaleAlpha));
 
 
 // 컬 노이즈 필드로 힘을 더한다. Niagara 의 Curl Noise Force 에 해당 (Physics.Force 에 더하기 = 여기서는 Acceleration += F / Mass)
-//   힘 = CurlNoise(Position * Frequency + Offset) * Strength
+//   힘 = CurlNoise(Position * Frequency + Offset + Pan * Emitter.Age) * Strength
 //   curl 이라 발산이 없어 파티클이 모이거나 흩어지지 않고 소용돌이친다. Solve Force and Velocity 앞에 둔다
 //   Niagara 의 기본(구운 타일링 LUT) 대신 그래디언트 노이즈의 도함수로 직접 계산한다 (Niagara 의 고품질 옵션 쪽)
-//   Pan(시간에 따라 필드 흘리기)은 엔진 상수에 경과 시간이 없어 아직 없다. Offset 은 시드처럼 필드를 옮긴다
-ModuleDesc CurlNoiseForce(Input<float> strength, Input<float> frequency, Input<float3> offset)
+//   Pan 은 필드를 시간에 따라 흘린다 (Emitter.Age = 이미터 시작 후 시뮬레이션 시간. 타임 스톱 중엔 멈춤). Offset 은 시드처럼 필드를 옮긴다
+ModuleDesc CurlNoiseForce(Input<float> strength, Input<float> frequency, Input<float3> offset, Input<float3> pan)
 {
 	ModuleDesc m;
 
@@ -703,18 +703,20 @@ ModuleDesc CurlNoiseForce(Input<float> strength, Input<float> frequency, Input<f
 	{
 		MakeParam<float>("Strength", strength),
 		MakeParam<float>("Frequency", frequency),
-		MakeParam<float3>("Offset", offset)
+		MakeParam<float3>("Offset", offset),
+		MakeParam<float3>("Pan", pan)
 	};
 	m.reads =
 	{
 		{Particles::Position, &Types::Float3},
 		{Particles::Acceleration, &Types::Float3},
-		{Particles::Mass, &Types::Float}
+		{Particles::Mass, &Types::Float},
+		{Engine::EmitterAge, &Types::Float}
 	};
 	m.writes = { {Particles::Acceleration, &Types::Float3} };
 
 	m.hlsl = R"(
-p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset)) * (PARAM(Strength) / p.Mass);
+p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset) + PARAM(Pan) * EmitterAge) * (PARAM(Strength) / p.Mass);
 )";
 
 	m.execute = [](ModuleContext& ctx)
@@ -722,6 +724,8 @@ p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset)) * (PA
 			const auto strengthParam = ctx.Param<float>("Strength");
 			const auto frequencyParam = ctx.Param<float>("Frequency");
 			const auto offsetParam = ctx.Param<float3>("Offset");
+			const auto panParam = ctx.Param<float3>("Pan");
+			const float age = ctx.EmitterAge();
 			auto pos = ctx.Particles<float3>(Particles::Position);
 			auto acc = ctx.Particles<float3>(Particles::Acceleration);
 			auto mass = ctx.Particles<float>(Particles::Mass);
@@ -730,7 +734,8 @@ p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset)) * (PA
 			{
 				const float freq = frequencyParam(i);
 				const float3 o = offsetParam(i);
-				const float3 x = float3{ pos[i].x * freq + o.x, pos[i].y * freq + o.y, pos[i].z * freq + o.z };
+				const float3 pan = panParam(i);
+				const float3 x = float3{ pos[i].x * freq + o.x + pan.x * age, pos[i].y * freq + o.y + pan.y * age, pos[i].z * freq + o.z + pan.z * age };
 				const float3 c = CurlNoise(x);
 				const float s = strengthParam(i) / mass[i];
 				acc[i].x += c.x * s;
@@ -785,7 +790,7 @@ ModuleDesc MakeDefaultModule(ModuleId id)
 	case ModuleId::InitializeSprite:      return InitializeSprite(float2{ 0.2f, 0.2f }, RandomRange<float>(0.f, 360.f));
 	case ModuleId::SpriteRotationRate:    return SpriteRotationRate(90.f);
 	case ModuleId::ScaleColor:            return ScaleColor(float3{ 1.f, 1.f, 1.f }, Curve<float>({ { 0.f, 1.f }, { 1.f, 0.f } }));   // fade out over lifetime
-	case ModuleId::CurlNoiseForce:        return CurlNoiseForce(5.f, 0.5f, float3{ 0.f, 0.f, 0.f });
+	case ModuleId::CurlNoiseForce:        return CurlNoiseForce(5.f, 0.5f, float3{ 0.f, 0.f, 0.f }, float3{ 0.f, 0.f, 0.f });
 	default:
 	{
 		ModuleDesc unknown;

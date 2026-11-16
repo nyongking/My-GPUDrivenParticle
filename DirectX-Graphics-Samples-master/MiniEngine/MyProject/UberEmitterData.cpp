@@ -37,7 +37,7 @@ namespace
 			InitializeSprite(float2{ 0.f, 0.f }, 0.f),
 			SpriteRotationRate(0.f),
 			ScaleColor(float3{ 1.f, 1.f, 1.f }, 1.f),
-			CurlNoiseForce(0.f, 0.f, float3{ 0.f, 0.f, 0.f })
+			CurlNoiseForce(0.f, 0.f, float3{ 0.f, 0.f, 0.f }, float3{ 0.f, 0.f, 0.f })
 		};
 		for (uint32_t i = 0; i < uint32_t(m.size()); ++i)
 			ASSERT(uint32_t(m[i].id) == i, "ReferenceModules 순서가 ModuleId 와 다름");
@@ -45,7 +45,7 @@ namespace
 	}
 
 	// ParticleUber.hlsli 모듈 함수가 읽는 입력값 dword 수 (ModuleId 순서). 셰이더 주석의 표와 같다
-	constexpr uint32_t kExpectedRecordDwords[] = { 1, 20, 3, 17, 1, 3, 2, 4, 6, 1, 4, 5 };
+	constexpr uint32_t kExpectedRecordDwords[] = { 1, 20, 3, 17, 1, 3, 2, 4, 6, 1, 4, 8 };
 	static_assert(sizeof(kExpectedRecordDwords) / sizeof(kExpectedRecordDwords[0]) == size_t(ModuleId::Count), "kExpectedRecordDwords 개수");
 
 	// 공유 셰이더가 단계 함수에서 도는 단계 (b2 의 범위 순서)

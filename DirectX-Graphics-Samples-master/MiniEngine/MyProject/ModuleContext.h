@@ -17,6 +17,7 @@ struct EngineValues
 	float3   OwnerVelocity = { 0.f, 0.f, 0.f };
 	float4x4 OwnerLocalToWorld = Identity4x4();
 	uint32_t NumParticles = 0;   // 이번 프레임 시작 때 살아 있던 수 (GPU 는 Counters 의 ALIVE_IN)
+	float    EmitterAge = 0.f;   // sim time since emitter (re)start (GPU: EngineConstants.EmitterAge)
 };
 
 template<typename T>
@@ -80,6 +81,7 @@ public:
 	const float3&   OwnerVelocity()     const { return m_Engine.OwnerVelocity; }
 	const float4x4& OwnerLocalToWorld() const { return m_Engine.OwnerLocalToWorld; }
 	uint32_t        NumParticles()      const { return m_Engine.NumParticles; }
+	float           EmitterAge()        const { return m_Engine.EmitterAge; }
 
 	float			Random01(uint32_t particleIndex, uint32_t salt) const;
 

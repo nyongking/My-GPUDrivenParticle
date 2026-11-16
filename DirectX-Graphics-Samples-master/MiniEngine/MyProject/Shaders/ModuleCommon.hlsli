@@ -6,7 +6,8 @@ cbuffer EngineConstants : register(b0)
     float DeltaTime;
     uint Capacity;
     uint RandomSeed;
-    uint2 _pad;
+    float EmitterAge;   // Engine.Emitter.Age: sim time since emitter (re)start (sum of clamped dt)
+    uint _pad;
     float3 OwnerVelocity;
     float _pad1;
     row_major float4x4 OwnerLocalToWorld;

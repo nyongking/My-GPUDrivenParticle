@@ -75,6 +75,7 @@ bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
 
 
 	m_Count = m_Frame = m_NewBegin = m_NewEnd = m_KilledLastTick = 0;
+	m_Age = 0.f;
 	m_HasPrevOwner = false;
 	return true;
 }
@@ -88,6 +89,7 @@ void EmitterInstance::Shutdown()
 	m_EmitterData = {};
 	m_AliveFlags = {};
 	m_Capacity = m_Count = m_Frame = m_NewBegin = m_NewEnd = m_KilledLastTick = 0;
+	m_Age = 0.f;
 }
 
 void EmitterInstance::SetModuleParamData(const std::vector<uint8_t>& data)
@@ -116,6 +118,8 @@ void EmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 
 	// [1] EngineValues
 	m_EngineValues.DeltaTime = min(max(deltaTime, 0.f), float(kMaxDeltaTime));	// 멈췄다 돌아온 프레임에서 한 번에 너무 많이 생성되지 않게
+	m_Age += m_EngineValues.DeltaTime;   // time stop (dt = 0) also stops Emitter.Age
+	m_EngineValues.EmitterAge = m_Age;
 	m_EngineValues.OwnerPosition = t.position;
 	m_EngineValues.RandomSeed = HashFrame(m_Frame + 1);
 	m_EngineValues.OwnerVelocity = ComputeOwnerVelocity(t.position, m_HasPrevOwner ? &m_PrevOwnerPosition : nullptr, deltaTime);

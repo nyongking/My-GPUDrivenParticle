@@ -59,6 +59,7 @@ private:
 	EngineValues			m_EngineValues;
 	float3					m_PrevOwnerPosition = { 0.f, 0.f, 0.f };
 	bool					m_HasPrevOwner = false;
+	float					m_Age = 0.f;			// Engine.Emitter.Age (sum of clamped dt since Initialize)
 
 	uint32_t				m_Capacity = 0;
 	uint32_t				m_Count = 0;

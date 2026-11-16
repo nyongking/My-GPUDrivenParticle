@@ -6,6 +6,7 @@ namespace Engine
 	constexpr const char* OwnerVelocity = "Engine.Owner.Velocity";
 	constexpr const char* OwnerLocalToWorld = "Engine.Owner.LocalToWorld";
 	constexpr const char* NumParticles = "Engine.Emitter.NumParticles";
+	constexpr const char* EmitterAge = "Engine.Emitter.Age";
 };
 
 namespace Emitter

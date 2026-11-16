@@ -149,7 +149,7 @@ float4 CurveParam4(ModuleInst m, uint k, uint paramIndex, float t)
 //   InitializeSprite     : SpriteSize 0~1/2~3, SpriteRotation 4/5
 //   SpriteRotationRate   : RotationRate 0
 //   ScaleColor           : ScaleRGB 0~2, ScaleAlpha 3
-//   CurlNoiseForce       : Strength 0, Frequency 1, Offset 2~4
+//   CurlNoiseForce       : Strength 0, Frequency 1, Offset 2~4, Pan 5~7
 //   ParticleUpdate 모듈의 float 계열 입력값은 Curve 일 수 있다 (CurveParamN 으로 읽는다. dword 배치는 같다)
 
 // =====================================================================
@@ -488,8 +488,9 @@ void Module_CurlNoiseForce(inout Particle p, uint index, ModuleInst m)
     const float  P_Strength  = CurveParam1(m, 0, 0, p.NormalizedAge);
     const float  P_Frequency = CurveParam1(m, 1, 1, p.NormalizedAge);
     const float3 P_Offset    = CurveParam3(m, 2, 2, p.NormalizedAge);
+    const float3 P_Pan       = CurveParam3(m, 5, 3, p.NormalizedAge);
 
-    p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset)) * (PARAM(Strength) / p.Mass);
+    p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset) + PARAM(Pan) * EmitterAge) * (PARAM(Strength) / p.Mass);
 }
 #undef PARAM
 

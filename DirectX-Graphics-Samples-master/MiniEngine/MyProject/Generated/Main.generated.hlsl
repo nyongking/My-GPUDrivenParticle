@@ -5,9 +5,9 @@
 //     M1_InitializeParticle       ParticleSpawn   
 //     M2_SphereLocation           ParticleSpawn   
 //     M3_ParticleState            ParticleUpdate  
-//     M4_SubUVAnimation           ParticleUpdate  
-//     M5_CurlNoiseForce           ParticleUpdate  
-//     M6_SolveForceandVelocity    ParticleUpdate  
+//     M4_CurlNoiseForce           ParticleUpdate  
+//     M5_SolveForceandVelocity    ParticleUpdate  
+//     M6_SubUVAnimation           ParticleUpdate  
 // =====================================================================
 
 #include "ModuleCommon.hlsli"
@@ -22,9 +22,9 @@ static const uint OFS_Particles_Lifetime               = 32;   // float
 static const uint OFS_Particles_Age                    = 36;   // float
 static const uint OFS_Particles_Mass                   = 40;   // float
 static const uint OFS_Particles_NormalizedAge          = 44;   // float
-static const uint OFS_Particles_SubImageIndex          = 48;   // float
-static const uint OFS_Particles_Acceleration           = 52;   // float3
-static const uint OFS_Particles_Velocity               = 64;   // float3
+static const uint OFS_Particles_Acceleration           = 48;   // float3
+static const uint OFS_Particles_Velocity               = 60;   // float3
+static const uint OFS_Particles_SubImageIndex          = 72;   // float
 
 static const uint OFS_Emitter_SpawnCount               = 0;   // uint
 static const uint OFS_Emitter_SpawnRemainder           = 4;   // float
@@ -44,15 +44,16 @@ cbuffer ModuleParams : register(b1)
     float  M2_SphereLocation_Radius;               // 64
     uint   M2_SphereLocation_SurfaceOnly;          // 68
     uint   M3_ParticleState_KillOnLifetime;        // 72
-    float  M4_SubUVAnimation_StartFrame;           // 76
-    float  M4_SubUVAnimation_EndFrame;             // 80
-    uint   M4_SubUVAnimation_Loop;                 // 84
-    float  M4_SubUVAnimation_FramesPerSecond;      // 88
-    float  M5_CurlNoiseForce_Strength;             // 92
-    float  M5_CurlNoiseForce_Frequency;            // 96
-    float3 M5_CurlNoiseForce_Offset;               // 100
-    float  M6_SolveForceandVelocity_AccelLimit;    // 112
-    float  M6_SolveForceandVelocity_SpeedLimit;    // 116
+    float  M4_CurlNoiseForce_Strength;             // 76
+    float  M4_CurlNoiseForce_Frequency;            // 80
+    float3 M4_CurlNoiseForce_Offset;               // 84
+    float3 M4_CurlNoiseForce_Pan;                  // 96
+    float  M5_SolveForceandVelocity_AccelLimit;    // 108
+    float  M5_SolveForceandVelocity_SpeedLimit;    // 112
+    float  M6_SubUVAnimation_StartFrame;           // 116
+    float  M6_SubUVAnimation_EndFrame;             // 120
+    uint   M6_SubUVAnimation_Loop;                 // 124
+    float  M6_SubUVAnimation_FramesPerSecond;      // 128
 };
 
 // =====================================================================
@@ -67,9 +68,9 @@ struct Particle
     float  Age;
     float  Mass;
     float  NormalizedAge;
-    float  SubImageIndex;
     float3 Acceleration;
     float3 Velocity;
+    float  SubImageIndex;
 };
 
 struct EmitterState
@@ -91,9 +92,9 @@ Particle LoadParticle(RWByteAddressBuffer b, uint i)
     p.Age                  = LoadF1(b, OFS_Particles_Age, i);
     p.Mass                 = LoadF1(b, OFS_Particles_Mass, i);
     p.NormalizedAge        = LoadF1(b, OFS_Particles_NormalizedAge, i);
-    p.SubImageIndex        = LoadF1(b, OFS_Particles_SubImageIndex, i);
     p.Acceleration         = LoadF3(b, OFS_Particles_Acceleration, i);
     p.Velocity             = LoadF3(b, OFS_Particles_Velocity, i);
+    p.SubImageIndex        = LoadF1(b, OFS_Particles_SubImageIndex, i);
     return p;
 }
 
@@ -106,9 +107,9 @@ void StoreParticle(RWByteAddressBuffer b, uint i, Particle p)
     StoreF1(b, OFS_Particles_Age,                    i, p.Age);
     StoreF1(b, OFS_Particles_Mass,                   i, p.Mass);
     StoreF1(b, OFS_Particles_NormalizedAge,          i, p.NormalizedAge);
-    StoreF1(b, OFS_Particles_SubImageIndex,          i, p.SubImageIndex);
     StoreF3(b, OFS_Particles_Acceleration,           i, p.Acceleration);
     StoreF3(b, OFS_Particles_Velocity,               i, p.Velocity);
+    StoreF1(b, OFS_Particles_SubImageIndex,          i, p.SubImageIndex);
 }
 
 EmitterState LoadEmitter()
@@ -138,7 +139,7 @@ void EmitterUpdate(inout EmitterState e)
         const uint	n = (uint)want;
         e.SpawnRemainder = want - (float)n;
         e.SpawnCount += n;
-#line 142 "Main.generated.hlsl"
+#line 143 "Main.generated.hlsl"
 #undef PARAM
     }
 }
@@ -156,7 +157,7 @@ void ParticleSpawn(inout Particle p, uint index)
         p.Size = PARAM(Size);
         p.Lifetime = PARAM(Lifetime);
         p.Age = 0.f;
-#line 160 "Main.generated.hlsl"
+#line 161 "Main.generated.hlsl"
 #undef PARAM
 #undef M1_InitializeParticle_Pos
     }
@@ -171,7 +172,7 @@ void ParticleSpawn(inout Particle p, uint index)
         const float dist = (PARAM(SurfaceOnly) != 0) ? PARAM(Radius) : 
         		PARAM(Radius) * pow(Random01(index, 2), 1.f / 3.f);
         p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
-#line 175 "Main.generated.hlsl"
+#line 176 "Main.generated.hlsl"
 #undef PARAM
     }
     // ---- [Initialcopy] none ----
@@ -189,35 +190,21 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
         p.NormalizedAge = min(t, 1.f);
         if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
         	KILL();
-#line 193 "Main.generated.hlsl"
+#line 194 "Main.generated.hlsl"
 #undef PARAM
     }
-    // ---- [M4] SubUV Animation----
+    // ---- [M4] Curl Noise Force----
     {
-#define PARAM(n) M4_SubUVAnimation_##n
-#line 1 "M4_SubUVAnimation"
-        const float count = max(PARAM(EndFrame) - PARAM(StartFrame) + 1.f, 1.f);
-        float t;
-        if (PARAM(Loop) != 0)
-        	t = frac(p.Age * PARAM(FramesPerSecond) / count) * count;
-        else
-        	t = min(p.NormalizedAge * count, count - 1.f);
-        p.SubImageIndex = PARAM(StartFrame) + t;
-#line 207 "Main.generated.hlsl"
+#define PARAM(n) M4_CurlNoiseForce_##n
+#line 1 "M4_CurlNoiseForce"
+        p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset) + PARAM(Pan) * EmitterAge) * (PARAM(Strength) / p.Mass);
+#line 202 "Main.generated.hlsl"
 #undef PARAM
     }
-    // ---- [M5] Curl Noise Force----
+    // ---- [M5] Solve Force and Velocity----
     {
-#define PARAM(n) M5_CurlNoiseForce_##n
-#line 1 "M5_CurlNoiseForce"
-        p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset)) * (PARAM(Strength) / p.Mass);
-#line 215 "Main.generated.hlsl"
-#undef PARAM
-    }
-    // ---- [M6] Solve Force and Velocity----
-    {
-#define PARAM(n) M6_SolveForceandVelocity_##n
-#line 1 "M6_SolveForceandVelocity"
+#define PARAM(n) M5_SolveForceandVelocity_##n
+#line 1 "M5_SolveForceandVelocity"
         float3 accel = p.Acceleration;
         const float aLen = length(accel);
         if (PARAM(AccelLimit) > 0.f && aLen > PARAM(AccelLimit))
@@ -231,7 +218,21 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
 
         p.Position += p.Velocity * DeltaTime;
         p.Acceleration = float3(0.f, 0.f, 0.f);
-#line 235 "Main.generated.hlsl"
+#line 222 "Main.generated.hlsl"
+#undef PARAM
+    }
+    // ---- [M6] SubUV Animation----
+    {
+#define PARAM(n) M6_SubUVAnimation_##n
+#line 1 "M6_SubUVAnimation"
+        const float count = max(PARAM(EndFrame) - PARAM(StartFrame) + 1.f, 1.f);
+        float t;
+        if (PARAM(Loop) != 0)
+        	t = frac(p.Age * PARAM(FramesPerSecond) / count) * count;
+        else
+        	t = min(p.NormalizedAge * count, count - 1.f);
+        p.SubImageIndex = PARAM(StartFrame) + t;
+#line 236 "Main.generated.hlsl"
 #undef PARAM
     }
 }

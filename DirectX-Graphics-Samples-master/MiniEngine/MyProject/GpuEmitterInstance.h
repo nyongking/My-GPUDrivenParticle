@@ -132,6 +132,7 @@ private:
 	uint32_t                 m_Frame = 0;
 	float3                   m_PrevOwnerPosition = { 0.f, 0.f, 0.f };
 	bool                     m_HasPrevOwner = false;
+	float                    m_Age = 0.f;          // Engine.Emitter.Age (sum of clamped dt since Initialize)
 	bool                     m_Ready = false;
 
 	uint32_t				 m_Current = 0;

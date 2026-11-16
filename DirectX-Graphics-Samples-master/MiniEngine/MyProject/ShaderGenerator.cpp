@@ -286,6 +286,7 @@ namespace
 			{ "OwnerVelocity",       "Engine.Owner.Velocity" },
 			{ "OwnerLocalToWorld",   "Engine.Owner.LocalToWorld" },
 			{ "EmitterNumParticles", "Engine.Emitter.NumParticles" },
+			{ "EmitterAge",          "Engine.Emitter.Age" },
 		};
 		for (const auto& n : kEngineNames)
 		{

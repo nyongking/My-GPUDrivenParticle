@@ -39,7 +39,8 @@ namespace
 		float    deltaTime;           // 12
 		uint32_t capacity;            // 16
 		uint32_t randomSeed;          // 20
-		uint32_t _pad[2];             // 24
+		float    emitterAge;          // 24  Engine.Emitter.Age
+		uint32_t _pad;               // 28
 		float3   ownerVelocity;       // 32
 		float    _pad2;					// 44
 		float4x4 ownerLocalToWorld;   // 48 (HLSL Àº row_major)
@@ -148,6 +149,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	InitializeFinalizePSO();
 
 	m_Frame = 0;
+	m_Age = 0.f;
 	m_HasPrevOwner = false;
 	m_ReadbackAlive = m_ReadbackRequest = 0;
 	m_Ready = true;
@@ -218,6 +220,8 @@ bool GpuEmitterInstance::BeginTick(float deltaTime, const OwnerTransform& t)
 	EngineConstants ec = {};
 	ec.ownerPosition = t.position;
 	ec.deltaTime = min(max(deltaTime, 0.f), float(kMaxDeltaTime));
+	m_Age += ec.deltaTime;   // time stop (dt = 0) also stops Emitter.Age
+	ec.emitterAge = m_Age;
 	ec.capacity = m_Capacity;
 	ec.randomSeed = HashFrame(m_Frame + 1);
 	ec.ownerVelocity = ComputeOwnerVelocity(t.position, m_HasPrevOwner ? &m_PrevOwnerPosition : nullptr, deltaTime);
