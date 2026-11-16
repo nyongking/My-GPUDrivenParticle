@@ -47,7 +47,7 @@ public:
 	//   capacity == 0 이면 지금 값 유지. 적용에 실패하면 다른 편집과 같이 이전 구성으로 돌아간다
 	void ReplaceDescription(const std::vector<ModuleDesc>& modules, const RendererDesc& sprite, uint32_t capacity, EmitterBackend backend);
 
-	void NotifyValuesChanged();     // ParamDesc::value 만 바뀜 (재컴파일 없음)
+	void NotifyValuesChanged();     // ParamDesc::value 만 바뀜 (재컴파일 없음). 커브 키 편집은 CurveAsset::Bake 만으로 반영된다
 	void SetParamKind(size_t moduleIndex, size_t paramIndex, ParamKind kind);       // 파티클 유지
 	void SetPerComponent(size_t moduleIndex, size_t paramIndex, bool perComponent); // 파티클 유지
 

@@ -6,6 +6,7 @@
 #include "ShaderCompiler.h"
 #include "ShaderGenerator.h"     // ShaderNames::Param / HlslType
 #include "TagLibrary.h"
+#include "CurveLibrary.h"
 
 #include "CompiledShaders/ParticleUberEmitterUpdateCS.h"
 #include "CompiledShaders/ParticleUberParticleUpdateCS.h"
@@ -34,7 +35,8 @@ namespace
 			SolveForceAndVelocity(0.f, 0.f),
 			SubUVAnimation(0.f, 0.f),
 			InitializeSprite(float2{ 0.f, 0.f }, 0.f),
-			SpriteRotationRate(0.f)
+			SpriteRotationRate(0.f),
+			ScaleColor(float3{ 1.f, 1.f, 1.f }, 1.f)
 		};
 		for (uint32_t i = 0; i < uint32_t(m.size()); ++i)
 			ASSERT(uint32_t(m[i].id) == i, "ReferenceModules 순서가 ModuleId 와 다름");
@@ -42,7 +44,7 @@ namespace
 	}
 
 	// ParticleUber.hlsli 모듈 함수가 읽는 입력값 dword 수 (ModuleId 순서). 셰이더 주석의 표와 같다
-	constexpr uint32_t kExpectedRecordDwords[] = { 1, 20, 3, 17, 1, 3, 2, 4, 6, 1 };
+	constexpr uint32_t kExpectedRecordDwords[] = { 1, 20, 3, 17, 1, 3, 2, 4, 6, 1, 4 };
 	static_assert(sizeof(kExpectedRecordDwords) / sizeof(kExpectedRecordDwords[0]) == size_t(ModuleId::Count), "kExpectedRecordDwords 개수");
 
 	// 공유 셰이더가 단계 함수에서 도는 단계 (b2 의 범위 순서)
@@ -126,10 +128,30 @@ namespace
 				if (p.value.size() != typeSize * srcCount)
 					continue;   // EmitterCompiler 가 이미 오류로 남김
 
-				if (p.kind == ParamKind::RandomRange && p.perComponent && pi < 32)
+				if (p.kind == ParamKind::RandomRange && p.perComponent && pi < Uber::kMaxFlaggedParams)
 					inst.flags |= 1u << pi;
 
 				uint8_t* dst = out.data() + size_t(base + rec.paramDword[pi]) * 4;
+
+				if (p.kind == ParamKind::Curve)
+				{
+					// 값 자리의 첫 dword = 커브 칸 번호 (나머지는 0). 셰이더는 플래그를 보고 CurveData 에서 읽는다
+					if (pi >= Uber::kMaxFlaggedParams)
+					{
+						fail(m.name + " 입력값 '" + p.name + "': Curve 플래그 자리가 없음 (모듈당 앞 16 개 입력값만)");
+						continue;
+					}
+					if (p.curveIndex != Particles::NormalizedAge)
+					{
+						fail(m.name + " 입력값 '" + p.name + "': 공유 셰이더는 커브 인덱스로 Particles.NormalizedAge 만 지원 ('" + p.curveIndex + "')");
+						continue;
+					}
+					const uint32_t curveSlot = p.curve ? p.curve->Slot() : CurveLibrary::kIdentitySlot;
+					inst.flags |= 1u << (Uber::kCurveFlagShift + pi);
+					std::memcpy(dst, &curveSlot, sizeof(curveSlot));
+					continue;
+				}
+
 				std::memcpy(dst, p.value.data(), typeSize);                                       // Min (또는 상수)
 				if (IsUberRangeParam(m.stage, p.type))
 					std::memcpy(dst + typeSize, p.value.data() + (srcCount > 1 ? typeSize : 0), typeSize);   // Max (상수면 Min 과 같게)
@@ -158,25 +180,13 @@ namespace
 	{
 		Particles::Position, Particles::Color, Particles::Size, Particles::Lifetime, Particles::Age,
 		Particles::Mass, Particles::NormalizedAge, Particles::Velocity, Particles::Acceleration, Particles::SubImageIndex,
-		Particles::SpriteSize, Particles::SpriteRotation
+		Particles::SpriteSize, Particles::SpriteRotation, Particles::InitialColor
 	};
 
 	std::string OfsText(uint32_t ofs)
 	{
 		return ofs == Uber::kNoAttribute ? std::string("-") : std::to_string(ofs);
 	}
-}
-
-const char* ModuleIdName(ModuleId id)
-{
-	static const char* const kNames[] =
-	{
-		"SpawnRate", "InitializeParticle", "SphereLocation", "AddVelocityInCone",
-		"ParticleState", "GravityForce", "SolveForceAndVelocity", "SubUVAnimation",
-		"InitializeSprite", "SpriteRotationRate"
-	};
-	static_assert(sizeof(kNames) / sizeof(kNames[0]) == size_t(ModuleId::Count), "ModuleIdName 개수");
-	return ValidId(id) ? kNames[uint32_t(id)] : "Unknown";
 }
 
 bool IsUberRangeParam(Stage stage, const TypeInfo* type)
@@ -225,6 +235,7 @@ UberEmitterData BuildUberEmitterData(const std::vector<ModuleDesc>& modules, con
 	L.ofsSubImageIndex = FindOffset(compiled.particles, Particles::SubImageIndex);
 	L.ofsSpriteSize = FindOffset(compiled.particles, Particles::SpriteSize);
 	L.ofsSpriteRotation = FindOffset(compiled.particles, Particles::SpriteRotation);
+	L.ofsInitialColor = FindOffset(compiled.particles, Particles::InitialColor);
 
 	// 공유 셰이더가 모르는 열 (Previous/Initial 등): 셰이더가 읽지도 쓰지도 않는다
 	for (const Slot& s : compiled.particles.Slots())
@@ -238,8 +249,12 @@ UberEmitterData BuildUberEmitterData(const std::vector<ModuleDesc>& modules, con
 	}
 
 	// ---------- 3. 이번 범위에서 지원하지 않는 것 ----------
-	if (!compiled.copyAtSpawnEnd.empty() || !compiled.copyAtUpdateStart.empty())
-		d.warnings.push_back("Previous / Initial 속성 복사는 공유 셰이더에서 아직 지원하지 않음 (해당 값은 0)");
+	//   Initial 은 공유 셰이더가 아는 것만 복사한다 (지금은 Initial.Color). 나머지는 값이 0 으로 남는다
+	for (const CopyOp& op : compiled.copyAtSpawnEnd)
+		if (op.to != Particles::InitialColor)
+			d.warnings.push_back("'" + op.to + "': 공유 셰이더가 복사하지 않는 Initial 속성 (값은 0)");
+	if (!compiled.copyAtUpdateStart.empty())
+		d.warnings.push_back("Previous 속성 복사는 공유 셰이더에서 아직 지원하지 않음 (해당 값은 0)");
 
 	return d;
 }
@@ -279,7 +294,8 @@ std::string DescribeUber(const UberEmitterData& d)
 		+ ", Lifetime " + OfsText(L.ofsLifetime) + ", Age " + OfsText(L.ofsAge) + ", Mass " + OfsText(L.ofsMass)
 		+ ", NormalizedAge " + OfsText(L.ofsNormalizedAge) + ", Velocity " + OfsText(L.ofsVelocity)
 		+ ", Acceleration " + OfsText(L.ofsAcceleration) + ", SubImageIndex " + OfsText(L.ofsSubImageIndex)
-		+ ", SpriteSize " + OfsText(L.ofsSpriteSize) + ", SpriteRotation " + OfsText(L.ofsSpriteRotation) + "\n";
+		+ ", SpriteSize " + OfsText(L.ofsSpriteSize) + ", SpriteRotation " + OfsText(L.ofsSpriteRotation)
+		+ ", Initial.Color " + OfsText(L.ofsInitialColor) + "\n";
 
 	for (const std::string& w : d.warnings) s += "  [경고] " + w + "\n";
 	for (const std::string& e : d.errors)   s += "  [오류] " + e + "\n";
@@ -320,6 +336,7 @@ bool CheckUberShaderLayout(const ShaderCompiler& compiler, std::string& log)
 		{ "Ofs_SubImageIndex",          uint32_t(offsetof(EmitterLayoutCB, ofsSubImageIndex)) },
 		{ "Ofs_SpriteSize",             uint32_t(offsetof(EmitterLayoutCB, ofsSpriteSize)) },
 		{ "Ofs_SpriteRotation",         uint32_t(offsetof(EmitterLayoutCB, ofsSpriteRotation)) },
+		{ "Ofs_Initial_Color",          uint32_t(offsetof(EmitterLayoutCB, ofsInitialColor)) },
 	};
 
 	auto findVar = [](const ConstantBufferInfo& info, const std::string& name) -> const ConstantBufferInfo::Variable*

@@ -8,6 +8,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cctype>
 #include <cstring>
@@ -328,6 +329,90 @@ namespace
 		}
 	}
 
+	// 커브 편집: 키 표 (시간 + 값) + 구운 결과 미리보기
+	//   바뀌면 그 커브만 다시 굽는다. 전역 커브 버퍼의 칸은 그대로라 재컴파일 / 이미터 재시작이 없다
+	void DrawCurve(ParamDesc& p)
+	{
+		CurveAsset& curve = *p.curve;
+		std::vector<CurveKey>& keys = curve.Keys();
+		const uint32_t count = (std::min)(uint32_t(p.type->size / sizeof(float)), 4u);
+
+		bool changed = false;
+		int removeKey = -1;
+
+		ImGui::Indent();
+		ImGui::TextDisabled("x = %s (0..1), linear between keys", p.curveIndex.c_str());
+
+		for (size_t k = 0; k < keys.size(); ++k)
+		{
+			ImGui::PushID(static_cast<int>(k));
+
+			ImGui::SetNextItemWidth(80.f);
+			if (ImGui::DragFloat("##time", &keys[k].time, 0.005f, 0.f, 1.f, "t %.3f"))
+			{
+				keys[k].time = (std::min)((std::max)(keys[k].time, 0.f), 1.f);
+				changed = true;
+			}
+
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(220.f);
+			if (p.uiColor && count == 4)
+				changed |= ImGui::ColorEdit4("##value", &keys[k].value.x, ImGuiColorEditFlags_Float);
+			else
+				changed |= DrawFloats("##value", &keys[k].value.x, count, p);
+
+			ImGui::SameLine();
+			ImGui::BeginDisabled(keys.size() <= 1);
+			if (ImGui::SmallButton("-"))
+				removeKey = static_cast<int>(k);
+			ImGui::EndDisabled();
+
+			ImGui::PopID();
+		}
+
+		if (removeKey >= 0)
+		{
+			keys.erase(keys.begin() + removeKey);
+			changed = true;
+		}
+
+		if (ImGui::SmallButton("+ key"))
+		{
+			// 가운데에 지금 커브 값으로 추가 (추가한 직후에는 결과가 그대로)
+			CurveKey key;
+			key.time = 0.5f;
+			key.value = curve.Evaluate(0.5f);
+			keys.push_back(key);
+			changed = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Sort keys"))
+			curve.SortKeys();
+
+		if (changed)
+			curve.Bake();
+
+		// 미리보기: 셰이더가 실제로 읽는 표 (성분마다 한 줄)
+		static const char* const kComponent[] = { "x", "y", "z", "w" };
+		const float4* lut = CurveLibrary::Samples(curve.Slot());
+		for (uint32_t c = 0; c < count; ++c)
+		{
+			float samples[CurveLibrary::kSamples];
+			for (uint32_t i = 0; i < CurveLibrary::kSamples; ++i)
+				samples[i] = (&lut[i].x)[c];
+
+			ImGui::PushID(static_cast<int>(c));
+			ImGui::PlotLines("##plot", samples, static_cast<int>(CurveLibrary::kSamples), 0,
+				count > 1 ? kComponent[c] : nullptr, FLT_MAX, FLT_MAX, ImVec2(300.f, 36.f));
+			ImGui::PopID();
+		}
+
+		if (curve.Slot() == CurveLibrary::kIdentitySlot)
+			ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "No free curve slot - this curve is fixed to 1");
+
+		ImGui::Unindent();
+	}
+
 	void DrawParam(EmitterRuntime& runtime, size_t moduleIndex, size_t paramIndex)
 	{
 		ModuleDesc& module = runtime.EditModules()[moduleIndex];
@@ -336,21 +421,30 @@ namespace
 		ImGui::PushID(static_cast<int>(paramIndex));
 		ImGui::TextUnformatted(p.name.c_str());
 
-		if (module.stage == Stage::ParticleSpawn && IsFloatFamily(p.type))
+		// 단계마다 고를 수 있는 종류가 다르다: Spawn = 파티클별 랜덤 / Update = 수명에 따른 커브
+		const bool canRandom = module.stage == Stage::ParticleSpawn && IsFloatFamily(p.type);
+		const bool canCurve = module.stage == Stage::ParticleUpdate && IsFloatFamily(p.type);
+		if (canRandom || canCurve)
 		{
-			static const char* const kKinds[] = { "Constant", "Random Range" };
-			int kind = static_cast<int>(p.kind);
+			const ParamKind other = canRandom ? ParamKind::RandomRange : ParamKind::Curve;
+			const char* const kinds[] = { "Constant", canRandom ? "Random Range" : "Curve" };
+			int kind = (p.kind == ParamKind::Constant) ? 0 : 1;
 
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(130.f);
-			if (ImGui::Combo("##kind", &kind, kKinds, IM_ARRAYSIZE(kKinds)))
-				runtime.SetParamKind(moduleIndex, paramIndex, static_cast<ParamKind>(kind));
+			if (ImGui::Combo("##kind", &kind, kinds, IM_ARRAYSIZE(kinds)))
+				runtime.SetParamKind(moduleIndex, paramIndex, kind == 0 ? ParamKind::Constant : other);
 		}
 
 		bool changed = false;
 		if (p.kind == ParamKind::Constant)
 		{
 			changed = DrawValue("##value", p, p.value.data());
+		}
+		else if (p.kind == ParamKind::Curve)
+		{
+			if (p.curve)
+				DrawCurve(p);   // 다시 굽는 것으로 끝 (NotifyValuesChanged 필요 없음)
 		}
 		else
 		{

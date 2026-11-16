@@ -131,8 +131,25 @@ namespace
 	// ---- 모듈 입력값 ----
 	//   Constant    : 값 그대로             "Rate": 50
 	//   RandomRange : { min, max, perComponent }
+	//   Curve       : { value, curve: [ { time, value }, ... ], index }   (value = 상수로 되돌릴 때의 값)
 	JsonValue EncodeParam(const ParamDesc& p)
 	{
+		if (p.kind == ParamKind::Curve && p.curve)
+		{
+			JsonValue obj = JsonValue::MakeObject();
+			obj.Set("value", EncodeValue(p.type, p.value.data()));
+			JsonValue keys = JsonValue::MakeArray();
+			for (const CurveKey& k : p.curve->Keys())   // 저장된 순서 그대로 (구울 때 정렬한다)
+			{
+				JsonValue key = JsonValue::MakeObject();
+				key.Set("time", JsonValue(k.time));
+				key.Set("value", EncodeValue(p.type, reinterpret_cast<const uint8_t*>(&k.value)));
+				keys.Push(std::move(key));
+			}
+			obj.Set("curve", std::move(keys));
+			obj.Set("index", JsonValue(p.curveIndex));
+			return obj;
+		}
 		if (p.kind != ParamKind::RandomRange)
 			return EncodeValue(p.type, p.value.data());
 
@@ -166,6 +183,62 @@ namespace
 		}
 	}
 
+	void DecodeCurveParam(const JsonValue& v, ParamDesc& p, bool curveAllowed, const std::string& where, std::vector<std::string>& warnings)
+	{
+		const size_t size = p.type->size;
+		const JsonValue& keysV = *v.Find("curve");
+
+		std::vector<CurveKey> keys;
+		if (keysV.IsArray())
+		{
+			for (size_t i = 0; i < keysV.Size(); ++i)
+			{
+				const JsonValue& kv = keysV.At(i);
+				const JsonValue* t = kv.IsObject() ? kv.Find("time") : nullptr;
+				const JsonValue* val = kv.IsObject() ? kv.Find("value") : nullptr;
+				CurveKey key;
+				key.value = float4{ 0.f, 0.f, 0.f, 0.f };
+				if (t == nullptr || !t->IsNumber() || val == nullptr || !DecodeValue(*val, p.type, reinterpret_cast<uint8_t*>(&key.value)))
+				{
+					warnings.push_back(where + ".curve[" + std::to_string(i) + "]: wrong shape -> skipped");
+					continue;
+				}
+				key.time = float(t->AsNumber());
+				keys.push_back(key);
+			}
+		}
+		if (keys.empty())
+		{
+			warnings.push_back(where + ": curve has no valid keys -> kept default");
+			return;
+		}
+
+		// 상수로 되돌릴 때 쓸 값. 없으면 첫 키 값
+		std::vector<uint8_t> value(size);
+		const JsonValue* constV = v.Find("value");
+		if (constV == nullptr || !DecodeValue(*constV, p.type, value.data()))
+			std::memcpy(value.data(), &keys.front().value, size);
+
+		if (!curveAllowed)
+		{
+			warnings.push_back(where + ": Curve is not allowed here -> used value as a constant");
+			p.kind = ParamKind::Constant;
+			p.perComponent = false;
+			p.curve.reset();
+			p.value = std::move(value);
+			return;
+		}
+
+		const JsonValue* indexV = v.Find("index");
+		if (indexV != nullptr && indexV->IsString() && !indexV->AsString().empty())
+			p.curveIndex = indexV->AsString();
+
+		p.kind = ParamKind::Curve;
+		p.perComponent = false;
+		p.value = std::move(value);
+		p.curve = std::make_shared<CurveAsset>(keys);   // 새 칸 (기본값 모듈의 커브와 따로)
+	}
+
 	void DecodeParam(const JsonValue& v, const ModuleDesc& module, ParamDesc& p, std::vector<std::string>& warnings)
 	{
 		const std::string where = std::string(ModuleIdName(module.id)) + "." + p.name;
@@ -173,8 +246,17 @@ namespace
 		const bool wantRange = v.IsObject() && v.Find("min") != nullptr;
 		// UI 와 같은 규칙: RandomRange 는 ParticleSpawn 의 float 계열만
 		const bool rangeAllowed = module.stage == Stage::ParticleSpawn && IsFloatFamily(p.type);
+		// Curve 는 ParticleUpdate 의 float 계열만 (EmitterCompiler / UI 와 같은 규칙)
+		const bool wantCurve = v.IsObject() && v.Find("curve") != nullptr;
+		const bool curveAllowed = module.stage == Stage::ParticleUpdate && IsFloatFamily(p.type);
 
 		std::vector<uint8_t> value(size);
+		if (wantCurve)
+		{
+			DecodeCurveParam(v, p, curveAllowed, where, warnings);
+			return;
+		}
+		p.curve.reset();    // 기본값이 Curve 였던 입력값(ScaleColor.ScaleAlpha 등)을 상수 / 범위로 덮을 때 칸을 돌려준다
 		if (!wantRange)
 		{
 			if (!DecodeValue(v, p.type, value.data()))

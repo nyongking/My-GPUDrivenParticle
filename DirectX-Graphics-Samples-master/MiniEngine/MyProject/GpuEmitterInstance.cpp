@@ -10,6 +10,7 @@
 
 #include "CompiledShaders/EmitterFinalizeCS.h"
 #include "UberGpuProgram.h"
+#include "CurveLibrary.h"
 
 #include <algorithm>
 #include <cmath>
@@ -361,6 +362,8 @@ void GpuEmitterInstance::BindRoot(ComputeContext& ctx, bool finalizeStage)
 	else
 		ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootModuleCB, m_ModuleParams.size() * sizeof(Chunk16), m_ModuleParams.data());
 	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootLayoutCB, sizeof(m_UberLayout), &m_UberLayout);
+	// 전역 커브 버퍼 (t1). 내용은 CurveLibrary::Flush 가 시뮬레이션 시작 전에 올려 둔다
+	ctx.SetBufferSRV(EmitterGpuProgram::kRootCurveData, CurveLibrary::Buffer());
 
 	ByteAddressBuffer& particlesIn = m_Particles[m_Current];
 	ByteAddressBuffer& particlesOut = m_Particles[1 - m_Current];

@@ -5,7 +5,9 @@
 // =====================================================================
 // 모듈 데이터 = "모듈 인스턴스 목록 + 입력값 풀" (같은 모듈을 여러 번 쓸 수 있다)
 //      t0 ModuleData = [인스턴스 uint4 x N][입력값 dword ...]   (StructuredBuffer)
-//        인스턴스 = { 모듈 번호, 스택 순번(salt), 입력값 시작 위치(dword), 플래그(perComponent) }
+//        인스턴스 = { 모듈 번호, 스택 순번(salt), 입력값 시작 위치(dword), 플래그 }
+//        플래그 = 하위 16 비트 perComponent (RandomRange) / 상위 16 비트 Curve (입력값 번호별 1 비트)
+//      t1 CurveData = 전역 커브 버퍼 (ModuleCommon.hlsli). Curve 입력값은 값 자리 첫 dword 가 커브 칸 번호
 //      b2 EmitterLayout = 단계별 인스턴스 범위 + 속성 열 위치
 //   모듈 본문(ModuleLibrary 의 hlsl) 은 그대로. 모듈 함수 앞부분에서 자기 인스턴스의 입력값을 읽는다
 // =====================================================================
@@ -23,6 +25,7 @@
 #define MODID_SUBUV_ANIMATION           7   // ParticleUpdate
 #define MODID_INITIALIZE_SPRITE         8   // ParticleSpawn
 #define MODID_SPRITE_ROTATION_RATE      9   // ParticleUpdate
+#define MODID_SCALE_COLOR               10  // ParticleUpdate
 
 // ---------------------------------------------------------------------
 // 1. 레이아웃 (b2). 이미터마다 다른 값. 전부 uint 라 C++ 구조체(EmitterLayoutCB) 와 그대로 맞는다
@@ -48,7 +51,9 @@ cbuffer EmitterLayout : register(b2)
     uint Ofs_Acceleration; // 64
     uint Ofs_SubImageIndex; // 68
     uint Ofs_SpriteSize; // 72
-    uint Ofs_SpriteRotation; // 76  -> 전체 80 바이트
+    uint Ofs_SpriteRotation; // 76
+    uint Ofs_Initial_Color; // 80  Particles.Initial.Color (Spawn 끝에 Color 를 복사, Scale Color 가 읽음)
+    uint3 _LayoutReserved; // 84  -> 전체 96 바이트 (C++ reserved[3])
     // 속성이 늘면 여기에 추가 (C++ EmitterLayoutCB 도 같이)
 };
 
@@ -70,7 +75,7 @@ struct ModuleInst
     uint Id;        // MODID_
     uint Slot;      // 스택 순번 (RandomRange salt 를 생성 방식과 같게)
     uint Base;      // 입력값 시작 위치 (ModuleData 의 dword 번호)
-    uint Flags;     // bit k = k 번째 입력값의 perComponent
+    uint Flags;     // bit k = k 번째 입력값의 perComponent, bit (16 + k) = k 번째 입력값이 Curve
 };
 
 ModuleInst LoadInst(uint i)
@@ -90,6 +95,43 @@ float2 ParamF2(ModuleInst m, uint k) { return float2(ParamF(m, k), ParamF(m, k +
 float3 ParamF3(ModuleInst m, uint k) { return float3(ParamF(m, k), ParamF(m, k + 1), ParamF(m, k + 2)); }
 float4 ParamF4(ModuleInst m, uint k) { return float4(ParamF(m, k), ParamF(m, k + 1), ParamF(m, k + 2), ParamF(m, k + 3)); }
 bool   PerComp(ModuleInst m, uint paramIndex) { return (m.Flags & (1u << paramIndex)) != 0; }
+bool   IsCurve(ModuleInst m, uint paramIndex) { return (m.Flags & (1u << (16 + paramIndex))) != 0; }
+
+// ParticleUpdate 모듈의 float 계열 입력값: 상수면 그대로, Curve 면 커브를 t 로 읽은 값
+//   k = 입력값 시작 dword, paramIndex = 모듈 안에서 몇 번째 입력값인가 (플래그 비트)
+//   플래그는 모듈 데이터 값이라 한 Dispatch 안의 모든 스레드가 같은 쪽으로 간다 (발산 없음)
+//   생성 방식의 PARAM(n) -> SampleCurve(...) 와 같은 결과 (같은 표, 같은 식)
+float CurveParam1(ModuleInst m, uint k, uint paramIndex, float t)
+{
+    [branch]
+    if (IsCurve(m, paramIndex))
+        return SampleCurve(ParamU(m, k), t).x;
+    return ParamF(m, k);
+}
+
+float2 CurveParam2(ModuleInst m, uint k, uint paramIndex, float t)
+{
+    [branch]
+    if (IsCurve(m, paramIndex))
+        return SampleCurve(ParamU(m, k), t).xy;
+    return ParamF2(m, k);
+}
+
+float3 CurveParam3(ModuleInst m, uint k, uint paramIndex, float t)
+{
+    [branch]
+    if (IsCurve(m, paramIndex))
+        return SampleCurve(ParamU(m, k), t).xyz;
+    return ParamF3(m, k);
+}
+
+float4 CurveParam4(ModuleInst m, uint k, uint paramIndex, float t)
+{
+    [branch]
+    if (IsCurve(m, paramIndex))
+        return SampleCurve(ParamU(m, k), t);
+    return ParamF4(m, k);
+}
 
 // 모듈별 입력값 배치 (dword 단위, ModuleLibrary 의 m.params 순서).
 //   ParticleSpawn 모듈의 float 계열은 Min, Max 두 벌 (상수면 Min == Max). NBool 은 uint 1 칸.
@@ -105,6 +147,8 @@ bool   PerComp(ModuleInst m, uint paramIndex) { return (m.Flags & (1u << paramIn
 //   SubUVAnimation       : StartFrame 0, EndFrame 1, Loop 2, FramesPerSecond 3
 //   InitializeSprite     : SpriteSize 0~1/2~3, SpriteRotation 4/5
 //   SpriteRotationRate   : RotationRate 0
+//   ScaleColor           : ScaleRGB 0~2, ScaleAlpha 3
+//   ParticleUpdate 모듈의 float 계열 입력값은 Curve 일 수 있다 (CurveParamN 으로 읽는다. dword 배치는 같다)
 
 // =====================================================================
 // 3. RandomRange
@@ -171,6 +215,7 @@ struct Particle
     float SubImageIndex;
     float2 SpriteSize;
     float SpriteRotation;
+    float4 Initial_Color;
 };
 
 struct EmitterState
@@ -209,6 +254,8 @@ Particle LoadParticle(RWByteAddressBuffer b, uint i)
         p.SpriteSize = LoadF2(b, Ofs_SpriteSize, i);
     if (HasAttr(Ofs_SpriteRotation))
         p.SpriteRotation = LoadF1(b, Ofs_SpriteRotation, i);
+    if (HasAttr(Ofs_Initial_Color))
+        p.Initial_Color = LoadF4(b, Ofs_Initial_Color, i);
     return p;
 }
 
@@ -238,6 +285,8 @@ void StoreParticle(RWByteAddressBuffer b, uint i, Particle p)
         StoreF2(b, Ofs_SpriteSize, i, p.SpriteSize);
     if (HasAttr(Ofs_SpriteRotation))
         StoreF1(b, Ofs_SpriteRotation, i, p.SpriteRotation);
+    if (HasAttr(Ofs_Initial_Color))
+        StoreF4(b, Ofs_Initial_Color, i, p.Initial_Color);
 }
 
 EmitterState LoadEmitter()
@@ -261,6 +310,7 @@ void StoreEmitter(EmitterState e)
 // =====================================================================
 // 6. 모듈 (ModuleLibrary.cpp 의 m.hlsl 본문을 그대로 옮김)
 //   P_ 변수는 인스턴스(m) 의 입력값 풀 위치에서 읽는다. salt 는 m.Slot, perComponent 는 m.Flags
+//   ParticleUpdate 의 float 계열 입력값은 CurveParamN(m, dword, 입력값 번호, p.NormalizedAge) 로 읽는다
 //   본문 안의 PARAM(n) 과 KILL() 은 바꾸지 않는다. ModuleLibrary 의 hlsl 을 고치면 여기도 같이 고친다.
 // =====================================================================
 #define PARAM(n) P_##n
@@ -359,7 +409,7 @@ void Module_ParticleState(inout Particle p, uint index, inout bool alive, Module
 // ---- [ParticleUpdate] Gravity Force ----
 void Module_GravityForce(inout Particle p, uint index, ModuleInst m)
 {
-    const float3 P_Gravity = ParamF3(m, 0);
+    const float3 P_Gravity = CurveParam3(m, 0, 0, p.NormalizedAge);
 
     p.Acceleration += PARAM(Gravity) / p.Mass;
 }
@@ -367,8 +417,8 @@ void Module_GravityForce(inout Particle p, uint index, ModuleInst m)
 // ---- [ParticleUpdate] Solve Force and Velocity ----
 void Module_SolveForceandVelocity(inout Particle p, uint index, ModuleInst m)
 {
-    const float P_AccelLimit = ParamF(m, 0);
-    const float P_SpeedLimit = ParamF(m, 1);
+    const float P_AccelLimit = CurveParam1(m, 0, 0, p.NormalizedAge);
+    const float P_SpeedLimit = CurveParam1(m, 1, 1, p.NormalizedAge);
 
     float3 accel = p.Acceleration;
     const float aLen = length(accel);
@@ -388,10 +438,10 @@ void Module_SolveForceandVelocity(inout Particle p, uint index, ModuleInst m)
 // ---- [ParticleUpdate] SubUV Animation ----
 void Module_SubUVAnimation(inout Particle p, uint index, ModuleInst m)
 {
-    const float P_StartFrame      = ParamF(m, 0);
-    const float P_EndFrame        = ParamF(m, 1);
+    const float P_StartFrame      = CurveParam1(m, 0, 0, p.NormalizedAge);
+    const float P_EndFrame        = CurveParam1(m, 1, 1, p.NormalizedAge);
     const uint  P_Loop            = ParamU(m, 2);
-    const float P_FramesPerSecond = ParamF(m, 3);
+    const float P_FramesPerSecond = CurveParam1(m, 3, 3, p.NormalizedAge);
 
     const float count = max(PARAM(EndFrame) - PARAM(StartFrame) + 1.f, 1.f);
     float t;
@@ -415,9 +465,18 @@ void Module_InitializeSprite(inout Particle p, uint index, ModuleInst m)
 // ---- [ParticleUpdate] Sprite Rotation Rate ----
 void Module_SpriteRotationRate(inout Particle p, uint index, ModuleInst m)
 {
-    const float P_RotationRate = ParamF(m, 0);
+    const float P_RotationRate = CurveParam1(m, 0, 0, p.NormalizedAge);
 
     p.SpriteRotation = fmod(p.SpriteRotation + PARAM(RotationRate) * DeltaTime, 360.f);
+}
+
+// ---- [ParticleUpdate] Scale Color ----
+void Module_ScaleColor(inout Particle p, uint index, ModuleInst m)
+{
+    const float3 P_ScaleRGB   = CurveParam3(m, 0, 0, p.NormalizedAge);
+    const float  P_ScaleAlpha = CurveParam1(m, 3, 1, p.NormalizedAge);
+
+    p.Color = p.Initial_Color * float4(PARAM(ScaleRGB), PARAM(ScaleAlpha));
 }
 
 #undef PARAM
@@ -457,7 +516,9 @@ void ParticleSpawn(inout Particle p, uint index)
         default: break;
         }
     }
-    // [Initial copy] 이번 범위에서는 지원하지 않음 (3단계에서 경고)
+    // [Initial copy] Spawn 이 끝난 값 (생성 방식의 copyAtSpawnEnd). 공유 셰이더가 아는 것만: Color
+    //   열이 없으면 (Ofs_Initial_Color == NO_ATTRIBUTE) StoreParticle 이 쓰지 않는다
+    p.Initial_Color = p.Color;
 }
 
 void ParticleUpdate(inout Particle p, uint index, inout bool alive)
@@ -474,6 +535,7 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
         case MODID_SOLVE_FORCE_AND_VELOCITY: Module_SolveForceandVelocity(p, index, m); break;
         case MODID_SUBUV_ANIMATION:          Module_SubUVAnimation(p, index, m);        break;
         case MODID_SPRITE_ROTATION_RATE:     Module_SpriteRotationRate(p, index, m);    break;
+        case MODID_SCALE_COLOR:              Module_ScaleColor(p, index, m);            break;
         default: break;
         }
     }

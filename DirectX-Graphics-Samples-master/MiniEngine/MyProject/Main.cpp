@@ -25,6 +25,7 @@
 #include "ProfileRecorder.h"
 
 #include "ModuleLibrary.h"
+#include "CurveLibrary.h"
 #include "EmitterRuntime.h"
 
 #include "EmitterTestScene.h"
@@ -152,6 +153,8 @@ void MyProject::Startup(void)
 
     m_Recorder.SetTimers({ kSimTimerName });
 
+    CurveLibrary::Initialize();     // 전역 커브 버퍼. 이미터가 묶어 쓰므로 이미터보다 먼저
+
     InitializeEmitter();
 
     m_Floor.SetFloor(Vector3(0.f, -1.f, 0.f), 20.f);
@@ -163,6 +166,7 @@ void MyProject::Cleanup(void)
     // Free up resources in an orderly fashion
     m_TestScene.Shutdown();
     m_Runtime.Shutdown();
+    CurveLibrary::Shutdown();       // 이미터가 다 내려간 뒤 (Shutdown 이 GPU 를 기다린다)
 
     m_Floor.Release();
 
@@ -202,6 +206,7 @@ void MyProject::Update(float deltaT)
     {
         GpuEmitterInstance::BeginFrameStats();
         ComputeContext& simCtx = ComputeContext::Begin(kSimTimerName);
+        CurveLibrary::Flush(simCtx);    // 편집된 커브를 올리고 버퍼를 읽기 상태로 (시뮬레이션이 t1 로 읽는다)
 
         if (m_UseTestScene)
             m_TestScene.Tick(simCtx, simDt);

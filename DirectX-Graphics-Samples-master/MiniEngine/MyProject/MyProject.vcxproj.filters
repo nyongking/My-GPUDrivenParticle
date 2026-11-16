@@ -99,6 +99,9 @@
     <ClCompile Include="ModuleLibrary.cpp">
       <Filter>Particle\Modules</Filter>
     </ClCompile>
+    <ClCompile Include="CurveLibrary.cpp">
+      <Filter>Particle\Modules</Filter>
+    </ClCompile>
     <ClCompile Include="EmitterInstance.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
@@ -202,6 +205,9 @@
       <Filter>Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="ModuleLibrary.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="CurveLibrary.h">
       <Filter>Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="EmitterInstance.h">

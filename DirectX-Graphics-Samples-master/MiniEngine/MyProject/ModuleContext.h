@@ -4,6 +4,9 @@
 #include "CompiledEmitter.h"
 #include "OwnerTransform.h"
 
+#include <algorithm>
+#include <cstring>
+
 struct EngineValues
 {
 	float  DeltaTime = 0.f;
@@ -45,6 +48,10 @@ private:
 	ParamKind				m_Kind = ParamKind::Constant;
 	bool					m_PerComponent = false;
 	uint32_t				m_Salt = 0;
+
+	// Curve: 전역 커브 버퍼의 칸 + 가로축 속성 열 (SoA 라 stride = float 크기)
+	uint32_t				m_CurveSlot = CurveLibrary::kIdentitySlot;
+	const uint8_t*			m_CurveIndex = nullptr;
 };
 
 class ModuleContext
@@ -103,6 +110,16 @@ inline T ParamReader<T>::operator()(uint32_t particleIndex) const
 	if (m_Kind == ParamKind::Constant)
 		return m_A;
 
+	if (m_Kind == ParamKind::Curve)
+	{
+		// HLSL 의 SampleCurve(칸, p.<가로축 속성>) 과 같은 식. 타입의 성분 수만큼만 쓴다
+		const float t = m_CurveIndex ? *reinterpret_cast<const float*>(m_CurveIndex + size_t(particleIndex) * sizeof(float)) : 0.f;
+		const float4 v = CurveLibrary::Sample(m_CurveSlot, t);
+		T curved{};
+		std::memcpy(static_cast<void*>(&curved), &v, (std::min)(sizeof(T), sizeof(float4)));
+		return curved;
+	}
+
 	// RandomRange: HLSL 의 min + (max - min) * t 와 같은 식
 	T out;
 	const float* a = reinterpret_cast<const float*>(&m_A);
@@ -137,6 +154,16 @@ inline ParamReader<T> ModuleContext::Param(const std::string& name) const
 	const std::vector<std::string> slots = ParamSlotNames(name, info->kind);
 	const std::string prefix = "Module." + module.scope + ".";
 	const uint8_t* data = m_Compiled.moduleParamData.data();
+
+	if (info->kind == ParamKind::Curve)
+	{
+		assert(sizeof(T) <= sizeof(float4) && "Param: Curve 는 float 계열만");
+		std::memcpy(&ret.m_CurveSlot, data + FindChecked(m_Compiled.moduleParams, prefix + slots[0], TypeOf<uint32_t>())->offset, sizeof(uint32_t));
+		// 가로축 속성은 EmitterCompiler 가 이 모듈의 읽기로 넣어 두므로 레이아웃에 있다
+		if (const Slot* index = m_Compiled.particles.Find(info->curveIndex))
+			ret.m_CurveIndex = m_ParticleData + size_t(index->offset) * m_Capacity;
+		return ret;
+	}
 
 	std::memcpy(&ret.m_A, data + FindChecked(m_Compiled.moduleParams, prefix + slots[0], TypeOf<T>())->offset, sizeof(T));
 	ret.m_B = ret.m_A;

@@ -13,6 +13,13 @@ int StageLevel(Stage s)
     }
 }
 
+void DetachCurves(ModuleDesc& module)
+{
+    for (ParamDesc& p : module.params)
+        if (p.curve)
+            p.curve = std::make_shared<CurveAsset>(p.curve->Keys());
+}
+
 const char* StageName(Stage s)
 {
     switch (s)

@@ -5,7 +5,8 @@
 //     b2 EmitterLayout : 단계별 인스턴스 범위 + 속성 열의 위치   -> EmitterLayoutCB
 //     t0 ModuleData    : [인스턴스 uint4 x N][입력값 dword ...]   -> UberEmitterData::params
 //       StructuredBuffer<uint> (루트 SRV)
-//       인스턴스 = { ModuleId, 스택 순번, 입력값 시작 dword, perComponent 비트 }
+//       인스턴스 = { ModuleId, 스택 순번, 입력값 시작 dword, 플래그 (하위 16 비트 perComponent / 상위 16 비트 Curve) }
+//       Curve 입력값은 값 자리의 첫 dword 에 전역 커브 버퍼의 칸 번호가 들어간다 (dword 수는 상수일 때와 같다)
 //       같은 모듈이 여러 번 있어도 인스턴스가 여러 개일 뿐이라 스택 그대로 실행된다
 //
 //   이 파일과 ParticleUber.hlsli 는 같이 고친다.
@@ -35,9 +36,12 @@ namespace Uber
 		uint32_t id;      // ModuleId
 		uint32_t slot;    // 스택 순번 (RandomRange salt)
 		uint32_t base;    // 입력값 시작 dword
-		uint32_t flags;   // bit k = k 번째 입력값 perComponent
+		uint32_t flags;   // bit k = k 번째 입력값 perComponent, bit (16 + k) = k 번째 입력값이 Curve
 	};
 	static_assert(sizeof(ModuleInstGpu) == 16, "ModuleInstGpu 는 uint4");
+
+	constexpr uint32_t kMaxFlaggedParams = 16;   // 플래그를 달 수 있는 입력값 수 (모듈 하나 기준)
+	constexpr uint32_t kCurveFlagShift = 16;     // HLSL IsCurve
 }
 
 // HLSL cbuffer EmitterLayout (b2) 와 같은 배치. 전부 uint 라 C++ 에서도 그대로 맞는다
@@ -63,8 +67,10 @@ struct EmitterLayoutCB
 	uint32_t ofsSubImageIndex = Uber::kNoAttribute;
 	uint32_t ofsSpriteSize = Uber::kNoAttribute;
 	uint32_t ofsSpriteRotation = Uber::kNoAttribute;
+	uint32_t ofsInitialColor = Uber::kNoAttribute;         // Particles.Initial.Color (Spawn 끝에 Color 를 복사)
+	uint32_t reserved[3] = {};                              // cbuffer 크기는 16 의 배수 (HLSL _LayoutReserved)
 };
-static_assert(sizeof(EmitterLayoutCB) == 80, "EmitterLayoutCB 는 HLSL EmitterLayout(80 바이트) 과 같아야 한다");
+static_assert(sizeof(EmitterLayoutCB) == 96, "EmitterLayoutCB 는 HLSL EmitterLayout(96 바이트) 과 같아야 한다");
 
 struct UberEmitterData
 {
@@ -75,8 +81,6 @@ struct UberEmitterData
 
 	bool Ok() const { return errors.empty(); }
 };
-
-const char* ModuleIdName(ModuleId id);
 
 // 모듈 하나의 입력값 배치: params[i] 가 시작하는 dword (Min 자리), 전체 dword 수
 struct UberParamRecord

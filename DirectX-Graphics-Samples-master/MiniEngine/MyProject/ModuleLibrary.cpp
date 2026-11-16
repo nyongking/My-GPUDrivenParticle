@@ -394,8 +394,9 @@ p.Acceleration = float3(0.f, 0.f, 0.f);
 	m.execute = [](ModuleContext& ctx)
 		{
 			const float dt = ctx.DeltaTime();
-			const float aMax = ctx.Param<float>("AccelLimit")(0);
-			const float sMax = ctx.Param<float>("SpeedLimit")(0);
+			// 입력값은 파티클마다 평가한다 (Curve 면 파티클의 NormalizedAge 에 따라 달라진다)
+			const auto accelParam = ctx.Param<float>("AccelLimit");
+			const auto speedParam = ctx.Param<float>("SpeedLimit");
 
 			auto pos = ctx.Particles<float3>(Particles::Position);
 			auto vel = ctx.Particles<float3>(Particles::Velocity);
@@ -404,6 +405,9 @@ p.Acceleration = float3(0.f, 0.f, 0.f);
 
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
+				const float aMax = accelParam(i);
+				const float sMax = speedParam(i);
+
 				float3 a = acc[i];
 				const float aLen = std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
 				if (aMax > 0.f && aLen > aMax)
@@ -463,11 +467,12 @@ p.Acceleration += PARAM(Gravity) / p.Mass;
 
 	m.execute = [](ModuleContext& ctx)
 		{
-			const float3 g = ctx.Param<float3>("Gravity")(0);
+			const auto gravityParam = ctx.Param<float3>("Gravity");
 			auto acc = ctx.Particles<float3>(Particles::Acceleration);
 			auto mass = ctx.Particles<float>(Particles::Mass);
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
+				const float3 g = gravityParam(i);
 				acc[i].x += g.x / mass[i];
 				acc[i].y += g.y / mass[i];
 				acc[i].z += g.z / mass[i];
@@ -515,11 +520,10 @@ p.SubImageIndex = PARAM(StartFrame) + t;
 
 	m.execute = [](ModuleContext& ctx)
 		{
-			const float start = ctx.Param<float>("StartFrame")(0);
-			const float end = ctx.Param<float>("EndFrame")(0);
+			const auto startParam = ctx.Param<float>("StartFrame");
+			const auto endParam = ctx.Param<float>("EndFrame");
 			const bool loop = static_cast<bool>(ctx.Param<NBool>("Loop")(0));
-			const float fps = ctx.Param<float>("FramesPerSecond")(0);
-			const float count = std::fmax(end - start + 1.f, 1.f);
+			const auto fpsParam = ctx.Param<float>("FramesPerSecond");
 
 			auto age = ctx.Particles<float>(Particles::Age);
 			auto nage = ctx.Particles<float>(Particles::NormalizedAge);
@@ -527,6 +531,11 @@ p.SubImageIndex = PARAM(StartFrame) + t;
 
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
+				const float start = startParam(i);
+				const float end = endParam(i);
+				const float fps = fpsParam(i);
+				const float count = std::fmax(end - start + 1.f, 1.f);
+
 				float t;
 				if (loop)
 				{
@@ -616,12 +625,61 @@ p.SpriteRotation = fmod(p.SpriteRotation + PARAM(RotationRate) * DeltaTime, 360.
 
 	m.execute = [](ModuleContext& ctx)
 		{
-			const float rate = ctx.Param<float>("RotationRate")(0);
+			const auto rateParam = ctx.Param<float>("RotationRate");
 			const float dt = ctx.DeltaTime();
 			auto rot = ctx.Particles<float>(Particles::SpriteRotation);
 
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
-				rot[i] = std::fmod(rot[i] + rate * dt, 360.f);
+				rot[i] = std::fmod(rot[i] + rateParam(i) * dt, 360.f);
+		};
+
+	return m;
+}
+
+// Color = (Spawn 이 끝났을 때의 색) x 배율. Niagara 의 Scale Color 에 해당
+//   현재 색에 곱하면 프레임마다 누적되므로 Particles.Initial.Color 에 곱한다
+//   배율을 Curve 로 두면 수명에 따라 색 / 투명도가 변한다 (예: ScaleAlpha = 1 -> 0 으로 사라지기)
+ModuleDesc ScaleColor(Input<float3> scaleRGB, Input<float> scaleAlpha)
+{
+	ModuleDesc m;
+
+	m.name = "Scale Color";
+	m.id = ModuleId::ScaleColor;
+	m.stage = Stage::ParticleUpdate;
+	m.params =
+	{
+		MakeParam<float3>("ScaleRGB", scaleRGB),
+		MakeParam<float>("ScaleAlpha", scaleAlpha)
+	};
+	m.reads =
+	{
+		{Particles::InitialColor, &Types::Float4}
+	};
+	m.writes =
+	{
+		{Particles::Color, &Types::Float4}
+	};
+	m.hlsl = R"(
+p.Color = p.Initial_Color * float4(PARAM(ScaleRGB), PARAM(ScaleAlpha));
+)";
+
+	m.execute = [](ModuleContext& ctx)
+		{
+			const auto rgbParam = ctx.Param<float3>("ScaleRGB");
+			const auto alphaParam = ctx.Param<float>("ScaleAlpha");
+
+			if (!ctx.HasParticle(Particles::Color) || !ctx.HasParticle(Particles::InitialColor))
+				return;
+			auto color = ctx.Particles<float4>(Particles::Color);
+			auto initial = ctx.Particles<float4>(Particles::InitialColor);
+
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+			{
+				const float3 rgb = rgbParam(i);
+				const float alpha = alphaParam(i);
+				const float4 base = initial[i];
+				color[i] = float4{ base.x * rgb.x, base.y * rgb.y, base.z * rgb.z, base.w * alpha };
+			}
 		};
 
 	return m;
@@ -642,6 +700,7 @@ const char* ModuleIdName(ModuleId id)
 	case ModuleId::SubUVAnimation:        return "SubUVAnimation";
 	case ModuleId::InitializeSprite:      return "InitializeSprite";
 	case ModuleId::SpriteRotationRate:    return "SpriteRotationRate";
+	case ModuleId::ScaleColor:            return "ScaleColor";
 	default:                              return "Unknown";
 	}
 }
@@ -668,6 +727,7 @@ ModuleDesc MakeDefaultModule(ModuleId id)
 	case ModuleId::SubUVAnimation:        return SubUVAnimation(0.f, 63.f);
 	case ModuleId::InitializeSprite:      return InitializeSprite(float2{ 0.2f, 0.2f }, RandomRange<float>(0.f, 360.f));
 	case ModuleId::SpriteRotationRate:    return SpriteRotationRate(90.f);
+	case ModuleId::ScaleColor:            return ScaleColor(float3{ 1.f, 1.f, 1.f }, Curve<float>({ { 0.f, 1.f }, { 1.f, 0.f } }));   // fade out over lifetime
 	default:
 	{
 		ModuleDesc unknown;

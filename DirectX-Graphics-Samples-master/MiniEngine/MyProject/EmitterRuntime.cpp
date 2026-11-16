@@ -180,11 +180,29 @@ void EmitterRuntime::SetParamKind(size_t moduleIndex, size_t paramIndex, ParamKi
 		p.value.resize(size);       // Min 을 상수로 유지
 		p.perComponent = false;
 	}
+	else if (kind == ParamKind::Curve)
+	{
+		p.value.resize(size);       // 상수 값은 남겨 둔다 (상수로 되돌릴 때 사용)
+		p.perComponent = false;
+		if (!p.curve)
+		{
+			// 처음 커브로 바꿀 때: 현재 상수 값을 양 끝 키로 (바꾼 직후에는 결과가 그대로)
+			CurveKey key;
+			key.value = float4{ 0.f, 0.f, 0.f, 0.f };
+			std::memcpy(&key.value, p.value.data(), (std::min)(size, sizeof(float4)));
+			key.time = 0.f;
+			std::vector<CurveKey> keys = { key };
+			key.time = 1.f;
+			keys.push_back(key);
+			p.curve = std::make_shared<CurveAsset>(keys);
+		}
+	}
 	else
 	{
 		p.value.resize(size * 2);   // 현재 값을 Min, Max 양쪽에 복사
 		std::memcpy(p.value.data() + size, p.value.data(), size);
 	}
+	// Curve 는 가로축 속성(NormalizedAge) 읽기가 늘어 레이아웃이 바뀔 수 있다 -> RebuildPreserve 가 재시작으로 넘긴다
 	Request(Pending::Preserve);
 }
 
@@ -225,6 +243,7 @@ void EmitterRuntime::MoveModule(size_t moduleIndex, int direction)
 void EmitterRuntime::AddModule(const ModuleDesc& module)
 {
 	m_Modules.push_back(module);
+	DetachCurves(m_Modules.back());     // 모듈 목록의 원본과 커브를 같이 쓰지 않게
 	Request(Pending::Restart);
 }
 

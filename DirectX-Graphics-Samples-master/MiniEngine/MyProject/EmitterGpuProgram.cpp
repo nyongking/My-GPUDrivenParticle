@@ -37,6 +37,8 @@ namespace
 		s_RootSig[EmitterGpuProgram::kRootLayoutCB].InitAsConstantBuffer(2);   // b2  
 		// t0: 공유 셰이더의 모듈 데이터 (StructuredBuffer<uint>). 루트 SRV 라 서술자 힙이 필요 없다
 		s_RootSig[EmitterGpuProgram::kRootModuleData].InitAsBufferSRV(0);
+		// t1: 전역 커브 버퍼 (StructuredBuffer<float4>). 커브 입력값이 없는 셰이더는 읽지 않는다
+		s_RootSig[EmitterGpuProgram::kRootCurveData].InitAsBufferSRV(1);
 
 		s_RootSig.Finalize(L"Emitter Compute RootSig");
 

@@ -1,9 +1,12 @@
 #pragma once
 
 #include "AttributeType.h"
+#include "CurveLibrary.h"
 #include <vector>
 #include <string>
 #include <functional>
+#include <memory>
+#include <utility>
 
 enum class Stage
 {
@@ -29,16 +32,21 @@ struct Usage
 enum class ParamKind
 {
     Constant,       // 고정값 1개
-    RandomRange     // Min ~ Max 사이의 파티클별 랜덤값 (ParticleSpawn 전용)
+    RandomRange,    // Min ~ Max 사이의 파티클별 랜덤값 (ParticleSpawn 전용)
+    Curve           // 커브 인덱스 속성(기본 NormalizedAge) 으로 커브를 읽은 값 (ParticleUpdate 전용, float 계열)
 };
 
 struct ParamDesc
 {
     std::string     name;
     const TypeInfo* type;
-    std::vector<uint8_t> value;     // Constant: T 1개 / RandomRange: Min, Max 순서로 T 2개
+    std::vector<uint8_t> value;     // Constant: T 1개 / RandomRange: Min, Max 순서로 T 2개 / Curve: T 1개 (상수로 되돌릴 때 쓸 값)
     ParamKind       kind = ParamKind::Constant;
     bool            perComponent = false;   // RandomRange: 성분마다 독립 랜덤
+
+    // Curve: 키 + 전역 커브 버퍼의 칸. ModuleDesc 를 복사하면 같은 커브를 가리킨다 (CurveLibrary.h)
+    std::shared_ptr<CurveAsset> curve;
+    std::string     curveIndex = "Particles.NormalizedAge";   // 커브의 가로축으로 쓸 float 속성 (0 ~ 1)
 
     // ImGui 표시용 힌트
     bool            uiColor = false;
@@ -59,7 +67,15 @@ inline std::vector<std::string> ParamSlotNames(const std::string& name, ParamKin
 {
     if (kind == ParamKind::RandomRange)
         return { name + "_Min", name + "_Max" };
+    if (kind == ParamKind::Curve)
+        return { name + "_Curve" };     // 커브 칸 번호 (uint)
     return { name };
+}
+
+// 그 슬롯의 타입. Curve 는 값이 아니라 커브 칸 번호가 들어가므로 uint
+inline const TypeInfo* ParamSlotType(const TypeInfo* type, ParamKind kind)
+{
+    return kind == ParamKind::Curve ? &Types::UInt32 : type;
 }
 
 // 모듈 함수의 인자 타입. T 에서 암시적으로 변환되므로 상수는 그대로 넘길 수 있다
@@ -70,6 +86,7 @@ struct Input
     T           b;
     ParamKind   kind = ParamKind::Constant;
     bool        perComponent = false;
+    std::vector<CurveKey> keys;     // Curve 전용
 
     Input(const T& v) : a(v), b(v) {}
 };
@@ -83,6 +100,24 @@ Input<T> RandomRange(const T& min, const T& max, bool perComponent = false)
     ret.b = max;
     ret.kind = ParamKind::RandomRange;
     ret.perComponent = perComponent;
+    return ret;
+}
+
+// 커브 입력값: { 시간(0~1), 값 } 목록. 키 사이는 선형 보간
+//   예) Curve<float>({ { 0.f, 1.f }, { 1.f, 0.f } })  = 수명 동안 1 -> 0
+template<typename T>
+Input<T> Curve(std::initializer_list<std::pair<float, T>> keys)
+{
+    Input<T> ret(keys.size() ? keys.begin()->second : T{});
+    ret.kind = ParamKind::Curve;
+    for (const std::pair<float, T>& k : keys)
+    {
+        CurveKey key;
+        key.time = k.first;
+        key.value = float4{ 0.f, 0.f, 0.f, 0.f };
+        memcpy(&key.value, &k.second, sizeof(T));   // float 계열만 (EmitterCompiler 가 검사)
+        ret.keys.push_back(key);
+    }
     return ret;
 }
 
@@ -111,6 +146,8 @@ ParamDesc MakeParam(const std::string& name, const Input<T>& input)
     memcpy(ret.value.data(), &input.a, sizeof(T));
     if (count > 1)
         memcpy(ret.value.data() + sizeof(T), &input.b, sizeof(T));
+    if (input.kind == ParamKind::Curve)
+        ret.curve = std::make_shared<CurveAsset>(input.keys);
     return ret;
 }
 
@@ -127,6 +164,7 @@ enum class ModuleId : uint32_t
     SubUVAnimation,
     InitializeSprite,
     SpriteRotationRate,
+    ScaleColor,
     Count,
     Unknown = 0xFFFFFFFFu       // ModuleLibrary 밖에서 만든 모듈 (공유 셰이더로 실행 불가)
 };
@@ -148,6 +186,9 @@ struct ModuleDesc
 
     int compiledIndex = -1;     // CompiledEmitter::modules 에서의 위치 (EmitterInstance 가 채움)
 };
+
+// 복사한 모듈이 원본과 커브를 같이 쓰지 않게 커브를 새로 만든다 (모듈 목록에서 스택으로 추가할 때)
+void DetachCurves(ModuleDesc& module);
 
 struct RenderBinding
 {
@@ -186,5 +227,6 @@ struct RendererDesc
     //   - 파티클 값   : p.Position, p.Previous_Position ...   (reads/writes 에 선언한 것만)
     //   - Emitter 값  : e.SpawnCount ...                       (EmitterUpdate 단계)
     //   - 입력값      : PARAM(Radius)                          (params 에 선언한 것만)
+    //                   상수 / RandomRange / Curve 어느 것이든 조각은 PARAM(n) 그대로 쓴다
     //   - 엔진 값     : DeltaTime, OwnerPosition ...
     //   - 그 외       : index, Random01(index, salt), KILL()

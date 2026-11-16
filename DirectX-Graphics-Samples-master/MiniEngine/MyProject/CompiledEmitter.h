@@ -14,6 +14,7 @@ struct CompiledParam
     ParamKind       kind;
     bool            perComponent;
     uint32_t        salt;   // RandomRange 용. 모듈이 직접 쓰는 salt 와 겹치지 않는 대역
+    std::string     curveIndex;   // Curve 용. 커브의 가로축 속성 전체 이름 (예: Particles.NormalizedAge)
 };
 
 struct CompiledModule

@@ -104,4 +104,26 @@ float Random01(uint x, uint salt)
     return float(h >> 8) * (1.0f / 16777216.0f); // 상위 24비트 -> [0, 1)
 }
 
+// ---------------------------------------------------------------------
+// 커브 입력값 (C++ CurveLibrary 와 같이 고친다)
+//   전역 커브 버퍼 하나를 모든 이미터가 같이 쓴다. 커브 하나 = CURVE_SAMPLES 개의 float4
+//   입력값 자리에는 칸 번호만 들어 있다. float / float2 / float3 는 앞 성분만 쓴다
+//   루트 SRV 는 범위 밖 읽기를 막아 주지 않으므로 칸 번호를 한 번 자른다
+// ---------------------------------------------------------------------
+#define CURVE_SAMPLES    128
+#define CURVE_MAX_CURVES 1024
+
+StructuredBuffer<float4> CurveData : register(t1);
+
+float4 SampleCurve(uint slot, float t)
+{
+    const uint base = min(slot, CURVE_MAX_CURVES - 1) * CURVE_SAMPLES;
+    const float u = saturate(t) * (CURVE_SAMPLES - 1);
+    const uint i0 = (uint) u;
+    const uint i1 = min(i0 + 1, CURVE_SAMPLES - 1);
+    const float4 a = CurveData[base + i0];
+    const float4 b = CurveData[base + i1];
+    return a + (b - a) * (u - (float) i0);
+}
+
 #define KILL() (alive = false)
