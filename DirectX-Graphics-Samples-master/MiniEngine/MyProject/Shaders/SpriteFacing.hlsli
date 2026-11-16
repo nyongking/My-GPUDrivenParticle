@@ -64,6 +64,7 @@ void ComputeSpriteAxes(SpriteShape s, SpriteOptions o, SpriteCamera cam,
 
     // ---- 1. 앞면 방향 N (카메라 쪽을 향함) ----
     float3 N = -cam.Forward;
+    
     if (o.Facing == FACING_CAMERA_POSITION)
     {
         N = dirToCam;
@@ -100,25 +101,40 @@ void ComputeSpriteAxes(SpriteShape s, SpriteOptions o, SpriteCamera cam,
         {
             const float len2 = dot(s.Velocity, s.Velocity);
             aligned = len2 > 1e-8f;
-            align = aligned ? s.Velocity * rsqrt(len2) : cam.Up;
+            if (aligned)
+                align = s.Velocity * rsqrt(len2);
+            else
+                align = cam.Up;
         }
         else if (o.Alignment == ALIGN_CUSTOM)
         {
             const float len2 = dot(s.Alignment, s.Alignment);
             aligned = len2 > 1e-8f;
-            align = aligned ? s.Alignment * rsqrt(len2) : cam.Up;
+            if (aligned)
+                align = s.Alignment * rsqrt(len2);
+            else
+                align = cam.Up;
         }
 
         if (aligned)
         {
             // 위쪽은 정렬 벡터 그대로, 그 축을 중심으로 돌려서 N 을 최대한 바라보게
             //   (정렬 벡터가 카메라 쪽을 곧바로 향하면 cross 가 0 -> 카메라 오른쪽을 투영해서 씀)
+            //
+            //up = align;
+            //const float fdot = dot(up, N);
+            //right = normalize(cross(up, N - up * fdot));           
+            
             up = align;
             right = ProjectOnPlane(cross(up, N) * handed, up, ProjectOnPlane(cam.Right, up, cam.Right));
         }
         else
         {
             // 위쪽 = 카메라 위쪽을 앞면 평면에 투영 (카메라 롤이 반영됨). 앞면이 위/아래를 보면 카메라 앞쪽으로 대신
+            //const float fdot = dot(cam.Up, N);
+            //up = normalize(cam.Up - N * fdot);
+            //right = normalize(cross(up, N));
+            
             up = ProjectOnPlane(cam.Up, N, ProjectOnPlane(cam.Forward, N, cam.Right));
             right = normalize(cross(up, N)) * handed;
         }
@@ -143,7 +159,7 @@ void ComputeSpriteAxes(SpriteShape s, SpriteOptions o, SpriteCamera cam,
     axisX = right * (size.x * 0.5f);
     axisY = up * (size.y * 0.5f);
 
-    // ---- 5. 피벗: uv(Pivot) 자리가 파티클 위치에 오도록 중심을 옮긴다 (uv 는 위 -> 아래) ----
+    // ---- 5. 피벗: uv(Pivot) 자리가 파티클 위치에 오도록 중심을 옮긴다 ----
     const float2 pivotCorner = float2(o.Pivot.x * 2.f - 1.f, 1.f - o.Pivot.y * 2.f);
     center = s.Position - pivotCorner.x * axisX - pivotCorner.y * axisY;
 

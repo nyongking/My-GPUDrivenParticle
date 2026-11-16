@@ -115,7 +115,12 @@ namespace
 		s_DrawRootSig[kDrawEmitters].InitAsBufferSRV(2, D3D12_SHADER_VISIBILITY_VERTEX);
 		s_DrawRootSig[kDrawTextures].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, ParticleRenderList::kMaxTextures,
 			D3D12_SHADER_VISIBILITY_PIXEL, 1);
-		s_DrawRootSig.InitStaticSampler(0, SamplerLinearClampDesc, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		// SpriteRenderer 와 같은 샘플러 (밉 1 까지만)
+		SamplerDesc particleSampler = SamplerLinearClampDesc;
+		particleSampler.MaxLOD = 1.f;
+		s_DrawRootSig.InitStaticSampler(0, particleSampler, D3D12_SHADER_VISIBILITY_PIXEL);
+
 		s_DrawRootSig.Finalize(L"Particle List RootSig");
 
 		// SpriteRenderer 의 PSO 와 같은 상태 (premultiplied: Additive 는 PS 가 alpha 0 을 내보낸다)
@@ -232,6 +237,7 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	info.subImageRows = (std::max)(src.subImageRows, 1u);
 	info.subUVBlend = src.subUVBlend ? 1u : 0u;
 	info.blendMode = src.blendMode;
+	info.textureAlpha = src.textureAlpha;
 	info.textureIndex = TextureIndex(src.texture);
 	m_Emitters.push_back(info);
 

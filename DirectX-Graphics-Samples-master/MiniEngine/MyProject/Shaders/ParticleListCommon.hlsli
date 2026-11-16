@@ -54,5 +54,6 @@ struct EmitterInfo
     uint SubUVBlend;
     uint BlendMode; // 0 = Translucent, 1 = Additive
     uint TextureIndex;
-    uint3 _Pad;
+    uint TextureAlpha;
+    uint2 _Pad;
 };

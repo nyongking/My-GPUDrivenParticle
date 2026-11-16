@@ -22,6 +22,14 @@ enum class SpriteBlendMode : uint32_t
     Additive
 };
 
+enum class SpriteTextureAlpha : uint32_t
+{
+    Straight,       // 일반 PNG (RGB는 원래 색상, 알파는 따로)
+    Premultiplied,  // RGB 에 알파가 이미 곱해진 방식
+    FromLuminance,  // 알파 없음, 검은 배경 = 투명
+    Count
+};
+
 // 사각형 앞면이 어디를 보는가 (HLSL SpriteFacing.hlsli 의 FACING_ 와 같은 번호)
 enum class SpriteFacingMode : uint32_t
 {
@@ -50,6 +58,7 @@ struct SpriteSettings
     uint32_t    subImageRows = 1;
     bool        subUVBlend = false;
     SpriteBlendMode blend = SpriteBlendMode::Transculent;
+    SpriteTextureAlpha textureAlpha = SpriteTextureAlpha::Straight;
 
     // ---- 빌보드 ----
     SpriteFacingMode facing = SpriteFacingMode::FaceCameraPlane;

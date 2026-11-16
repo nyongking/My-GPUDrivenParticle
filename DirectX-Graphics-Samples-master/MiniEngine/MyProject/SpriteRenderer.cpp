@@ -156,9 +156,16 @@ namespace
 		
 		// 텍스처 및 샘플러 설정
 		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1, D3D12_SHADER_VISIBILITY_PIXEL);
-		s_RootSig.InitStaticSampler(0, SamplerLinearClampDesc, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		// SubUV 아틀라스: 높은 밉에서 이웃 프레임이 섞이므로 밉 4 까지만 사용
+		SamplerDesc particleSampler = SamplerLinearClampDesc;   // 공용 설정은 건드리지 않고 복사본
+		particleSampler.MaxLOD = 1.f;
+		s_RootSig.InitStaticSampler(0, particleSampler, D3D12_SHADER_VISIBILITY_PIXEL);
+
 		// Blendmode 상수버퍼 설정
-		s_RootSig[kRootPSConstants].InitAsConstants(1, 1, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig[kRootPSConstants].InitAsConstants(1, 2, D3D12_SHADER_VISIBILITY_PIXEL);
+		
+		
 		s_RootSig.Finalize(L"Particle Sprite RootSig");
 
 		s_PSO.SetRootSignature(s_RootSig);
@@ -485,7 +492,9 @@ ParticleRenderList::Source SpriteRenderer::MakeListSource() const
 	src.subImageRows = m_Settings.subImageRows;
 	src.subUVBlend = m_Settings.subUVBlend;
 	src.blendMode = static_cast<uint32_t>(m_Settings.blend);
+	src.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
 	src.texture = TextureSRV();
+
 	return src;
 }
 
@@ -544,7 +553,7 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), sortedIndices.GetSRV() };
 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
 	gfx.SetDynamicDescriptor(kRootTexture, 0, TextureSRV());
-	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend));
+	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend), static_cast<uint32_t>(m_Settings.textureAlpha));
 }
 
 void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camera& camera, const EmitterInstance& emitter)

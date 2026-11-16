@@ -125,6 +125,7 @@ void MyProject::Startup(void)
     // Rendering Setting
     //g_SceneColorBuffer.SetClearColor(Color(0.5f, 0.5f, 0.4f));
     PostEffects::EnableAdaptation = false;
+    PostEffects::BloomEnable = false;
 
     Renderer::Initialize();
     DebugDraw::Initialize();
@@ -267,7 +268,7 @@ void MyProject::InitializeEmitter()
         SubUVAnimation(0.f, 63.f)      // 수명 동안 0~63 프레임 (T_Smoke_SubUV = 8x8)
     };
 
-    if (!m_Runtime.Initialize(modules, 100'000, EmitterBackend::Gpu))
+    if (!m_Runtime.Initialize(modules, 10'000, EmitterBackend::Gpu))
         Utility::Print(m_Runtime.LastError().c_str());
 
     Utility::Print(DescribeUber(m_Runtime.Uber()).c_str());
@@ -295,8 +296,6 @@ void MyProject::UpdateImGui(float deltaT)
     ImGui::SeparatorText("Owner");
     ImGui::SliderFloat("Rotate (deg/s)", &m_RotateSpeedDeg, 0.f, 360.f);
     ImGui::Checkbox("Move up/down (velocity)", &m_MoveOwner);
-
-    DrawModuleStackPanel(m_Runtime);
 
     if (!m_UseTestScene)
         DrawModuleStackPanel(m_Runtime);
@@ -351,7 +350,7 @@ void MyProject::UpdateMiddleDragLook()
 
 void MyProject::UpdateTestSceneImGui()
 {
-    ImGui::SeparatorText("Test Scene (week 5)");
+    ImGui::SeparatorText("Test Scene");
 
     ImGui::BeginDisabled(m_Recorder.IsBusy() || m_BenchRunning);      // 기록 중에는 조건 변경 금지
 
