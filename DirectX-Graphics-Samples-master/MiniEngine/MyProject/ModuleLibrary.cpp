@@ -627,3 +627,53 @@ p.SpriteRotation = fmod(p.SpriteRotation + PARAM(RotationRate) * DeltaTime, 360.
 	return m;
 }
 
+
+const char* ModuleIdName(ModuleId id)
+{
+	switch (id)
+	{
+	case ModuleId::SpawnRate:             return "SpawnRate";
+	case ModuleId::InitializeParticle:    return "InitializeParticle";
+	case ModuleId::SphereLocation:        return "SphereLocation";
+	case ModuleId::AddVelocityInCone:     return "AddVelocityInCone";
+	case ModuleId::ParticleState:         return "ParticleState";
+	case ModuleId::GravityForce:          return "GravityForce";
+	case ModuleId::SolveForceAndVelocity: return "SolveForceAndVelocity";
+	case ModuleId::SubUVAnimation:        return "SubUVAnimation";
+	case ModuleId::InitializeSprite:      return "InitializeSprite";
+	case ModuleId::SpriteRotationRate:    return "SpriteRotationRate";
+	default:                              return "Unknown";
+	}
+}
+
+ModuleId ModuleIdFromName(const std::string& name)
+{
+	for (uint32_t i = 0; i < uint32_t(ModuleId::Count); ++i)
+		if (name == ModuleIdName(ModuleId(i)))
+			return ModuleId(i);
+	return ModuleId::Unknown;
+}
+
+ModuleDesc MakeDefaultModule(ModuleId id)
+{
+	switch (id)
+	{
+	case ModuleId::SpawnRate:             return SpawnRate(50.f);
+	case ModuleId::InitializeParticle:    return InitializeParticle(0.1f, 1.f, 1.f, float3{ 0.f, 0.f, 0.f }, float4{ 1.f, 1.f, 1.f, 1.f });
+	case ModuleId::SphereLocation:        return SphereLocation(0.5f, false);
+	case ModuleId::AddVelocityInCone:     return AddVelocityInCone(3.f, 30.f, float3{ 0.f, 1.f, 0.f });
+	case ModuleId::ParticleState:         return ParticleState(true);
+	case ModuleId::GravityForce:          return GravityForce(float3{ 0.f, -9.8f, 0.f });
+	case ModuleId::SolveForceAndVelocity: return SolveForceAndVelocity(0.f, 0.f);      // 0 = 제한 없음
+	case ModuleId::SubUVAnimation:        return SubUVAnimation(0.f, 63.f);
+	case ModuleId::InitializeSprite:      return InitializeSprite(float2{ 0.2f, 0.2f }, RandomRange<float>(0.f, 360.f));
+	case ModuleId::SpriteRotationRate:    return SpriteRotationRate(90.f);
+	default:
+	{
+		ModuleDesc unknown;
+		unknown.stage = Stage::ParticleUpdate;
+		unknown.id = ModuleId::Unknown;
+		return unknown;
+	}
+	}
+}

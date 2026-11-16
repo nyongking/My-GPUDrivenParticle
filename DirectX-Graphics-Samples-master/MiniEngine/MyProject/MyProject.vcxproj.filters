@@ -108,6 +108,12 @@
     <ClCompile Include="ModuleStackPanel.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
+    <ClCompile Include="EmitterAsset.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="Json.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
     <ClCompile Include="SpriteRenderer.cpp">
       <Filter>Particle\Renderer</Filter>
     </ClCompile>
@@ -205,6 +211,12 @@
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
     <ClInclude Include="ModuleStackPanel.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="EmitterAsset.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="Json.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
     <ClInclude Include="SpriteRenderer.h">

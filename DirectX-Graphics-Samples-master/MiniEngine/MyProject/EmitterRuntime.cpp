@@ -70,6 +70,7 @@ bool EmitterRuntime::Initialize(const std::vector<ModuleDesc>& modules, uint32_t
 	m_Modules = modules;
 	m_AppliedModules = modules;
 	m_Capacity = capacity;
+	m_AppliedCapacity = capacity;
 	m_Backend = backend;
 	m_ActiveBackend = backend;
 	m_Ready = false;
@@ -225,6 +226,18 @@ void EmitterRuntime::RemoveModule(size_t moduleIndex)
 	Request(Pending::Restart);
 }
 
+void EmitterRuntime::ReplaceDescription(const std::vector<ModuleDesc>& modules, const RendererDesc& sprite, uint32_t capacity, EmitterBackend backend)
+{
+	m_Modules = modules;
+	// 바인딩 칸은 SpriteRenderer::Desc() 순서로 고정 (렌더러가 번호로 읽는다). 모양이 다르면 지금 것을 유지
+	if (sprite.bindings.size() == m_SpriteDesc.bindings.size())
+		m_SpriteDesc = sprite;
+	if (capacity > 0)
+		m_Capacity = capacity;
+	m_Backend = backend;
+	Request(Pending::Restart);
+}
+
 void EmitterRuntime::SetBackend(EmitterBackend backend)
 {
 	if (m_Backend == backend)
@@ -343,6 +356,7 @@ void EmitterRuntime::ApplyPending()
 	{
 		m_AppliedModules = m_Modules;
 		m_AppliedSpriteDesc = m_SpriteDesc;
+		m_AppliedCapacity = m_Capacity;
 		m_LastError.clear();
 	}
 	else
@@ -352,6 +366,7 @@ void EmitterRuntime::ApplyPending()
 		Utility::Print(m_LastError.c_str());
 		m_Modules = m_AppliedModules;
 		m_SpriteDesc = m_AppliedSpriteDesc;
+		m_Capacity = m_AppliedCapacity;
 		m_Backend = m_ActiveBackend;
 	}
 }

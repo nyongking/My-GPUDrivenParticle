@@ -66,6 +66,8 @@
     <ClInclude Include="EmitterRuntime.h" />
     <ClInclude Include="EmitterTestScene.h" />
     <ClInclude Include="ModuleStackPanel.h" />
+    <ClInclude Include="EmitterAsset.h" />
+    <ClInclude Include="Json.h" />
     <ClInclude Include="GpuEmitterInstance.h" />
     <ClInclude Include="LayoutBuilder.h" />
     <ClInclude Include="ModuleContext.h" />
@@ -102,6 +104,8 @@
     <ClCompile Include="EmitterRuntime.cpp" />
     <ClCompile Include="EmitterTestScene.cpp" />
     <ClCompile Include="ModuleStackPanel.cpp" />
+    <ClCompile Include="EmitterAsset.cpp" />
+    <ClCompile Include="Json.cpp" />
     <ClCompile Include="GpuEmitterInstance.cpp" />
     <ClCompile Include="LayoutBuilder.cpp" />
     <ClCompile Include="ModuleContext.cpp" />

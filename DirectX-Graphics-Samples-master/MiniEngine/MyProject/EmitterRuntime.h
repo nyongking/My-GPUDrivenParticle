@@ -39,6 +39,11 @@ public:
 
 	// ---------- 편집 ----------
 	std::vector<ModuleDesc>& EditModules() { return m_Modules; }
+	const std::vector<ModuleDesc>& Modules() const { return m_Modules; }
+
+	// 모듈 스택 + 렌더러 바인딩 + capacity + 백엔드를 통째로 바꾼다 (에셋 불러오기). 재시작
+	//   capacity == 0 이면 지금 값 유지. 적용에 실패하면 다른 편집과 같이 이전 구성으로 돌아간다
+	void ReplaceDescription(const std::vector<ModuleDesc>& modules, const RendererDesc& sprite, uint32_t capacity, EmitterBackend backend);
 
 	void NotifyValuesChanged();     // ParamDesc::value 만 바뀜 (재컴파일 없음)
 	void SetParamKind(size_t moduleIndex, size_t paramIndex, ParamKind kind);       // 파티클 유지
@@ -112,6 +117,7 @@ private:
 	EmitterBackend          m_Backend = EmitterBackend::Gpu;        // 요청된 백엔드
 	EmitterBackend          m_ActiveBackend = EmitterBackend::Gpu;  // 실제로 실행 중인 백엔드
 	uint32_t                m_Capacity = 0;
+	uint32_t                m_AppliedCapacity = 0;  // 마지막으로 적용에 성공한 capacity (실패 시 복구)
 	Pending                 m_Pending = Pending::None;
 	bool                    m_Ready = false;
 	std::string             m_LastError;

@@ -1,6 +1,7 @@
 ﻿#include "pch.h"
 #include "ModuleStackPanel.h"
 
+#include "EmitterAsset.h"
 #include "EmitterRuntime.h"
 #include "ModuleLibrary.h"
 #include "UberGpuProgram.h"
@@ -9,24 +10,20 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cstring>
 
 namespace
 {
 	const std::vector<ModuleDesc>& ModuleCatalog()
 	{
-		static const std::vector<ModuleDesc> s_Catalog =
-		{
-			SpawnRate(50.f),
-			InitializeParticle(0.1f, 1.f, 1.f, float3{ 0.f, 0.f, 0.f }, float4{ 1.f, 1.f, 1.f, 1.f }),
-			SphereLocation(0.5f, false),
-			AddVelocityInCone(3.f, 30.f, float3{ 0.f, 1.f, 0.f }),
-			ParticleState(true),
-			GravityForce(float3{ 0.f, -9.8f, 0.f }),
-			SolveForceAndVelocity(0.f, 0.f),      // 0 = 제한 없음
-			SubUVAnimation(0.f, 63.f),
-			InitializeSprite(float2{ 0.2f, 0.2f }, RandomRange<float>(0.f, 360.f)),
-			SpriteRotationRate(90.f)
-		};
+		// 기본값은 MakeDefaultModule 한 곳에서 관리한다 (에셋 불러오기와 같은 값)
+		static const std::vector<ModuleDesc> s_Catalog = []()
+			{
+				std::vector<ModuleDesc> catalog;
+				for (uint32_t i = 0; i < uint32_t(ModuleId::Count); ++i)
+					catalog.push_back(MakeDefaultModule(ModuleId(i)));
+				return catalog;
+			}();
 		return s_Catalog;
 	}
 
@@ -362,10 +359,132 @@ namespace
 			runtime.NotifyValuesChanged();
 		ImGui::PopID();
 	}
+
+	// ---- 에셋 저장 / 불러오기 (Assets/Emitters/*.emitter.json) ----
+	//   ImGui 는 한글이 깨지므로 문구는 영어. 자세한 내용은 출력 창에도 남긴다
+	struct AssetPanelState
+	{
+		char                     name[65] = "NewEmitter";
+		std::string              status;
+		bool                     statusIsError = false;
+		std::vector<std::string> warnings;
+	};
+
+	AssetPanelState& AssetState()
+	{
+		static AssetPanelState s_State;
+		return s_State;
+	}
+
+	void SetAssetStatus(const std::string& status, bool isError)
+	{
+		AssetPanelState& st = AssetState();
+		st.status = status;
+		st.statusIsError = isError;
+		Utility::Printf("[EmitterAsset] %s\n", status.c_str());
+		for (const std::string& w : st.warnings)
+			Utility::Printf("[EmitterAsset]   warning: %s\n", w.c_str());
+	}
+
+	void SaveAsset(EmitterRuntime& runtime, const std::string& name)
+	{
+		AssetPanelState& st = AssetState();
+		st.warnings.clear();
+
+		const std::string path = EmitterAssetPath(name);
+		std::string error;
+		if (SaveEmitterAsset(path, CaptureEmitterAsset(runtime, name), error))
+			SetAssetStatus("Saved " + path, false);
+		else
+			SetAssetStatus("Save failed: " + error, true);
+	}
+
+	void LoadAsset(EmitterRuntime& runtime, const std::string& name)
+	{
+		AssetPanelState& st = AssetState();
+		st.warnings.clear();
+
+		const std::string path = EmitterAssetPath(name);
+		EmitterAsset asset;
+		std::string error;
+		if (!LoadEmitterAsset(path, asset, error, st.warnings))
+		{
+			SetAssetStatus("Load failed: " + error, true);   // 지금 이미터는 그대로
+			return;
+		}
+
+		const bool textureOk = ApplyEmitterAsset(runtime, asset);
+		if (!textureOk)
+			st.warnings.push_back("texture '" + asset.texture + "' could not be loaded (drawn magenta)");
+		strncpy_s(st.name, sizeof(st.name), name.c_str(), _TRUNCATE);
+		SetAssetStatus("Loaded " + path + " (restarting emitter)", false);
+	}
+
+	void DrawAssetPanel(EmitterRuntime& runtime)
+	{
+		AssetPanelState& st = AssetState();
+		ImGui::SeparatorText("Emitter Asset");
+
+		ImGui::SetNextItemWidth(200.f);
+		ImGui::InputText("##assetName", st.name, sizeof(st.name));
+		const std::string name = st.name;
+
+		ImGui::SameLine();
+		if (ImGui::Button("Save"))
+		{
+			if (!IsValidEmitterAssetName(name))
+			{
+				st.warnings.clear();
+				SetAssetStatus("Invalid name (use A-Z a-z 0-9 _ - .)", true);
+			}
+			else if (GetFileAttributesA(EmitterAssetPath(name).c_str()) != INVALID_FILE_ATTRIBUTES)
+				ImGui::OpenPopup("Overwrite asset?");
+			else
+				SaveAsset(runtime, name);
+		}
+
+		if (ImGui::BeginPopupModal("Overwrite asset?", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::Text("%s already exists. Overwrite?", EmitterAssetPath(name).c_str());
+			if (ImGui::Button("Overwrite"))
+			{
+				SaveAsset(runtime, name);
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel"))
+				ImGui::CloseCurrentPopup();
+			ImGui::EndPopup();
+		}
+
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(200.f);
+		if (ImGui::BeginCombo("Load", "Select..."))
+		{
+			// 펼칠 때마다 다시 읽는다 (파일을 추가해도 재실행 필요 없음)
+			const std::vector<std::string> assets = ListEmitterAssets();
+			if (assets.empty())
+				ImGui::TextDisabled("(no files in %s)", EmitterAssetDirectory());
+			for (const std::string& asset : assets)
+				if (ImGui::Selectable(asset.c_str()))
+					LoadAsset(runtime, asset);
+			ImGui::EndCombo();
+		}
+
+		if (!st.status.empty())
+		{
+			const ImVec4 color = st.statusIsError ? ImVec4(1.f, 0.3f, 0.3f, 1.f) : ImVec4(0.5f, 1.f, 0.5f, 1.f);
+			ImGui::TextColored(color, "%s", st.status.c_str());
+		}
+		for (const std::string& w : st.warnings)
+			ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f), "%s", w.c_str());
+	}
 }
 
 void DrawModuleStackPanel(EmitterRuntime& runtime)
 {
+	DrawAssetPanel(runtime);
+
 	ImGui::SeparatorText("Backend");
 
 	const EmitterBackend backend = runtime.Backend();

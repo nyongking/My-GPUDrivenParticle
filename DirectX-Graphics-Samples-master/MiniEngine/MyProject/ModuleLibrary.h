@@ -18,3 +18,10 @@ ModuleDesc SolveForceAndVelocity(Input<float> speedLimit, Input<float> accelLimi
 ModuleDesc GravityForce(float3 gravity);
 ModuleDesc SubUVAnimation(float startFrame, float endFrame, bool loop = false, float framePerSecond = 30.f);
 ModuleDesc SpriteRotationRate(float degreesPerSecond);  // SpriteRotation += rate * dt
+
+// ---- 데이터(에셋) 용 ----
+// 저장 파일에 쓰는 모듈 이름. 바꾸면 기존 파일을 못 읽으므로 이름은 고정 (ModuleId 순서와는 무관)
+const char* ModuleIdName(ModuleId id);
+ModuleId    ModuleIdFromName(const std::string& name);   // 모르면 ModuleId::Unknown
+// id 로 기본값 모듈을 만든다 (UI 의 Add module 목록과 같은 기본값). 모르는 id 면 id = Unknown
+ModuleDesc  MakeDefaultModule(ModuleId id);
