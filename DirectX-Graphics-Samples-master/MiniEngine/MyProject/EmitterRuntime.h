@@ -24,6 +24,8 @@ class EmitterRuntime
 {
 public:
 	bool Initialize(const std::vector<ModuleDesc>& modules, uint32_t capacity, EmitterBackend backend);
+	// 렌더러 바인딩까지 정해서 시작 (에셋에서 만들 때). 바인딩 모양이 다르면 지금 것을 유지
+	bool Initialize(const std::vector<ModuleDesc>& modules, const RendererDesc& sprite, uint32_t capacity, EmitterBackend backend);
 	void Shutdown();
 
 	void Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& owner);

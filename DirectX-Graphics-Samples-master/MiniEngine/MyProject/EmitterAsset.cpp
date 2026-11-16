@@ -263,6 +263,23 @@ bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset)
 	return runtime.SetSpriteTexture(asset.texture);
 }
 
+bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& asset, uint32_t capacity)
+{
+	if (capacity == 0)
+		capacity = asset.capacity;
+	if (capacity == 0)
+		capacity = 4096;   // 파일에도 없으면 테스트 씬 기본값
+
+	if (!runtime.Initialize(asset.modules, asset.sprite, capacity, asset.backend))
+		return false;
+
+	// 둘 다 재시작이 필요 없는 값이라 시작한 뒤에 넣는다
+	runtime.SetSpriteSettings(asset.settings);
+	if (!runtime.SetSpriteTexture(asset.texture))
+		Utility::Printf("[EmitterAsset] '%s': texture '%s' could not be loaded (drawn magenta)\n", asset.name.c_str(), asset.texture.c_str());
+	return true;
+}
+
 // ------------------------------------------------------------------ JSON
 
 std::string EmitterAssetToJson(const EmitterAsset& a)

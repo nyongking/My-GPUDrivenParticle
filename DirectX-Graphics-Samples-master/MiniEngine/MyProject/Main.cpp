@@ -30,8 +30,10 @@
 #include "EmitterTestScene.h"
 #include "UberGpuProgram.h"
 
+#include <algorithm>
 #include <cmath>
 #include "ModuleStackPanel.h"
+#include "EmitterAsset.h"
 
 using namespace GameCore;
 using namespace Graphics;
@@ -88,6 +90,8 @@ private:
 
     EmitterTestScene            m_TestScene;
     EmitterTestScene::Settings  m_TestDraft;          // UI 가 편집, Build 를 눌러야 적용
+    std::vector<std::string>    m_TestAssetList;      // Assets/Emitters 목록 (Refresh 를 눌러야 다시 읽음)
+    bool                        m_TestAssetListRead = false;
     bool                        m_UseTestScene = false;
     bool                        m_FixedDt = true;     // 측정 재현성을 위해 1/60 고정
 
@@ -419,8 +423,59 @@ void MyProject::UpdateTestSceneImGui()
     int capacity = int(m_TestDraft.capacityPerEmitter);
     if (ImGui::InputInt("Count", &count))                 m_TestDraft.count = uint32_t((std::max)(count, 1));
     if (ImGui::InputInt("Capacity / emitter", &capacity)) m_TestDraft.capacityPerEmitter = uint32_t((std::max)(capacity, 64));
-    ImGui::SliderFloat("Spawn rate / emitter", &m_TestDraft.spawnRate, 1.f, 2000.f, "%.0f");
     ImGui::SliderFloat("Spacing", &m_TestDraft.spacing, 0.5f, 5.f, "%.1f");
+
+    // ---- 에셋 (고르면 프리셋 / 콤보 대신 사용) ----
+    if (ImGui::TreeNode("Emitter assets (Assets/Emitters)"))
+    {
+        // 매 프레임 폴더를 읽지 않도록 처음 한 번 + Refresh 때만
+        if (!m_TestAssetListRead || ImGui::SmallButton("Refresh"))
+        {
+            m_TestAssetList = ListEmitterAssets();
+            m_TestAssetListRead = true;
+        }
+        if (m_TestAssetList.empty())
+            ImGui::TextDisabled("(no assets - save one from the emitter panel)");
+
+        std::vector<std::string>& picked = m_TestDraft.assets;
+        for (const std::string& name : m_TestAssetList)
+        {
+            const auto it = std::find(picked.begin(), picked.end(), name);
+            bool on = it != picked.end();
+            if (ImGui::Checkbox(name.c_str(), &on))
+            {
+                if (on)
+                    picked.push_back(name);
+                else
+                    picked.erase(it);
+            }
+        }
+        // 목록에서 사라진 파일 (지웠거나 이름을 바꿈) 도 보여 줘야 끌 수 있다
+        for (size_t i = 0; i < picked.size(); )
+        {
+            if (std::find(m_TestAssetList.begin(), m_TestAssetList.end(), picked[i]) != m_TestAssetList.end())
+            {
+                ++i;
+                continue;
+            }
+            bool on = true;
+            ImGui::Checkbox((picked[i] + " (missing)").c_str(), &on);
+            if (!on)
+                picked.erase(picked.begin() + ptrdiff_t(i));
+            else
+                ++i;
+        }
+
+        ImGui::Checkbox("Use asset capacity (else Capacity / emitter)", &m_TestDraft.assetCapacity);
+        ImGui::TreePop();
+    }
+
+    const bool useAssets = !m_TestDraft.assets.empty();
+    if (useAssets)
+        ImGui::TextDisabled("Using %u asset(s): spawn rate / presets / combos are ignored", uint32_t(m_TestDraft.assets.size()));
+
+    ImGui::BeginDisabled(useAssets);
+    ImGui::SliderFloat("Spawn rate / emitter", &m_TestDraft.spawnRate, 1.f, 2000.f, "%.0f");
 
     for (uint32_t i = 0; i < uint32_t(EmitterPreset::Count); ++i)
     {
@@ -435,6 +490,7 @@ void MyProject::UpdateTestSceneImGui()
         m_TestDraft.comboCount = uint32_t(combos);
     if (m_TestDraft.comboCount > 0)
         ImGui::TextDisabled("first: %s", ComboName(0).c_str());
+    ImGui::EndDisabled();
 
     if (ImGui::Button("Build"))
     {
@@ -493,10 +549,16 @@ void MyProject::TickRecorder()
     const EmitterTestScene::BuildResult& b = m_TestScene.LastBuild();
 
     const std::string header = "emitters,capPerEmitter,spawnRate,fixedDt,psoCount,psoChanges,dispatches,setupMs,shaderBuildMs";
+    // 에셋 capacity 를 쓰면 이미터마다 다를 수 있어서 평균을 남긴다
+    const EmitterTestScene::Settings& applied = m_TestScene.AppliedSettings();
+    const uint32_t capPerEmitter = !m_UseTestScene ? m_Runtime.Capacity()
+        : (!applied.assets.empty() && applied.assetCapacity) ? m_TestScene.CapacityTotal() / (std::max)(m_TestScene.Count(), 1u)
+        : applied.capacityPerEmitter;
+
     char values[256];
     sprintf_s(values, "%u,%u,%.1f,%d,%u,%u,%u,%.2f,%.2f",
         emitters,
-        m_UseTestScene ? m_TestScene.AppliedSettings().capacityPerEmitter : m_Runtime.Capacity(),
+        capPerEmitter,
         m_UseTestScene ? m_TestScene.AppliedSettings().spawnRate : 0.f,
         m_FixedDt ? 1 : 0,
         psoCount, m_LastSimStats.psoChanges, m_LastSimStats.dispatches,
@@ -509,7 +571,8 @@ void MyProject::TickRecorder()
         uint32_t presetCount = 0;
         for (uint32_t i = 0; i < uint32_t(EmitterPreset::Count); ++i)
             presetCount += (ts.presetMask >> i) & 1u;
-        const uint32_t variants = ts.comboCount > 0 ? (std::min)(ts.comboCount, kMaxModuleCombos) : (std::max)(presetCount, 1u);
+        const uint32_t variants = !ts.assets.empty() ? uint32_t(ts.assets.size())
+            : ts.comboCount > 0 ? (std::min)(ts.comboCount, kMaxModuleCombos) : (std::max)(presetCount, 1u);
 
         char extra[128];
         sprintf_s(extra, ",%s,%u,%d,%u,%u",

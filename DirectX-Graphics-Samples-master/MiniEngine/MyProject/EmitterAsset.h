@@ -32,6 +32,9 @@ struct EmitterAsset
 EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::string& name);
 // 재시작 요청 + 텍스처 / 스프라이트 설정 바로 반영. 텍스처를 못 읽으면 false (magenta 로 그려짐)
 bool         ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset);
+// 아직 시작하지 않은 런타임을 에셋으로 시작 (재시작 없이 한 번에). capacity == 0 이면 에셋 값
+//   실패하면 false (runtime.LastError()). 텍스처를 못 읽는 것은 출력 창 경고만 (magenta 로 그려짐)
+bool         InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& asset, uint32_t capacity);
 
 // 문자열 단위. 실패(파일 형식 / 모르는 모듈)면 out 은 그대로, 고칠 수 있는 문제는 warnings 에 남기고 계속
 std::string EmitterAssetToJson(const EmitterAsset& asset);

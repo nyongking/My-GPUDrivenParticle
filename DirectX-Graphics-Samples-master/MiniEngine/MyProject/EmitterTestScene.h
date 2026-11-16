@@ -38,6 +38,11 @@ public:
 		float    spacing = 2.f;               // 격자 간격 (m)
 		uint32_t presetMask = (1u << uint32_t(EmitterPreset::Count)) - 1;   // 돌아가며 쓸 프리셋
 		uint32_t comboCount = 0;
+
+		// 비어 있지 않으면 프리셋 / 콤보 대신 이 에셋들을 돌아가며 배치 (Assets/Emitters/<이름>.emitter.json)
+		//   spawnRate / presetMask / comboCount 는 쓰지 않는다 (에셋의 모듈 값 그대로)
+		std::vector<std::string> assets;
+		bool     assetCapacity = false;       // true = 에셋에 저장된 capacity, false = capacityPerEmitter (측정 조건을 맞출 때)
 	};
 
 	struct BuildResult

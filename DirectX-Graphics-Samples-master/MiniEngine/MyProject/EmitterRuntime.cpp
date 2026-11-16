@@ -80,6 +80,16 @@ bool EmitterRuntime::Initialize(const std::vector<ModuleDesc>& modules, uint32_t
 	return m_Ready;
 }
 
+bool EmitterRuntime::Initialize(const std::vector<ModuleDesc>& modules, const RendererDesc& sprite, uint32_t capacity, EmitterBackend backend)
+{
+	if (sprite.bindings.size() == m_SpriteDesc.bindings.size())
+	{
+		m_SpriteDesc = sprite;
+		m_AppliedSpriteDesc = sprite;
+	}
+	return Initialize(modules, capacity, backend);
+}
+
 void EmitterRuntime::Shutdown()
 {
 	Graphics::g_CommandManager.IdleGPU();     // GPU 가 버퍼를 다 쓴 뒤 지운다

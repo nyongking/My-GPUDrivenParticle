@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "EmitterTestScene.h"
 
+#include "EmitterAsset.h"
 #include "ModuleLibrary.h"
 
 #include "CommandListManager.h"
@@ -140,19 +141,51 @@ bool EmitterTestScene::Build(const Settings& settings)
 	EmitterGpuProgram::ResetBuildStats();
 	const int64_t startTick = SystemTime::GetCurrentTick();
 
-	m_Items.reserve(settings.count);
-	for (uint32_t i = 0; i < settings.count; ++i)
+	// 에셋: 파일은 한 번씩만 읽어 두고 돌아가며 쓴다 (읽기 실패한 에셋만 빼고 계속)
+	const bool useAssets = !settings.assets.empty();
+	std::vector<EmitterAsset> assets;
+	for (const std::string& name : settings.assets)
+	{
+		EmitterAsset asset;
+		std::string error;
+		std::vector<std::string> warnings;
+		if (!LoadEmitterAsset(EmitterAssetPath(name), asset, error, warnings))
+		{
+			m_LastError = "[TestScene] asset " + name + " 실패: " + error + "\n";
+			Utility::Print(m_LastError.c_str());
+			continue;
+		}
+		for (const std::string& w : warnings)
+			Utility::Printf("[TestScene] asset %s: %s\n", name.c_str(), w.c_str());
+		asset.name = name;   // 라벨 = 파일 이름
+		assets.push_back(std::move(asset));
+	}
+	const uint32_t buildCount = (useAssets && assets.empty()) ? 0u : settings.count;
+
+	m_Items.reserve(buildCount);
+	for (uint32_t i = 0; i < buildCount; ++i)
 	{
 		Item item;
 		item.preset = presets[i % presets.size()];
 		const bool useCombo = settings.comboCount > 0;
 		const uint32_t combo = useCombo ? i % (std::min)(settings.comboCount, kMaxModuleCombos) : 0;
-		const std::string label = useCombo ? ComboName(combo) : std::string(PresetName(item.preset));
+		const EmitterAsset* asset = useAssets ? &assets[i % assets.size()] : nullptr;
+		const std::string label = asset ? asset->name : useCombo ? ComboName(combo) : std::string(PresetName(item.preset));
 		item.owner.position = { x0 + float(i % cols) * settings.spacing, 0.f, z0 + float(i / cols) * settings.spacing };
 		item.runtime = std::make_unique<EmitterRuntime>();
 
-		const std::vector<ModuleDesc> stack = useCombo ? MakeComboStack(combo, settings.spawnRate) : MakePreset(item.preset, settings.spawnRate);
-		if (!item.runtime->Initialize(stack, settings.capacityPerEmitter, EmitterBackend::Gpu))
+		bool ok = false;
+		if (asset)
+		{
+			const uint32_t capacity = (settings.assetCapacity && asset->capacity > 0) ? asset->capacity : settings.capacityPerEmitter;
+			ok = InitializeEmitterFromAsset(*item.runtime, *asset, capacity);
+		}
+		else
+		{
+			const std::vector<ModuleDesc> stack = useCombo ? MakeComboStack(combo, settings.spawnRate) : MakePreset(item.preset, settings.spawnRate);
+			ok = item.runtime->Initialize(stack, settings.capacityPerEmitter, EmitterBackend::Gpu);
+		}
+		if (!ok)
 		{
 			m_LastError = std::string("[TestScene] ") + label + " #" + std::to_string(i) + " 실패\n" + item.runtime->LastError();
 			Utility::Print(m_LastError.c_str());
