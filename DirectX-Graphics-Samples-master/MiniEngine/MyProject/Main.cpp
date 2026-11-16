@@ -370,6 +370,18 @@ void MyProject::UpdateTestSceneImGui()
         bool globalSort = m_TestScene.GlobalSort();
         if (ImGui::Checkbox("Global particle sort (across emitters)", &globalSort))
             m_TestScene.SetGlobalSort(globalSort);
+
+        // 전체 정렬 경로에서만 의미가 있다
+        ImGui::BeginDisabled(!globalSort);
+        ImGui::Indent();
+        bool culling = m_TestScene.GatherCulling();
+        if (ImGui::Checkbox("Gather culling", &culling))
+            m_TestScene.SetGatherCulling(culling);
+        bool excludeAdditive = m_TestScene.ExcludeAdditiveFromSort();
+        if (ImGui::Checkbox("Exclude additive from sort", &excludeAdditive))
+            m_TestScene.SetExcludeAdditiveFromSort(excludeAdditive);
+        ImGui::Unindent();
+        ImGui::EndDisabled();
     }
 
     {

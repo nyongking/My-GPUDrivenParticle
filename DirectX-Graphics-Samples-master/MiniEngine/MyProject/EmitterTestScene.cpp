@@ -167,7 +167,10 @@ bool EmitterTestScene::Build(const Settings& settings)
 	for (const Item& item : m_Items)
 		listCapacity += item.runtime->Capacity();
 	if (!m_Items.empty())
+	{
 		m_RenderList.Reserve(listCapacity);
+		m_AdditiveList.Reserve(listCapacity);
+	}
 
 	m_LastBuild.created = uint32_t(m_Items.size());
 	m_LastBuild.setupMs = SystemTime::TimeBetweenTicks(startTick, SystemTime::GetCurrentTick()) * 1000.0;
@@ -190,6 +193,7 @@ void EmitterTestScene::Shutdown()
 		item.runtime->Shutdown();
 	m_Items.clear();
 	m_RenderList.Shutdown();
+	m_AdditiveList.Shutdown();
 }
 
 void EmitterTestScene::Tick(ComputeContext& ctx, float deltaTime)
@@ -239,10 +243,26 @@ void EmitterTestScene::Render(GraphicsContext& gfx, const Math::Camera& camera)
 	// 전체 정렬: 모든 이미터 파티클을 한 목록에 모아 정렬 1번 + Draw 1번 (이미터 사이 앞뒤도 맞음)
 	if (m_GlobalSort && m_RenderList.ReservedCapacity() > 0)
 	{
+		// Additive 끼리는 그리는 순서가 결과에 영향이 없으므로 정렬 목록에서 뺀다
+		const bool splitAdditive = m_ExcludeAdditive && m_AdditiveList.ReservedCapacity() > 0;
+
+		m_RenderList.SetCulling(m_GatherCulling);
 		m_RenderList.Begin(gfx, camera);
+		if (splitAdditive)
+		{
+			m_AdditiveList.SetCulling(m_GatherCulling);
+			m_AdditiveList.Begin(gfx, camera);
+		}
+
 		for (Item& item : m_Items)
-			item.runtime->SubmitTo(gfx, m_RenderList);
-		m_RenderList.Render(gfx);
+		{
+			const bool additive = item.runtime->GetSpriteSettings().blend == SpriteBlendMode::Additive;
+			item.runtime->SubmitTo(gfx, (splitAdditive && additive) ? m_AdditiveList : m_RenderList);
+		}
+
+		m_RenderList.Render(gfx, true);
+		if (splitAdditive)
+			m_AdditiveList.Render(gfx, false);
 		return;
 	}
 

@@ -56,9 +56,11 @@ namespace
 		float    velocityStretch;  // 204
 		float    blendNear;        // 208
 		float    blendFar;         // 212
-		float    _pad0[2];         // 216
+		uint32_t cullEnable;       // 216
+		float    _pad0;            // 220
+		float4   frustumPlanes[6]; // 224  월드 공간, 안쪽이 +
 	};
-	static_assert(sizeof(GatherConstants) == 224, "GatherConstants 224 B");
+	static_assert(sizeof(GatherConstants) == 320, "GatherConstants 320 B");
 	static_assert(offsetof(GatherConstants, defaultColor) == 48, "DefaultColor offset 48");
 	static_assert(offsetof(GatherConstants, camPos) == 80, "CamPos offset 80");
 	static_assert(offsetof(GatherConstants, camForward) == 96, "CamForward offset 96");
@@ -68,6 +70,8 @@ namespace
 	static_assert(offsetof(GatherConstants, defaultSpriteFacing) == 160, "DefaultSpriteFacing offset 160");
 	static_assert(offsetof(GatherConstants, defaultSpriteAlignment) == 176, "DefaultSpriteAlignment offset 176");
 	static_assert(offsetof(GatherConstants, pivot) == 192, "Pivot offset 192");
+	static_assert(offsetof(GatherConstants, cullEnable) == 216, "CullEnable offset 216");
+	static_assert(offsetof(GatherConstants, frustumPlanes) == 224, "FrustumPlanes offset 224");
 
 	// ParticleListVS.hlsl 의 cbuffer ListDrawConstants 와 같은 배치 (빌보드 축은 Gather 가 계산)
 	struct alignas(16) DrawConstants
@@ -181,6 +185,11 @@ void ParticleRenderList::Begin(GraphicsContext& gfx, const Math::Camera& camera)
 	m_CamRight.w = 0.f;
 	m_CamUp.w = 0.f;
 
+	// 컬링용 월드 프러스텀 평면. Math::Frustum 이 reversed-Z 를 처리하고, 법선은 안쪽 + 정규화 (거리 = m)
+	const Math::Frustum& frustum = camera.GetWorldSpaceFrustum();
+	for (int k = 0; k < 6; ++k)
+		DirectX::XMStoreFloat4(&m_FrustumPlanes[k], Math::Vector4(frustum.GetFrustumPlane(Math::Frustum::PlaneID(k))));
+
 	// 카운터 0 (이전 프레임의 Draw / Sort 가 읽은 뒤에 같은 커맨드 리스트 순서로 실행된다)
 	alignas(16) const uint32_t zeros[4] = { 0, 0, 0, 0 };
 	gfx.TransitionResource(m_Counter, D3D12_RESOURCE_STATE_COPY_DEST, true);
@@ -257,6 +266,9 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	gc.velocityStretch = src.velocityStretch;
 	gc.blendNear = src.blendNear;
 	gc.blendFar = src.blendFar;
+	gc.cullEnable = m_Culling ? 1u : 0u;
+	for (int k = 0; k < 6; ++k)
+		gc.frustumPlanes[k] = { m_FrustumPlanes[k].x, m_FrustumPlanes[k].y, m_FrustumPlanes[k].z, m_FrustumPlanes[k].w };
 	const float camRight[3] = { m_CamRight.x, m_CamRight.y, m_CamRight.z };
 	const float camUp[3] = { m_CamUp.x, m_CamUp.y, m_CamUp.z };
 	for (int k = 0; k < 3; ++k)
@@ -283,12 +295,12 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	cc.SetDynamicDescriptors(kGatherSRVs, 0, 2, srvs);
 	cc.SetDynamicDescriptors(kGatherUAVs, 0, 3, uavs);
 
-	// 개수를 모르는 GPU 이미터도 있어서 capacity 기준으로 띄운다 (넘는 스레드는 append 하지 않음)
+	// 개수를 모르는 GPU 이미터도 있어서 capacity 기준으로 띄운다 (넘는 스레드 / 컬링된 파티클은 append 하지 않음)
 	cc.Dispatch((src.capacity + kGatherGroupSize - 1) / kGatherGroupSize, 1, 1);
 	// 이미터끼리는 카운터 원자 연산으로 자리만 나눠 쓰므로 UAV 배리어가 필요 없다 (정렬 전에 한 번)
 }
 
-void ParticleRenderList::Render(GraphicsContext& gfx)
+void ParticleRenderList::Render(GraphicsContext& gfx, bool sorted)
 {
 	if (!m_Active)
 		return;
@@ -302,7 +314,9 @@ void ParticleRenderList::Render(GraphicsContext& gfx)
 	cc.InsertUAVBarrier(m_Counter, true);
 
 	// 1) 전체 정렬: 키 내림차순 = 카메라에서 먼 것부터. 개수 = 카운터 [0]
-	BitonicSort::Sort(cc, m_SortList, m_Counter, 0, false, false);
+	//    정렬 안 함: Gather 가 SortList[slot] = (slot, 키) 로 썼으므로 그대로 append 순서
+	if (sorted)
+		BitonicSort::Sort(cc, m_SortList, m_Counter, 0, false, false);
 
 	// 2) Draw 인자의 InstanceCount = 카운터
 	gfx.TransitionResource(m_Counter, D3D12_RESOURCE_STATE_COPY_SOURCE);

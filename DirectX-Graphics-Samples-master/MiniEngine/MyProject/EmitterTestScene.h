@@ -67,6 +67,14 @@ public:
 	void SetGlobalSort(bool globalSort) { m_GlobalSort = globalSort; }
 	bool GlobalSort() const { return m_GlobalSort; }
 
+	// 전체 정렬 경로 전용. Gather 에서 화면 밖 / 투명 / 크기 0 파티클을 빼고 정렬
+	void SetGatherCulling(bool enable) { m_GatherCulling = enable; }
+	bool GatherCulling() const { return m_GatherCulling; }
+
+	// 전체 정렬 경로 전용. Additive 이미터는 따로 모아 정렬 없이 그림 (반투명 목록 다음)
+	void SetExcludeAdditiveFromSort(bool enable) { m_ExcludeAdditive = enable; }
+	bool ExcludeAdditiveFromSort() const { return m_ExcludeAdditive; }
+
 	bool                Empty() const { return m_Items.empty(); }
 	uint32_t            Count() const { return uint32_t(m_Items.size()); }
 	uint32_t            AliveTotal() const;
@@ -92,5 +100,8 @@ private:
 	std::vector<GpuEmitterInstance*> m_StagedScratch;
 
 	bool               m_GlobalSort = true;
-	ParticleRenderList m_RenderList;      // 크기 = 이미터 capacity 합 (Build 에서 잡음)
+	bool               m_GatherCulling = true;
+	bool               m_ExcludeAdditive = true;
+	ParticleRenderList m_RenderList;      // 반투명 (정렬). 크기 = 이미터 capacity 합 (Build 에서 잡음)
+	ParticleRenderList m_AdditiveList;    // Additive (정렬 안 함). 블렌드 모드가 실행 중에 바뀌므로 같은 크기
 };

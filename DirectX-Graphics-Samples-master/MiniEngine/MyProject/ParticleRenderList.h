@@ -6,6 +6,9 @@
 //                                 + SortList 에 uint2(목록 번호, 깊이 키)
 //   Render()                    : BitonicSort (전체 목록, 내림차순 = 먼 것부터)
 //                                 -> DrawArgs.InstanceCount = 카운터 -> DrawIndirect 1번 (ParticleListVS/PS)
+//   Render(gfx, false)          : 정렬 없이 append 순서로 그림 (Additive 처럼 순서가 결과에 영향 없을 때)
+//
+//   SetCulling(true) 면 Gather 가 프러스텀 밖 / 투명 / 크기 0 인 파티클을 목록에 넣지 않는다
 //
 //   이미터마다 다른 것 (레이아웃 / 기본값) 은 Gather 에서 풀어서 RenderParticle 하나의 형식으로 맞춘다.
 //   그리기에 필요한 이미터별 설정 (SubUV / 블렌드 / 텍스처) 은 EmitterInfo 로 넘긴다.
@@ -78,7 +81,11 @@ public:
 
 	void Begin(GraphicsContext& gfx, const Math::Camera& camera);
 	void Add(GraphicsContext& gfx, const Source& source);
-	void Render(GraphicsContext& gfx);
+	void Render(GraphicsContext& gfx, bool sorted = true);   // sorted == false: BitonicSort 생략
+
+	// Gather 컬링 on / off (다음 Add 부터 적용)
+	void SetCulling(bool enable) { m_Culling = enable; }
+	bool Culling() const { return m_Culling; }
 
 	uint32_t EmitterCount() const { return uint32_t(m_Emitters.size()); }
 
@@ -110,6 +117,8 @@ private:
 	DirectX::XMFLOAT4X4 m_ViewProj = {};
 	DirectX::XMFLOAT4   m_CamRight = {};
 	DirectX::XMFLOAT4   m_CamUp = {};
+	DirectX::XMFLOAT4   m_FrustumPlanes[6] = {};   // 월드 공간, 안쪽이 + (Begin 에서 카메라로 계산)
+	bool                m_Culling = false;
 
 	std::vector<EmitterInfo>                 m_Emitters;
 	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> m_Textures;
