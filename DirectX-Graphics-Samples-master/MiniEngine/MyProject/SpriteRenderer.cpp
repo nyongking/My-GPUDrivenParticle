@@ -74,10 +74,13 @@ namespace
 		float               velocityStretch;        // 284
 		float               blendNear;              // 288
 		float               blendFar;               // 292
-		uint32_t            dissolveOffset;         // 296  연결이 없으면 defaultDissolve
-		float               defaultDissolve;        // 300
+		uint32_t            param0Offset;           // 296  MaterialParam0 (연결이 없으면 defaultParam0)
+		float               defaultParam0;          // 300
+		uint32_t            param1Offset;           // 304  MaterialParam1
+		float               defaultParam1;          // 308
+		float               _pad[2];                // 312
 	};
-	static_assert(sizeof(SpriteConstants) == 304, "HLSL cbuffer SpriteConstants(304 B)와 일치해야 함");
+	static_assert(sizeof(SpriteConstants) == 320, "HLSL cbuffer SpriteConstants(320 B)와 일치해야 함");
 	static_assert(offsetof(SpriteConstants, positionOffset) == 128, "PositionOffset offset 128");
 	static_assert(offsetof(SpriteConstants, defaultColor) == 144, "DefaultColor offset 144");
 	static_assert(offsetof(SpriteConstants, sortEnabled) == 176, "SortEnabled offset 176");
@@ -88,23 +91,20 @@ namespace
 	static_assert(offsetof(SpriteConstants, defaultSpriteAlignment) == 256, "DefaultSpriteAlignment offset 256");
 	static_assert(offsetof(SpriteConstants, pivot) == 272, "Pivot offset 272");
 	static_assert(offsetof(SpriteConstants, blendFar) == 292, "BlendFar offset 292");
-	static_assert(offsetof(SpriteConstants, dissolveOffset) == 296, "DissolveOffset offset 296");
+	static_assert(offsetof(SpriteConstants, param0Offset) == 296, "Param0Offset offset 296");
+	static_assert(offsetof(SpriteConstants, param1Offset) == 304, "Param1Offset offset 304");
 
-	// HLSL ParticleSpritePS 의 cbuffer SpritePSConstants (b1, 루트 상수) 와 같은 배치
-	struct SpritePSConstants
+	// HLSL ParticleSpritePS 의 cbuffer SpritePSConstants (b1) 와 같은 배치 (SetDynamicConstantBufferView 가 16 B 정렬을 요구)
+	struct alignas(16) SpritePSConstants
 	{
-		uint32_t blendMode;             // 0
-		uint32_t textureAlpha;          // 4
-		uint32_t dissolveEnabled;       // 8
-		uint32_t _pad;                  // 12
-		float    dissolveRange[2];      // 16
-		float    dissolveEdgeWidth;     // 24
-		float    dissolveSoftness;      // 28
-		float    dissolveEdgeColor[3];  // 32
-		float    dissolveEdgeIntensity; // 44
+		uint32_t       blendMode;                   // 0
+		uint32_t       textureAlpha;                // 4
+		uint32_t       layerCount;                  // 8
+		float          time;                        // 12
+		SpriteLayerGpu layers[kMaxSpriteLayers];    // 16  (80 B 씩)
 	};
-	static_assert(sizeof(SpritePSConstants) == 48, "SpritePSConstants 48 B (루트 상수 12 개)");
-	static_assert(offsetof(SpritePSConstants, dissolveEdgeColor) == 32, "DissolveEdgeColor offset 32");
+	static_assert(sizeof(SpritePSConstants) == 336, "SpritePSConstants 336 B");
+	static_assert(offsetof(SpritePSConstants, layers) == 16, "Layers offset 16");
 
 	// GPU 정렬 키 생성 (ParticleSortKeyCS.hlsl 의 cbuffer SortKeyConstants 와 같은 배치)
 	struct SortKeyConstants
@@ -126,7 +126,7 @@ namespace
 
 
 	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kNumRootParams };
-	static const uint32_t kNumPSTextures = 2;   // t2 = 스프라이트, t3 = 디졸브 마스크
+	static const uint32_t kNumPSTextures = 1 + kMaxSpriteLayers;   // t2 = 스프라이트, t3 ~ t6 = 레이어 (켜진 순서)
 	static const uint32_t kNumSRVs = 2;
 
 	// 루트 시그니처 / PSO 는 모든 SpriteRenderer 가 같이 쓴다 (한 번만 만든다)
@@ -180,9 +180,11 @@ namespace
 		SamplerDesc particleSampler = SamplerLinearClampDesc;   // 공용 설정은 건드리지 않고 복사본
 		particleSampler.MaxLOD = 1.f;
 		s_RootSig.InitStaticSampler(0, particleSampler, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig.InitStaticSampler(1, SamplerLinearWrapDesc, D3D12_SHADER_VISIBILITY_PIXEL);   // 레이어 반복 (타일링 / 스크롤)
 
 		// Blendmode 상수버퍼 설정
-		s_RootSig[kRootPSConstants].InitAsConstants(1, sizeof(SpritePSConstants) / 4, D3D12_SHADER_VISIBILITY_PIXEL);
+		// PS 상수 (블렌드 / 알파 / 레이어). 루트 상수로는 너무 커서 CBV
+		s_RootSig[kRootPSConstants].InitAsConstantBuffer(1, D3D12_SHADER_VISIBILITY_PIXEL);
 		
 		
 		s_RootSig.Finalize(L"Particle Sprite RootSig");
@@ -234,8 +236,9 @@ RendererDesc SpriteRenderer::Desc()
 		MakeRenderBinding<float3>("Velocity",        Particles::Velocity,        float3{ 0.f, 0.f, 0.f }),
 		MakeRenderBinding<float3>("SpriteFacing",    Particles::SpriteFacing,    float3{ 0.f, 1.f, 0.f }),
 		MakeRenderBinding<float3>("SpriteAlignment", Particles::SpriteAlignment, float3{ 0.f, 1.f, 0.f }),
-		// 디졸브: 기본은 연결 없음 (레이아웃이 바뀌지 않게). 수명에 맞추려면 Particles.NormalizedAge 를 연결
-		MakeRenderBinding<float>("Dissolve",         std::string(),              0.f)
+		// 레이어 세기: 기본은 연결 없음 (레이아웃이 바뀌지 않게). 수명에 맞추려면 Particles.NormalizedAge 를 연결
+		MakeRenderBinding<float>("MaterialParam0",   std::string(),              0.f),
+		MakeRenderBinding<float>("MaterialParam1",   std::string(),              0.f)
 	};
 
 	return desc;
@@ -332,7 +335,7 @@ bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity, const Re
 	{
 		&Types::Float3, &Types::Float4, &Types::Float, &Types::Float,
 		&Types::Float2, &Types::Float, &Types::Float3, &Types::Float3, &Types::Float3,
-		&Types::Float
+		&Types::Float, &Types::Float
 	};
 	if (desc.bindings.size() != kNumSlots)
 	{
@@ -396,7 +399,8 @@ void SpriteRenderer::SetDefaults(const RendererDesc& desc)
 	std::memcpy(&m_DefaultVelocity, desc.bindings[kVelocity].defaultValue.data(), sizeof(float3));
 	std::memcpy(&m_DefaultSpriteFacing, desc.bindings[kSpriteFacing].defaultValue.data(), sizeof(float3));
 	std::memcpy(&m_DefaultSpriteAlignment, desc.bindings[kSpriteAlignment].defaultValue.data(), sizeof(float3));
-	std::memcpy(&m_DefaultDissolve, desc.bindings[kDissolve].defaultValue.data(), sizeof(float));
+	std::memcpy(&m_DefaultParam0, desc.bindings[kMaterialParam0].defaultValue.data(), sizeof(float));
+	std::memcpy(&m_DefaultParam1, desc.bindings[kMaterialParam1].defaultValue.data(), sizeof(float));
 }
 
 
@@ -518,15 +522,11 @@ ParticleRenderList::Source SpriteRenderer::MakeListSource() const
 	src.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
 	src.texture = TextureSRV();
 
-	src.dissolveOffset = m_Offsets[kDissolve];
-	src.defaultDissolve = m_DefaultDissolve;
-	if (m_DissolveTexture)
-		src.dissolveTexture = m_DissolveTexture->GetSRV();
-	src.dissolveRange = m_Settings.dissolveRange;
-	src.dissolveEdgeWidth = m_Settings.dissolveEdgeWidth;
-	src.dissolveSoftness = m_Settings.dissolveSoftness;
-	src.dissolveEdgeColor = m_Settings.dissolveEdgeColor;
-	src.dissolveEdgeIntensity = m_Settings.dissolveEdgeIntensity;
+	src.param0Offset = m_Offsets[kMaterialParam0];
+	src.param1Offset = m_Offsets[kMaterialParam1];
+	src.defaultParam0 = m_DefaultParam0;
+	src.defaultParam1 = m_DefaultParam1;
+	src.layerCount = PackLayers(src.layers, src.layerTextures);
 
 	return src;
 }
@@ -577,8 +577,10 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	sc.velocityStretch = m_Settings.velocityStretch;
 	sc.blendNear = m_Settings.blendNear;
 	sc.blendFar = m_Settings.blendFar;
-	sc.dissolveOffset = m_Offsets[kDissolve];
-	sc.defaultDissolve = m_DefaultDissolve;
+	sc.param0Offset = m_Offsets[kMaterialParam0];
+	sc.defaultParam0 = m_DefaultParam0;
+	sc.param1Offset = m_Offsets[kMaterialParam1];
+	sc.defaultParam1 = m_DefaultParam1;
 
 	gfx.SetRootSignature(s_RootSig);
 	gfx.SetPipelineState(s_PSO);
@@ -587,26 +589,21 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 
 	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), sortedIndices.GetSRV() };
 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
-	// 마스크가 없어도 테이블 칸은 채워야 한다 (셰이더는 DissolveEnabled == 0 이면 읽지 않음)
-	const D3D12_CPU_DESCRIPTOR_HANDLE textures[kNumPSTextures] =
-	{
-		TextureSRV(), m_DissolveTexture ? m_DissolveTexture->GetSRV() : s_SoftCircle.GetSRV()
-	};
-	gfx.SetDynamicDescriptors(kRootTexture, 0, kNumPSTextures, textures);
-
 	SpritePSConstants pc = {};
 	pc.blendMode = static_cast<uint32_t>(m_Settings.blend);
 	pc.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
-	pc.dissolveEnabled = m_DissolveTexture ? 1u : 0u;
-	pc.dissolveRange[0] = m_Settings.dissolveRange.x;
-	pc.dissolveRange[1] = m_Settings.dissolveRange.y;
-	pc.dissolveEdgeWidth = m_Settings.dissolveEdgeWidth;
-	pc.dissolveSoftness = m_Settings.dissolveSoftness;
-	pc.dissolveEdgeColor[0] = m_Settings.dissolveEdgeColor.x;
-	pc.dissolveEdgeColor[1] = m_Settings.dissolveEdgeColor.y;
-	pc.dissolveEdgeColor[2] = m_Settings.dissolveEdgeColor.z;
-	pc.dissolveEdgeIntensity = m_Settings.dissolveEdgeIntensity;
-	gfx.SetConstantArray(kRootPSConstants, sizeof(pc) / 4, &pc);
+	pc.time = ParticleMaterial::Time();
+
+	// 레이어 텍스처는 켜진 순서대로 t3 ~. 빈 칸도 테이블이 유효해야 해서 기본 원형으로 채운다 (셰이더는 읽지 않음)
+	D3D12_CPU_DESCRIPTOR_HANDLE layerTextures[kMaxSpriteLayers] = {};
+	pc.layerCount = PackLayers(pc.layers, layerTextures);
+
+	D3D12_CPU_DESCRIPTOR_HANDLE textures[kNumPSTextures];
+	textures[0] = TextureSRV();
+	for (uint32_t k = 0; k < kMaxSpriteLayers; ++k)
+		textures[1 + k] = (k < pc.layerCount) ? layerTextures[k] : s_SoftCircle.GetSRV();
+	gfx.SetDynamicDescriptors(kRootTexture, 0, kNumPSTextures, textures);
+	gfx.SetDynamicConstantBufferView(kRootPSConstants, sizeof(pc), &pc);
 }
 
 void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camera& camera, const EmitterInstance& emitter)
@@ -653,28 +650,52 @@ bool SpriteRenderer::SetTexture(const std::wstring& path)
 	return true;
 }
 
-bool SpriteRenderer::SetDissolveTexture(const std::wstring& path)
+bool SpriteRenderer::SetLayerTexture(uint32_t layer, const std::wstring& path)
 {
-	m_DissolveTexture = nullptr;
-	if (path.empty())
-		return true;    // 디졸브 끔
+	if (layer >= kMaxSpriteLayers)
+		return false;
+	m_LayerPaths[layer] = path;
+	return LoadLayerTexture(layer);
+}
 
-	auto it = m_MaskTextures.find(path);
-	if (it == m_MaskTextures.end())
+bool SpriteRenderer::LoadLayerTexture(uint32_t layer)
+{
+	m_LayerTextures[layer] = nullptr;
+	const std::wstring& path = m_LayerPaths[layer];
+	if (path.empty())
+		return true;    // 텍스처 없음 = 그 레이어는 그리지 않음
+
+	const bool srgb = m_Settings.layers[layer].srgb;
+	const std::wstring key = path + (srgb ? L"|sRGB" : L"|linear");
+	auto it = m_LayerCache.find(key);
+	if (it == m_LayerCache.end())
 	{
-		// 마스크는 데이터라 선형 (sRGB 아님). 같은 원본을 색 텍스처로 먼저 변환했으면 DDS 가 sRGB 일 수 있다
-		CompileTextureOnDemand(path, TextureOptions(false, false));
+		// DDS 변환은 처음 한 번 (같은 원본을 다른 색 공간으로 먼저 변환했으면 그 DDS 를 쓴다)
+		CompileTextureOnDemand(path, TextureOptions(srgb, true));
 		const std::wstring ddsPath = Utility::RemoveExtension(path) + L".dds";
-		it = m_MaskTextures.emplace(path, TextureManager::LoadDDSFromFile(ddsPath, Graphics::kWhiteOpaque2D, false)).first;
+		it = m_LayerCache.emplace(key, TextureManager::LoadDDSFromFile(ddsPath, Graphics::kMagenta2D, srgb)).first;
 	}
 
 	if (!it->second.IsValid())
 	{
-		Utility::Printf(L"[SpriteRenderer] Dissolve mask load failed : %ws\n", path.c_str());
-		return false;   // 디졸브 꺼진 채로 둔다
+		Utility::Printf(L"[SpriteRenderer] Layer %u texture load failed : %ws\n", layer, path.c_str());
+		return false;   // 이 레이어는 빠진 채로 둔다
 	}
-	m_DissolveTexture = &it->second;
+	m_LayerTextures[layer] = &it->second;
 	return true;
+}
+
+uint32_t SpriteRenderer::PackLayers(SpriteLayerGpu (&out)[kMaxSpriteLayers], D3D12_CPU_DESCRIPTOR_HANDLE (&textures)[kMaxSpriteLayers]) const
+{
+	bool hasTexture[kMaxSpriteLayers];
+	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
+		hasTexture[i] = m_LayerTextures[i] != nullptr;
+
+	uint32_t source[kMaxSpriteLayers];
+	const uint32_t n = PackSpriteLayers(m_Settings.layers, hasTexture, out, source);
+	for (uint32_t k = 0; k < kMaxSpriteLayers; ++k)
+		textures[k] = (k < n) ? m_LayerTextures[source[k]]->GetSRV() : D3D12_CPU_DESCRIPTOR_HANDLE{};
+	return n;
 }
 
 void SpriteRenderer::ReleaseTextures()
@@ -682,16 +703,26 @@ void SpriteRenderer::ReleaseTextures()
 	// 프레임이 아직 쓰고 있을 수 있으므로 GPU idle 뒤에만 부른다
 	m_Texture = nullptr;
 	m_Textures.clear();
-	m_DissolveTexture = nullptr;
-	m_MaskTextures.clear();
+	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
+		m_LayerTextures[i] = nullptr;
+	m_LayerCache.clear();
 }
 
 void SpriteRenderer::SetSettings(const SpriteSettings& settings)
 {
+	bool srgbChanged[kMaxSpriteLayers];
+	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
+		srgbChanged[i] = m_Settings.layers[i].srgb != settings.layers[i].srgb;
+
 	m_Settings = settings;
 
 	m_Settings.subImageCols = max(m_Settings.subImageCols, 1u);
 	m_Settings.subImageRows = max(m_Settings.subImageRows, 1u);
+
+	// 색 공간이 바뀐 레이어는 다른 SRV 로 다시 읽는다 (캐시에 있으면 바로)
+	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
+		if (srgbChanged[i] && !m_LayerPaths[i].empty())
+			LoadLayerTexture(i);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE SpriteRenderer::TextureSRV() const

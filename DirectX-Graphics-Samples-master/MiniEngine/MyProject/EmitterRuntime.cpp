@@ -318,14 +318,16 @@ bool EmitterRuntime::SetSpriteTexture(const std::string& path)
 	return cpuOk && gpuOk;
 }
 
-bool EmitterRuntime::SetDissolveTexture(const std::string& path)
+bool EmitterRuntime::SetLayerTexture(uint32_t layer, const std::string& path)
 {
-	m_DissolveTexture = path;
+	if (layer >= kMaxSpriteLayers)
+		return false;
+	m_LayerTextures[layer] = path;
 
 	// 스프라이트 텍스처와 같이 두 렌더러에 바로 (실행 중이 아닌 쪽도 맞춰 둔다)
 	const std::wstring wpath = Utility::UTF8ToWideString(path);
-	const bool cpuOk = m_CpuRenderer.SetDissolveTexture(wpath);
-	const bool gpuOk = m_GpuRenderer.SetDissolveTexture(wpath);
+	const bool cpuOk = m_CpuRenderer.SetLayerTexture(layer, wpath);
+	const bool gpuOk = m_GpuRenderer.SetLayerTexture(layer, wpath);
 	return cpuOk && gpuOk;
 }
 

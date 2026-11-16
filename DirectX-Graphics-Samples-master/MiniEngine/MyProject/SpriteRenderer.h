@@ -2,6 +2,7 @@
 
 #include "GpuBuffer.h"
 #include "ModuleDesc.h"
+#include "ParticleMaterial.h"
 #include "ParticleRenderList.h"
 #include "ParticleSorter.h"
 #include "TextureManager.h"
@@ -69,13 +70,8 @@ struct SpriteSettings
     float       blendNear = 1.f;            // FaceCameraDistanceBlend: 이 거리까지 CameraPosition
     float       blendFar = 10.f;            //                          이 거리부터 CameraPlane
 
-    // ---- 디졸브 (마스크 텍스처는 SpriteRenderer::SetDissolveTexture, 없으면 꺼짐) ----
-    //   진행도 = saturate((Dissolve 바인딩 값 - range.x) / (range.y - range.x)), 0 = 보임 / 1 = 사라짐
-    float2      dissolveRange = { 0.f, 1.f };
-    float       dissolveEdgeWidth = 0.05f;              // 경계 발광 폭 (마스크 값 단위, 0 = 발광 없음)
-    float       dissolveSoftness = 0.02f;               // 잘리는 곳의 부드러운 폭
-    float3      dissolveEdgeColor = { 1.f, 0.35f, 0.05f };
-    float       dissolveEdgeIntensity = 4.f;
+    // ---- 텍스처 레이어 (ParticleMaterial.h). 텍스처 경로는 SpriteRenderer::SetLayerTexture ----
+    SpriteLayer layers[kMaxSpriteLayers];
 };
 
 
@@ -92,7 +88,8 @@ public:
         kVelocity,          // float3 VelocityAligned 용
         kSpriteFacing,      // float3 CustomFacingVector 용 (연결이 없으면 기본값이 상수 벡터)
         kSpriteAlignment,   // float3 CustomAlignment 용
-        kDissolve,          // float  디졸브 (예: Particles.NormalizedAge). 기본은 연결 없음 = 0
+        kMaterialParam0,    // float  레이어 세기용 (예: Particles.NormalizedAge). 기본은 연결 없음 = 기본값
+        kMaterialParam1,    // float
         kNumSlots
     };
 
@@ -118,9 +115,8 @@ public:
     SortMode GetSortMode() const { return m_SortMode; }
 
     bool SetTexture(const std::wstring& path);
-    // 디졸브 마스크 (R 채널, 선형으로 읽음). 빈 문자열 = 디졸브 끔
-    bool SetDissolveTexture(const std::wstring& path);
-    bool DissolveEnabled() const { return m_DissolveTexture != nullptr; }
+    // 레이어 텍스처. 빈 문자열 = 그 레이어를 그리지 않음. sRGB / 선형은 Settings().layers[layer].srgb
+    bool SetLayerTexture(uint32_t layer, const std::wstring& path);
     void ReleaseTextures();
 
     void SetSettings(const SpriteSettings& settings);
@@ -152,9 +148,13 @@ private:
     // 한 번 불러온 텍스처는 바꿔도 지우지 않는다 (이전 프레임이 아직 읽고 있을 수 있어서)
     std::map<std::wstring, TextureRef> m_Textures;
     const TextureRef* m_Texture = nullptr;       // nullptr = 기본 원형
-    // 마스크는 색 텍스처와 따로 (같은 파일이라도 sRGB 가 아니라 선형으로 읽어야 함)
-    std::map<std::wstring, TextureRef> m_MaskTextures;
-    const TextureRef* m_DissolveTexture = nullptr;  // nullptr = 디졸브 꺼짐
+    // 레이어: 색 텍스처 캐시와 따로 (키 = 경로 + sRGB / 선형). 마스크 / 노이즈는 선형으로 읽어야 값이 맞다
+    bool LoadLayerTexture(uint32_t layer);
+    // 켜져 있고 텍스처가 있는 레이어만 앞으로 모은다 (textures = 같은 순서의 SRV). 반환 = 개수
+    uint32_t PackLayers(SpriteLayerGpu (&out)[kMaxSpriteLayers], D3D12_CPU_DESCRIPTOR_HANDLE (&textures)[kMaxSpriteLayers]) const;
+    std::map<std::wstring, TextureRef> m_LayerCache;
+    std::wstring      m_LayerPaths[kMaxSpriteLayers];
+    const TextureRef* m_LayerTextures[kMaxSpriteLayers] = {};
 
     ByteAddressBuffer   m_ParticleBuffer;
     ByteAddressBuffer   m_SortedIndexBuffer;    // CPU: 정렬된 인덱스 (uint)
@@ -170,7 +170,8 @@ private:
     float3              m_DefaultVelocity = { 0.f, 0.f, 0.f };
     float3              m_DefaultSpriteFacing = { 0.f, 1.f, 0.f };
     float3              m_DefaultSpriteAlignment = { 0.f, 1.f, 0.f };
-    float               m_DefaultDissolve = 0.f;
+    float               m_DefaultParam0 = 0.f;
+    float               m_DefaultParam1 = 0.f;
 
     SpriteSettings      m_Settings;
 

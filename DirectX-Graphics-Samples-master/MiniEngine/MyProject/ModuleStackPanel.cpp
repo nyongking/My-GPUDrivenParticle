@@ -155,6 +155,156 @@ namespace
 		}
 	}
 
+	// ---- 텍스처 레이어 (ParticleMaterial.h) ----
+	template<typename E>
+	bool LayerEnumCombo(const char* label, E& value, const char* (*nameOf)(E))
+	{
+		bool changed = false;
+		ImGui::SetNextItemWidth(160.f);
+		if (ImGui::BeginCombo(label, nameOf(value)))
+		{
+			for (uint32_t i = 0; i < uint32_t(E::Count); ++i)
+			{
+				if (ImGui::Selectable(nameOf(E(i)), E(i) == value))
+				{
+					value = E(i);
+					changed = true;
+				}
+			}
+			ImGui::EndCombo();
+		}
+		return changed;
+	}
+
+	bool DrawFloat2(const char* label, float2& v, float speed)
+	{
+		float f[2] = { v.x, v.y };
+		ImGui::SetNextItemWidth(160.f);
+		if (!ImGui::DragFloat2(label, f, speed))
+			return false;
+		v = { f[0], f[1] };
+		return true;
+	}
+
+	// 반환 = 설정이 바뀌었는지 (텍스처 선택은 바로 runtime 에 반영)
+	bool DrawTextureLayers(EmitterRuntime& runtime, SpriteSettings& s)
+	{
+		bool changed = false;
+		ImGui::SeparatorText("Texture Layers");
+		ImGui::TextDisabled("Applied in order on top of the base texture (Distort layers first)");
+
+		// 레이어 세기를 파티클마다 바꾸는 칸 (아래 바인딩 목록의 MaterialParam0 / 1)
+		const RendererDesc& desc = runtime.SpriteBindings();
+		for (size_t i = 0; i < desc.bindings.size(); ++i)
+		{
+			const RenderBinding& b = desc.bindings[i];
+			if (b.slot.compare(0, 13, "MaterialParam") != 0)
+				continue;
+			ImGui::PushID(static_cast<int>(i));
+			ImGui::TextDisabled("%s = %s", b.slot.c_str(), b.attribute.empty() ? "(default value)" : b.attribute.c_str());
+			if (b.attribute.empty())
+			{
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Bind to NormalizedAge"))
+					runtime.SetBindingAttribute(i, "Particles.NormalizedAge");
+			}
+			ImGui::PopID();
+		}
+
+		for (uint32_t k = 0; k < kMaxSpriteLayers; ++k)
+		{
+			SpriteLayer& l = s.layers[k];
+			ImGui::PushID(static_cast<int>(k));
+
+			char header[64];
+			sprintf_s(header, "Layer %u: %s###layer", k, SpriteLayerOpName(l.op));
+			if (ImGui::TreeNodeEx(header, l.op != SpriteLayerOp::Off ? ImGuiTreeNodeFlags_DefaultOpen : 0))
+			{
+				SpriteLayerOp op = l.op;
+				if (LayerEnumCombo("Op", op, &SpriteLayerOpName))
+				{
+					// 처음 켤 때만 그 연산의 시작값. 이미 켜진 레이어는 연산만 바꾼다
+					if (l.op == SpriteLayerOp::Off)
+						l = DefaultSpriteLayer(op);
+					else
+						l.op = op;
+					changed = true;
+				}
+
+				if (l.op != SpriteLayerOp::Off)
+				{
+					const std::string& tex = runtime.LayerTexture(k);
+					const std::string preview = tex.empty() ? std::string("(none)") : tex;
+					ImGui::SetNextItemWidth(300.f);
+					if (ImGui::BeginCombo("Texture", preview.c_str()))
+					{
+						if (ImGui::Selectable("(none)", tex.empty()))
+							runtime.SetLayerTexture(k, std::string());
+						for (const std::string& path : ListTextureFiles())
+							if (ImGui::Selectable(path.c_str(), path == tex))
+								runtime.SetLayerTexture(k, path);
+						ImGui::EndCombo();
+					}
+					if (tex.empty())
+						ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f), "Pick a texture (the layer is skipped without one)");
+
+					changed |= ImGui::Checkbox("sRGB (color texture)", &l.srgb);
+					ImGui::SameLine();
+					changed |= ImGui::Checkbox("Wrap", &l.wrap);
+					changed |= LayerEnumCombo("UV", l.uv, &SpriteLayerUVName);
+					changed |= LayerEnumCombo("Channel", l.channel, &SpriteLayerChannelName);
+					changed |= DrawFloat2("Tiling", l.tiling, 0.01f);
+					changed |= DrawFloat2("Offset", l.offset, 0.01f);
+					changed |= DrawFloat2("Scroll (uv/s)", l.scroll, 0.01f);
+
+					if (l.op == SpriteLayerOp::Multiply || l.op == SpriteLayerOp::Add || l.op == SpriteLayerOp::Erode)
+					{
+						float tint[3] = { l.tint.x, l.tint.y, l.tint.z };
+						ImGui::SetNextItemWidth(220.f);
+						if (ImGui::ColorEdit3(l.op == SpriteLayerOp::Erode ? "Edge Color" : "Tint", tint))
+						{
+							l.tint = { tint[0], tint[1], tint[2] };
+							changed = true;
+						}
+					}
+					if (l.op == SpriteLayerOp::Add)
+						changed |= ImGui::Checkbox("Mask by sprite", &l.maskBySprite);
+
+					// 연산마다 Intensity 의 뜻이 다르다
+					const char* intensityLabel =
+						(l.op == SpriteLayerOp::Multiply || l.op == SpriteLayerOp::AlphaMask) ? "Amount (0-1)" :
+						(l.op == SpriteLayerOp::Erode) ? "Edge Intensity" :
+						(l.op == SpriteLayerOp::Distort) ? "Strength (uv)" : "Intensity";
+					ImGui::SetNextItemWidth(160.f);
+					changed |= ImGui::DragFloat(intensityLabel, &l.intensity, 0.01f);
+
+					if (l.op == SpriteLayerOp::Erode)
+					{
+						ImGui::SetNextItemWidth(160.f);
+						changed |= ImGui::SliderFloat("Edge Width", &l.edgeWidth, 0.f, 0.5f);
+						ImGui::SetNextItemWidth(160.f);
+						changed |= ImGui::SliderFloat("Softness", &l.softness, 0.f, 0.5f);
+					}
+
+					// 세기 (Erode = 진행도 0 보임 ~ 1 사라짐)
+					changed |= LayerEnumCombo("Param", l.param, &SpriteLayerParamName);
+					if (l.param == SpriteLayerParam::Constant)
+					{
+						ImGui::SetNextItemWidth(160.f);
+						changed |= ImGui::DragFloat("Value", &l.paramRange.x, 0.01f);
+					}
+					else
+					{
+						changed |= DrawFloat2("Range (start/end)", l.paramRange, 0.01f);
+					}
+				}
+				ImGui::TreePop();
+			}
+			ImGui::PopID();
+		}
+		return changed;
+	}
+
 	// ---- SubUV / 블렌드 ----
 	void DrawSpriteSettings(EmitterRuntime& runtime)
 	{
@@ -276,64 +426,8 @@ namespace
 			}
 		}
 
-		// ---- 디졸브 ----
-		ImGui::SeparatorText("Dissolve");
-		{
-			const std::string& mask = runtime.DissolveTexture();
-			const std::string preview = mask.empty() ? std::string("(off)") : mask;
-			ImGui::SetNextItemWidth(300.f);
-			if (ImGui::BeginCombo("Dissolve Mask", preview.c_str()))
-			{
-				if (ImGui::Selectable("(off)", mask.empty()))
-					runtime.SetDissolveTexture(std::string());
-				for (const std::string& path : ListTextureFiles())
-					if (ImGui::Selectable(path.c_str(), path == mask))
-						runtime.SetDissolveTexture(path);
-				ImGui::EndCombo();
-			}
-		}
-		if (!runtime.DissolveTexture().empty())
-		{
-			// 진행도를 정하는 바인딩 칸 (아래 목록의 'Dissolve'). 수명에 맞추는 경우가 많아서 바로가기
-			const RendererDesc& desc = runtime.SpriteBindings();
-			for (size_t i = 0; i < desc.bindings.size(); ++i)
-			{
-				if (desc.bindings[i].slot != "Dissolve")
-					continue;
-				if (desc.bindings[i].attribute.empty())
-				{
-					ImGui::TextDisabled("Progress = 'Dissolve' binding (now: default value)");
-					ImGui::SameLine();
-					if (ImGui::SmallButton("Bind to NormalizedAge"))
-						runtime.SetBindingAttribute(i, "Particles.NormalizedAge");
-				}
-				else
-				{
-					ImGui::TextDisabled("Progress = %s", desc.bindings[i].attribute.c_str());
-				}
-			}
-
-			float range[2] = { s.dissolveRange.x, s.dissolveRange.y };
-			ImGui::SetNextItemWidth(160.f);
-			if (ImGui::DragFloat2("Range (start/end)", range, 0.01f, 0.f, 1.f))
-			{
-				s.dissolveRange = { range[0], range[1] };
-				changed = true;
-			}
-			ImGui::SetNextItemWidth(160.f);
-			changed |= ImGui::SliderFloat("Softness", &s.dissolveSoftness, 0.f, 0.5f);
-			ImGui::SetNextItemWidth(160.f);
-			changed |= ImGui::SliderFloat("Edge Width", &s.dissolveEdgeWidth, 0.f, 0.5f);
-			float edgeColor[3] = { s.dissolveEdgeColor.x, s.dissolveEdgeColor.y, s.dissolveEdgeColor.z };
-			ImGui::SetNextItemWidth(220.f);
-			if (ImGui::ColorEdit3("Edge Color", edgeColor))
-			{
-				s.dissolveEdgeColor = { edgeColor[0], edgeColor[1], edgeColor[2] };
-				changed = true;
-			}
-			ImGui::SetNextItemWidth(160.f);
-			changed |= ImGui::DragFloat("Edge Intensity", &s.dissolveEdgeIntensity, 0.05f, 0.f, 50.f);
-		}
+		// ---- 텍스처 레이어 ----
+		changed |= DrawTextureLayers(runtime, s);
 
 		if (changed)
 			runtime.SetSpriteSettings(s);
@@ -578,7 +672,7 @@ namespace
 
 		const bool texturesOk = ApplyEmitterAsset(runtime, asset);
 		if (!texturesOk)
-			st.warnings.push_back("texture or dissolve mask could not be loaded (see Output window)");
+			st.warnings.push_back("texture or layer texture could not be loaded (see Output window)");
 		strncpy_s(st.name, sizeof(st.name), name.c_str(), _TRUNCATE);
 		SetAssetStatus("Loaded " + path + " (restarting emitter)", false);
 	}

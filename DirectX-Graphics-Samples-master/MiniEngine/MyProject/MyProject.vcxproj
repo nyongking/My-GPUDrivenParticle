@@ -67,6 +67,7 @@
     <ClInclude Include="EmitterTestScene.h" />
     <ClInclude Include="ModuleStackPanel.h" />
     <ClInclude Include="EmitterAsset.h" />
+    <ClInclude Include="ParticleMaterial.h" />
     <ClInclude Include="Json.h" />
     <ClInclude Include="GpuEmitterInstance.h" />
     <ClInclude Include="LayoutBuilder.h" />
@@ -107,6 +108,7 @@
     <ClCompile Include="EmitterTestScene.cpp" />
     <ClCompile Include="ModuleStackPanel.cpp" />
     <ClCompile Include="EmitterAsset.cpp" />
+    <ClCompile Include="ParticleMaterial.cpp" />
     <ClCompile Include="Json.cpp" />
     <ClCompile Include="GpuEmitterInstance.cpp" />
     <ClCompile Include="LayoutBuilder.cpp" />
@@ -160,7 +162,7 @@
     <None Include="Shaders\ParticleDrawCommon.hlsli" />
     <None Include="Shaders\ParticleListCommon.hlsli" />
     <None Include="Shaders\SpriteAlpha.hlsli" />
-    <None Include="Shaders\SpriteDissolve.hlsli" />
+    <None Include="Shaders\SpriteMaterial.hlsli" />
     <None Include="Shaders\SpriteFacing.hlsli" />
     <None Include="Shaders\ParticleUber.hlsli" />
   </ItemGroup>

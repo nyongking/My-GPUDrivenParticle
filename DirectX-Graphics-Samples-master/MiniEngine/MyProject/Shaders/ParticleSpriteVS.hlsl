@@ -2,7 +2,7 @@
 
 #define NO_ATTRIBUTE 0xFFFFFFFF
 
-// C++ SpriteConstants 와 같은 배치 (304 B)
+// C++ SpriteConstants 와 같은 배치 (320 B)
 cbuffer SpriteConstants : register(b0)
 {
     float4x4 ViewProj; // 0
@@ -46,8 +46,11 @@ cbuffer SpriteConstants : register(b0)
     float VelocityStretch; // 284
     float BlendNear; // 288
     float BlendFar; // 292
-    uint DissolveOffset; // 296 디졸브 바인딩 (연결이 없으면 DefaultDissolve)
-    float DefaultDissolve; // 300
+    uint Param0Offset; // 296 MaterialParam0 바인딩 (연결이 없으면 DefaultParam0)
+    float DefaultParam0; // 300
+    uint Param1Offset; // 304 MaterialParam1
+    float DefaultParam1; // 308
+    float2 _Pad; // 312
 };
 
 ByteAddressBuffer ParticleData : register(t0);
@@ -61,7 +64,7 @@ struct VSOutput
     float4 uv : TEXCOORD0; // xy = 현재 프레임 uv, zw = 다음 프레임 uv
     nointerpolation float blend : TEXCOORD1; // 다음 프레임 비율 (0 = 현재 프레임만)
     float2 quadUV : TEXCOORD2; // 사각형 uv (SubUV 와 무관, 디졸브 마스크용)
-    nointerpolation float dissolve : TEXCOORD3; // 디졸브 바인딩 값 (진행도로 바꾸는 것은 PS)
+    nointerpolation float2 params : TEXCOORD3; // MaterialParam0 / 1 (레이어 세기로 바꾸는 것은 PS)
 };
 
 static const float2 kCorners[6] =
@@ -139,6 +142,6 @@ VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
     output.uv = float4(SubImageUV(frame0, uv), SubImageUV(frame1, uv));
     output.blend = SubUVBlend ? frac(index) : 0.f;
     output.quadUV = uv;
-    output.dissolve = ReadF1(DissolveOffset, idx, DefaultDissolve);
+    output.params = float2(ReadF1(Param0Offset, idx, DefaultParam0), ReadF1(Param1Offset, idx, DefaultParam1));
     return output;
 }
