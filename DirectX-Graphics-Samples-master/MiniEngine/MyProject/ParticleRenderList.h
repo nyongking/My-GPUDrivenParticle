@@ -70,7 +70,8 @@ public:
 		uint32_t subImageCols = 1;
 		uint32_t subImageRows = 1;
 		bool     subUVBlend = false;
-		uint32_t blendMode = 0;                     // 0 = Translucent, 1 = Additive (SpriteBlendMode)
+		uint32_t blendMode = 0;                    // 0 = Translucent, 1 = Additive (SpriteBlendMode)
+		uint32_t textureAlpha = 0;				// 0, 1, 2
 		D3D12_CPU_DESCRIPTOR_HANDLE texture = {};   // 이미터 텍스처 (기본 원형 포함)
 	};
 
@@ -98,7 +99,8 @@ private:
 		uint32_t subUVBlend;
 		uint32_t blendMode;
 		uint32_t textureIndex;
-		uint32_t _pad[3];
+		uint32_t textureAlpha;
+		uint32_t _pad[2];
 	};
 	static_assert(sizeof(EmitterInfo) == 32, "EmitterInfo 32 B");
 

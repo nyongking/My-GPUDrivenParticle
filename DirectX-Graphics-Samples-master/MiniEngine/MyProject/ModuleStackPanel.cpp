@@ -89,7 +89,7 @@ namespace
 		return DrawFloats(label, reinterpret_cast<float*>(data), p.type->size / sizeof(float), p);
 	}
 
-	// ---- 스프라이트 텍스처 (T1) ----
+	// ---- 스프라이트 텍스처 ----
 	const char* const kTextureDir = "Assets/Textures/";
 
 	std::string LowerExtension(const std::string& name)
@@ -157,7 +157,7 @@ namespace
 		}
 	}
 
-	// ---- SubUV / 블렌드 (T2) ----
+	// ---- SubUV / 블렌드 ----
 	void DrawSpriteSettings(EmitterRuntime& runtime)
 	{
 		SpriteSettings s = runtime.GetSpriteSettings();
@@ -180,6 +180,16 @@ namespace
 		if (ImGui::Combo("Blend", &blend, kBlendModes, IM_ARRAYSIZE(kBlendModes)))
 		{
 			s.blend = static_cast<SpriteBlendMode>(blend);
+			changed = true;
+		}
+
+		// --- Texture의 ALpha 해석 방식 ---
+		static const char* const kAlphaModes[] = { "Straight", "Premultiplied", "From Luminance" };
+		int alphaMode = static_cast<int>(s.textureAlpha);
+		ImGui::SetNextItemWidth(160.f);
+		if (ImGui::Combo("Texture Alpha", &alphaMode, kAlphaModes, IM_ARRAYSIZE(kAlphaModes)))
+		{
+			s.textureAlpha = static_cast<SpriteTextureAlpha>(alphaMode);
 			changed = true;
 		}
 

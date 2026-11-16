@@ -20,6 +20,7 @@ struct VSOutput
     nointerpolation float blend : TEXCOORD1; // 다음 프레임 비율
     nointerpolation uint textureIndex : TEXCOORD2;
     nointerpolation uint blendMode : TEXCOORD3;
+    nointerpolation uint textureAlpha : TEXCOORD4;
 };
 
 static const float2 kCorners[6] =
@@ -57,5 +58,6 @@ VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
     output.blend = e.SubUVBlend ? frac(index) : 0.f;
     output.textureIndex = e.TextureIndex;
     output.blendMode = e.BlendMode;
+    output.textureAlpha = e.TextureAlpha;
     return output;
 }

@@ -1,4 +1,4 @@
-// 공용 렌더 목록 PS. ParticleSpritePS 와 같은 계산, 텍스처 / 블렌드 모드만 이미터별 값
+#include "SpriteAlpha.hlsli"
 #define MAX_TEXTURES 16 // C++ ParticleRenderList::kMaxTextures
 
 Texture2D<float4> SpriteTextures[MAX_TEXTURES] : register(t0, space1);
@@ -12,6 +12,7 @@ struct PSInput
     nointerpolation float blend : TEXCOORD1;
     nointerpolation uint textureIndex : TEXCOORD2;
     nointerpolation uint blendMode : TEXCOORD3;
+    nointerpolation uint textureAlpha : TEXCOORD4;
 };
 
 float4 main(PSInput input) : SV_TARGET
@@ -26,5 +27,7 @@ float4 main(PSInput input) : SV_TARGET
     const float3 rgb = input.color.rgb * tex.rgb * a;
 
     // premultiplied 블렌드: Additive 는 alpha 0 (뒤를 지우지 않고 더하기만)
-    return float4(rgb, (input.blendMode == 1) ? 0.f : a);
+    
+    return ResolveSpriteColor(input.color, tex, input.textureAlpha, input.blendMode);
+
 }
