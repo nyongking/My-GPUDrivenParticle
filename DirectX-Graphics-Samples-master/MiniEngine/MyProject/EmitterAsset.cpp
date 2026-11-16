@@ -20,8 +20,10 @@ namespace
 	const char* const kBlendNames[] = { "Translucent", "Additive" };
 	const char* const kFacingNames[] = { "FaceCameraPlane", "FaceCameraPosition", "CustomFacingVector", "FaceCameraDistanceBlend" };
 	const char* const kAlignmentNames[] = { "Unaligned", "VelocityAligned", "CustomAlignment" };
+	const char* const kTextureAlphaNames[] = { "Straight", "Premultiplied", "FromLuminance" };
 	static_assert(_countof(kFacingNames) == size_t(SpriteFacingMode::Count), "SpriteFacingMode 이름 표");
 	static_assert(_countof(kAlignmentNames) == size_t(SpriteAlignment::Count), "SpriteAlignment 이름 표");
+	static_assert(_countof(kTextureAlphaNames) == size_t(SpriteTextureAlpha::Count), "SpriteTextureAlpha 이름 표");
 
 	template<size_t N>
 	bool EnumFromName(const JsonValue* v, const char* const (&names)[N], uint32_t& out, const char* what, std::vector<std::string>& warnings)
@@ -291,6 +293,7 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
 	const SpriteSettings& s = a.settings;
 	JsonValue sprite = JsonValue::MakeObject();
 	sprite.Set("texture", JsonValue(a.texture));
+	sprite.Set("textureAlpha", JsonValue(kTextureAlphaNames[(std::min)(uint32_t(s.textureAlpha), uint32_t(SpriteTextureAlpha::Count) - 1)]));
 	sprite.Set("blend", JsonValue(kBlendNames[(std::min)(uint32_t(s.blend), 1u)]));
 	JsonValue grid = JsonValue::MakeArray();
 	grid.Push(JsonValue(s.subImageCols));
@@ -415,6 +418,8 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 			a.texture = v->AsString();
 
 		uint32_t e = 0;
+		if (EnumFromName(sprite->Find("textureAlpha"), kTextureAlphaNames, e, "textureAlpha", warnings))
+			s.textureAlpha = SpriteTextureAlpha(e);
 		if (EnumFromName(sprite->Find("blend"), kBlendNames, e, "blend", warnings))
 			s.blend = SpriteBlendMode(e);
 		if (EnumFromName(sprite->Find("facing"), kFacingNames, e, "facing", warnings))
