@@ -7,7 +7,7 @@
 //   0  float3 Center     12 float SubImage
 //   16 float4 Color
 //   32 float3 AxisX      44 uint  EmitterIndex
-//   48 float3 AxisY      60 (pad)
+//   48 float3 AxisY      60 float Dissolve (디졸브 바인딩 값)
 #define RENDER_PARTICLE_BYTES 64
 
 struct RenderParticle
@@ -18,6 +18,7 @@ struct RenderParticle
     float3 AxisX; // 가로 반 축 (corner.x 를 곱함)
     uint EmitterIndex;
     float3 AxisY; // 세로 반 축
+    float Dissolve;
 };
 
 void StoreRenderParticle(RWByteAddressBuffer buf, uint slot, RenderParticle p)
@@ -26,7 +27,7 @@ void StoreRenderParticle(RWByteAddressBuffer buf, uint slot, RenderParticle p)
     buf.Store4(a + 0, uint4(asuint(p.Center), asuint(p.SubImage)));
     buf.Store4(a + 16, asuint(p.Color));
     buf.Store4(a + 32, uint4(asuint(p.AxisX), p.EmitterIndex));
-    buf.Store4(a + 48, uint4(asuint(p.AxisY), 0));
+    buf.Store4(a + 48, uint4(asuint(p.AxisY), asuint(p.Dissolve)));
 }
 
 RenderParticle LoadRenderParticle(ByteAddressBuffer buf, uint slot)
@@ -35,18 +36,21 @@ RenderParticle LoadRenderParticle(ByteAddressBuffer buf, uint slot)
     const uint4 v0 = buf.Load4(a + 0);
     const uint4 v1 = buf.Load4(a + 16);
     const uint4 v2 = buf.Load4(a + 32);
-    const uint3 v3 = buf.Load3(a + 48);
+    const uint4 v3 = buf.Load4(a + 48);
     RenderParticle p;
     p.Center = asfloat(v0.xyz);
     p.SubImage = asfloat(v0.w);
     p.Color = asfloat(v1);
     p.AxisX = asfloat(v2.xyz);
     p.EmitterIndex = v2.w;
-    p.AxisY = asfloat(v3);
+    p.AxisY = asfloat(v3.xyz);
+    p.Dissolve = asfloat(v3.w);
     return p;
 }
 
-// 이미터별 그리기 설정 (C++ ParticleRenderList::EmitterInfo, 32 바이트)
+#define NO_TEXTURE 0xFFFFFFFF
+
+// 이미터별 그리기 설정 (C++ ParticleRenderList::EmitterInfo, 64 바이트. StructuredBuffer 라 빈틈 없이 붙는다)
 struct EmitterInfo
 {
     uint SubImageCols;
@@ -55,5 +59,11 @@ struct EmitterInfo
     uint BlendMode; // 0 = Translucent, 1 = Additive
     uint TextureIndex;
     uint TextureAlpha;
-    uint2 _Pad;
+    uint DissolveTexture; // 텍스처 표 번호, NO_TEXTURE = 디졸브 꺼짐
+    float DissolveEdgeWidth;
+    float2 DissolveRange;
+    float DissolveSoftness;
+    float DissolveEdgeIntensity;
+    float3 DissolveEdgeColor;
+    uint _Pad;
 };

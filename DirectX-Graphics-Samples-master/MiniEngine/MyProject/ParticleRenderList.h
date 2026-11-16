@@ -16,6 +16,7 @@
 #include "GpuBuffer.h"
 #include "ModuleDesc.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -27,7 +28,8 @@ class ParticleRenderList
 {
 public:
 	static const uint32_t kNoAttribute = 0xFFFFFFFFu;
-	static const uint32_t kMaxTextures = 16;          // 한 목록에서 쓸 수 있는 서로 다른 텍스처 수 (넘으면 0 번 텍스처)
+	static const uint32_t kMaxTextures = 16;          // 한 목록에서 쓸 수 있는 서로 다른 텍스처 수 (넘으면 0 번 텍스처, 디졸브 마스크도 포함)
+	static const uint32_t kNoTexture = 0xFFFFFFFFu;   // HLSL NO_TEXTURE (디졸브 꺼짐)
 	static const uint32_t kRenderParticleBytes = 64;  // HLSL RenderParticle 과 같음 (중심 + 색 + 빌보드 축 2개)
 
 	// 이미터 하나를 목록에 넣을 때 필요한 정보 (SpriteRenderer 가 채운다)
@@ -48,6 +50,7 @@ public:
 		uint32_t velocityOffset = kNoAttribute;
 		uint32_t spriteFacingOffset = kNoAttribute;
 		uint32_t spriteAlignmentOffset = kNoAttribute;
+		uint32_t dissolveOffset = kNoAttribute;         // 없으면 defaultDissolve
 
 		float3   defaultPosition = { 0.f, 0.f, 0.f };
 		float4   defaultColor = { 1.f, 1.f, 1.f, 1.f };
@@ -57,6 +60,7 @@ public:
 		float3   defaultVelocity = { 0.f, 0.f, 0.f };
 		float3   defaultSpriteFacing = { 0.f, 1.f, 0.f };
 		float3   defaultSpriteAlignment = { 0.f, 1.f, 0.f };
+		float    defaultDissolve = 0.f;
 
 		// 빌보드 (SpriteSettings 와 같은 뜻, 번호 = SpriteFacingMode / SpriteAlignment)
 		uint32_t facingMode = 0;
@@ -73,6 +77,14 @@ public:
 		uint32_t blendMode = 0;                    // 0 = Translucent, 1 = Additive (SpriteBlendMode)
 		uint32_t textureAlpha = 0;				// 0, 1, 2
 		D3D12_CPU_DESCRIPTOR_HANDLE texture = {};   // 이미터 텍스처 (기본 원형 포함)
+
+		// 디졸브 (SpriteSettings 와 같은 뜻). dissolveTexture.ptr == 0 이면 꺼짐
+		D3D12_CPU_DESCRIPTOR_HANDLE dissolveTexture = {};
+		float2   dissolveRange = { 0.f, 1.f };
+		float    dissolveEdgeWidth = 0.f;
+		float    dissolveSoftness = 0.f;
+		float3   dissolveEdgeColor = { 0.f, 0.f, 0.f };
+		float    dissolveEdgeIntensity = 0.f;
 	};
 
 	// 모든 이미터 capacity 의 합만큼 버퍼를 잡는다. 크기가 바뀌면 GPU idle 상태에서 불러야 한다
@@ -91,20 +103,29 @@ public:
 	uint32_t EmitterCount() const { return uint32_t(m_Emitters.size()); }
 
 private:
-	// HLSL StructuredBuffer<EmitterInfo> 와 같은 배치
+	// HLSL StructuredBuffer<EmitterInfo> 와 같은 배치 (빈틈 없이)
 	struct EmitterInfo
 	{
-		uint32_t subImageCols;
-		uint32_t subImageRows;
-		uint32_t subUVBlend;
-		uint32_t blendMode;
-		uint32_t textureIndex;
-		uint32_t textureAlpha;
-		uint32_t _pad[2];
+		uint32_t subImageCols;          // 0
+		uint32_t subImageRows;          // 4
+		uint32_t subUVBlend;            // 8
+		uint32_t blendMode;             // 12
+		uint32_t textureIndex;          // 16
+		uint32_t textureAlpha;          // 20
+		uint32_t dissolveTexture;       // 24  kNoTexture = 꺼짐
+		float    dissolveEdgeWidth;     // 28
+		float    dissolveRange[2];      // 32
+		float    dissolveSoftness;      // 40
+		float    dissolveEdgeIntensity; // 44
+		float    dissolveEdgeColor[3];  // 48
+		uint32_t _pad;                  // 60
 	};
-	static_assert(sizeof(EmitterInfo) == 32, "EmitterInfo 32 B");
+	static_assert(sizeof(EmitterInfo) == 64, "EmitterInfo 64 B");
+	static_assert(offsetof(EmitterInfo, dissolveRange) == 32, "DissolveRange offset 32");
+	static_assert(offsetof(EmitterInfo, dissolveEdgeColor) == 48, "DissolveEdgeColor offset 48");
 
 	uint32_t TextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv);
+	uint32_t TryTextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv);   // 표가 꽉 차면 kNoTexture (0 번으로 대신하지 않음)
 
 	ByteAddressBuffer  m_RenderParticles;   // RenderParticle x capacity
 	ByteAddressBuffer  m_SortList;          // uint2(목록 번호, 깊이 키) x capacity

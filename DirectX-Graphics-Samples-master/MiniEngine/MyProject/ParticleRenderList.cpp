@@ -57,10 +57,12 @@ namespace
 		float    blendNear;        // 208
 		float    blendFar;         // 212
 		uint32_t cullEnable;       // 216
-		float    _pad0;            // 220
+		uint32_t dissolveOffset;   // 220  연결이 없으면 defaultDissolve
 		float4   frustumPlanes[6]; // 224  월드 공간, 안쪽이 +
+		float    defaultDissolve;  // 320
+		float    _pad1[3];         // 324
 	};
-	static_assert(sizeof(GatherConstants) == 320, "GatherConstants 320 B");
+	static_assert(sizeof(GatherConstants) == 336, "GatherConstants 336 B");
 	static_assert(offsetof(GatherConstants, defaultColor) == 48, "DefaultColor offset 48");
 	static_assert(offsetof(GatherConstants, camPos) == 80, "CamPos offset 80");
 	static_assert(offsetof(GatherConstants, camForward) == 96, "CamForward offset 96");
@@ -71,7 +73,9 @@ namespace
 	static_assert(offsetof(GatherConstants, defaultSpriteAlignment) == 176, "DefaultSpriteAlignment offset 176");
 	static_assert(offsetof(GatherConstants, pivot) == 192, "Pivot offset 192");
 	static_assert(offsetof(GatherConstants, cullEnable) == 216, "CullEnable offset 216");
+	static_assert(offsetof(GatherConstants, dissolveOffset) == 220, "DissolveOffset offset 220");
 	static_assert(offsetof(GatherConstants, frustumPlanes) == 224, "FrustumPlanes offset 224");
+	static_assert(offsetof(GatherConstants, defaultDissolve) == 320, "DefaultDissolve offset 320");
 
 	// ParticleListVS.hlsl 의 cbuffer ListDrawConstants 와 같은 배치 (빌보드 축은 Gather 가 계산)
 	struct alignas(16) DrawConstants
@@ -112,7 +116,7 @@ namespace
 		s_DrawRootSig.Reset(kNumDrawRoot, 1);
 		s_DrawRootSig[kDrawCB].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
 		s_DrawRootSig[kDrawSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 2, D3D12_SHADER_VISIBILITY_VERTEX);
-		s_DrawRootSig[kDrawEmitters].InitAsBufferSRV(2, D3D12_SHADER_VISIBILITY_VERTEX);
+		s_DrawRootSig[kDrawEmitters].InitAsBufferSRV(2, D3D12_SHADER_VISIBILITY_ALL);   // PS 도 디졸브 설정을 읽는다
 		s_DrawRootSig[kDrawTextures].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, ParticleRenderList::kMaxTextures,
 			D3D12_SHADER_VISIBILITY_PIXEL, 1);
 
@@ -223,6 +227,25 @@ uint32_t ParticleRenderList::TextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv)
 	return uint32_t(m_Textures.size() - 1);
 }
 
+uint32_t ParticleRenderList::TryTextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv)
+{
+	for (uint32_t i = 0; i < uint32_t(m_Textures.size()); ++i)
+		if (m_Textures[i].ptr == srv.ptr)
+			return i;
+
+	if (m_Textures.size() >= kMaxTextures)
+	{
+		if (!m_TextureOverflowLogged)
+		{
+			Utility::Printf("[ParticleRenderList] 텍스처가 %u 개를 넘음 -> 넘는 디졸브 마스크는 꺼짐\n", kMaxTextures);
+			m_TextureOverflowLogged = true;
+		}
+		return kNoTexture;
+	}
+	m_Textures.push_back(srv);
+	return uint32_t(m_Textures.size() - 1);
+}
+
 void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 {
 	if (!m_Active || src.particles == nullptr || src.capacity == 0 || src.texture.ptr == 0)
@@ -239,6 +262,16 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	info.blendMode = src.blendMode;
 	info.textureAlpha = src.textureAlpha;
 	info.textureIndex = TextureIndex(src.texture);
+	// 마스크가 없거나 표가 꽉 차면 디졸브 없이 그린다 (다른 텍스처로 대신하면 엉뚱하게 잘림)
+	info.dissolveTexture = src.dissolveTexture.ptr ? TryTextureIndex(src.dissolveTexture) : kNoTexture;
+	info.dissolveRange[0] = src.dissolveRange.x;
+	info.dissolveRange[1] = src.dissolveRange.y;
+	info.dissolveEdgeWidth = src.dissolveEdgeWidth;
+	info.dissolveSoftness = src.dissolveSoftness;
+	info.dissolveEdgeIntensity = src.dissolveEdgeIntensity;
+	info.dissolveEdgeColor[0] = src.dissolveEdgeColor.x;
+	info.dissolveEdgeColor[1] = src.dissolveEdgeColor.y;
+	info.dissolveEdgeColor[2] = src.dissolveEdgeColor.z;
 	m_Emitters.push_back(info);
 
 	GatherConstants gc = {};
@@ -273,6 +306,8 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	gc.blendNear = src.blendNear;
 	gc.blendFar = src.blendFar;
 	gc.cullEnable = m_Culling ? 1u : 0u;
+	gc.dissolveOffset = src.dissolveOffset;
+	gc.defaultDissolve = src.defaultDissolve;
 	for (int k = 0; k < 6; ++k)
 		gc.frustumPlanes[k] = { m_FrustumPlanes[k].x, m_FrustumPlanes[k].y, m_FrustumPlanes[k].z, m_FrustumPlanes[k].w };
 	const float camRight[3] = { m_CamRight.x, m_CamRight.y, m_CamRight.z };

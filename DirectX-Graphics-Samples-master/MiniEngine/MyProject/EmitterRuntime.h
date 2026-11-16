@@ -64,6 +64,9 @@ public:
 	// 빈 문자열 = 기본 원형. 재컴파일 / 재시작 없이 바로 반영. 실패하면 magenta 로 그려지고 false
 	bool SetSpriteTexture(const std::string& path);
 	const std::string& SpriteTexture() const { return m_SpriteTexture; }
+	// 디졸브 마스크 (R 채널). 빈 문자열 = 디졸브 끔. 재시작 없이 바로 반영. 못 읽으면 꺼진 채로 false
+	bool SetDissolveTexture(const std::string& path);
+	const std::string& DissolveTexture() const { return m_DissolveTexture; }
 
 	void SetSpriteSettings(const SpriteSettings& settings);
 	const SpriteSettings& GetSpriteSettings() const { return m_CpuRenderer.Settings(); }
@@ -115,6 +118,7 @@ private:
 	CompiledEmitter         m_Compiled;         // m_AppliedModules 의 컴파일 결과
 	UberEmitterData			m_Uber;
 	std::string             m_SpriteTexture;    // 렌더러가 재시작해도 유지 (렌더러 쪽 캐시)
+	std::string             m_DissolveTexture;  // 위와 같음
 
 	EmitterBackend          m_Backend = EmitterBackend::Gpu;        // 요청된 백엔드
 	EmitterBackend          m_ActiveBackend = EmitterBackend::Gpu;  // 실제로 실행 중인 백엔드

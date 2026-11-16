@@ -1,7 +1,9 @@
-#include "SpriteAlpha.hlsli"
+#include "SpriteDissolve.hlsli"
+#include "ParticleListCommon.hlsli"
 #define MAX_TEXTURES 16 // C++ ParticleRenderList::kMaxTextures
 
 Texture2D<float4> SpriteTextures[MAX_TEXTURES] : register(t0, space1);
+StructuredBuffer<EmitterInfo> Emitters : register(t2); // VS 와 같은 루트 SRV (PS 에서도 보이게 함)
 SamplerState LinearClamp : register(s0);
 
 struct PSInput
@@ -13,6 +15,9 @@ struct PSInput
     nointerpolation uint textureIndex : TEXCOORD2;
     nointerpolation uint blendMode : TEXCOORD3;
     nointerpolation uint textureAlpha : TEXCOORD4;
+    float2 quadUV : TEXCOORD5;
+    nointerpolation uint emitterIndex : TEXCOORD6;
+    nointerpolation float dissolve : TEXCOORD7;
 };
 
 float4 main(PSInput input) : SV_TARGET
@@ -28,6 +33,21 @@ float4 main(PSInput input) : SV_TARGET
 
     // premultiplied 블렌드: Additive 는 alpha 0 (뒤를 지우지 않고 더하기만)
     
-    return ResolveSpriteColor(input.color, tex, input.textureAlpha, input.blendMode);
+    float4 result = ResolveSpriteColor(input.color, tex, input.textureAlpha, input.blendMode);
+
+    // 디졸브: 이미터마다 켜짐 / 꺼짐이 달라서 이미터 정보에서 읽는다
+    const EmitterInfo e = Emitters[input.emitterIndex];
+    if (e.DissolveTexture != NO_TEXTURE)
+    {
+        DissolveParams d;
+        d.Range = e.DissolveRange;
+        d.EdgeWidth = e.DissolveEdgeWidth;
+        d.Softness = e.DissolveSoftness;
+        d.EdgeColor = e.DissolveEdgeColor;
+        d.EdgeIntensity = e.DissolveEdgeIntensity;
+        const float mask = SpriteTextures[NonUniformResourceIndex(e.DissolveTexture)].Sample(LinearClamp, input.quadUV).r;
+        result = ApplyDissolve(result, SpriteCoverage(input.color, tex, input.textureAlpha), mask, input.dissolve, d);
+    }
+    return result;
 
 }

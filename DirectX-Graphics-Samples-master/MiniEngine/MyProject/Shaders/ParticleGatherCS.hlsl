@@ -6,7 +6,7 @@
 #include "ParticleListCommon.hlsli"
 #include "SpriteFacing.hlsli"
 
-// C++ GatherConstants 와 같은 배치 (320 B)
+// C++ GatherConstants 와 같은 배치 (336 B)
 cbuffer GatherConstants : register(b0)
 {
     uint PositionOffset; // 0   속성 열 offset (파티클 하나 기준 바이트), NO_ATTRIBUTE = 기본값
@@ -44,8 +44,10 @@ cbuffer GatherConstants : register(b0)
     float BlendNear; // 208
     float BlendFar; // 212
     uint CullEnable; // 216  0 = 컬링 안 함 (전부 append)
-    float _Pad0; // 220
+    uint DissolveOffset; // 220  디졸브 바인딩 (연결이 없으면 DefaultDissolve)
     float4 FrustumPlanes[6]; // 224  월드 공간, 안쪽이 + (dot(n, p) + d >= 0), 정규화됨
+    float DefaultDissolve; // 320
+    float3 _Pad1; // 324
 };
 
 ByteAddressBuffer ParticleData : register(t0);
@@ -132,6 +134,7 @@ void main(uint3 dtid : SV_DispatchThreadID)
         p.Color = ReadF4(ColorOffset, i, DefaultColor);
         p.SubImage = ReadF1(SubImageOffset, i, DefaultSubImage);
         p.EmitterIndex = EmitterIndex;
+        p.Dissolve = ReadF1(DissolveOffset, i, DefaultDissolve);
 
         // 깊이는 파티클 위치 기준 (피벗 / 카메라 오프셋과 상관없이 순서가 같게)
         depth = dot(s.Position - CamPos, CamForward);

@@ -276,6 +276,65 @@ namespace
 			}
 		}
 
+		// ---- 디졸브 ----
+		ImGui::SeparatorText("Dissolve");
+		{
+			const std::string& mask = runtime.DissolveTexture();
+			const std::string preview = mask.empty() ? std::string("(off)") : mask;
+			ImGui::SetNextItemWidth(300.f);
+			if (ImGui::BeginCombo("Dissolve Mask", preview.c_str()))
+			{
+				if (ImGui::Selectable("(off)", mask.empty()))
+					runtime.SetDissolveTexture(std::string());
+				for (const std::string& path : ListTextureFiles())
+					if (ImGui::Selectable(path.c_str(), path == mask))
+						runtime.SetDissolveTexture(path);
+				ImGui::EndCombo();
+			}
+		}
+		if (!runtime.DissolveTexture().empty())
+		{
+			// 진행도를 정하는 바인딩 칸 (아래 목록의 'Dissolve'). 수명에 맞추는 경우가 많아서 바로가기
+			const RendererDesc& desc = runtime.SpriteBindings();
+			for (size_t i = 0; i < desc.bindings.size(); ++i)
+			{
+				if (desc.bindings[i].slot != "Dissolve")
+					continue;
+				if (desc.bindings[i].attribute.empty())
+				{
+					ImGui::TextDisabled("Progress = 'Dissolve' binding (now: default value)");
+					ImGui::SameLine();
+					if (ImGui::SmallButton("Bind to NormalizedAge"))
+						runtime.SetBindingAttribute(i, "Particles.NormalizedAge");
+				}
+				else
+				{
+					ImGui::TextDisabled("Progress = %s", desc.bindings[i].attribute.c_str());
+				}
+			}
+
+			float range[2] = { s.dissolveRange.x, s.dissolveRange.y };
+			ImGui::SetNextItemWidth(160.f);
+			if (ImGui::DragFloat2("Range (start/end)", range, 0.01f, 0.f, 1.f))
+			{
+				s.dissolveRange = { range[0], range[1] };
+				changed = true;
+			}
+			ImGui::SetNextItemWidth(160.f);
+			changed |= ImGui::SliderFloat("Softness", &s.dissolveSoftness, 0.f, 0.5f);
+			ImGui::SetNextItemWidth(160.f);
+			changed |= ImGui::SliderFloat("Edge Width", &s.dissolveEdgeWidth, 0.f, 0.5f);
+			float edgeColor[3] = { s.dissolveEdgeColor.x, s.dissolveEdgeColor.y, s.dissolveEdgeColor.z };
+			ImGui::SetNextItemWidth(220.f);
+			if (ImGui::ColorEdit3("Edge Color", edgeColor))
+			{
+				s.dissolveEdgeColor = { edgeColor[0], edgeColor[1], edgeColor[2] };
+				changed = true;
+			}
+			ImGui::SetNextItemWidth(160.f);
+			changed |= ImGui::DragFloat("Edge Intensity", &s.dissolveEdgeIntensity, 0.05f, 0.f, 50.f);
+		}
+
 		if (changed)
 			runtime.SetSpriteSettings(s);
 	}
@@ -517,9 +576,9 @@ namespace
 			return;
 		}
 
-		const bool textureOk = ApplyEmitterAsset(runtime, asset);
-		if (!textureOk)
-			st.warnings.push_back("texture '" + asset.texture + "' could not be loaded (drawn magenta)");
+		const bool texturesOk = ApplyEmitterAsset(runtime, asset);
+		if (!texturesOk)
+			st.warnings.push_back("texture or dissolve mask could not be loaded (see Output window)");
 		strncpy_s(st.name, sizeof(st.name), name.c_str(), _TRUNCATE);
 		SetAssetStatus("Loaded " + path + " (restarting emitter)", false);
 	}

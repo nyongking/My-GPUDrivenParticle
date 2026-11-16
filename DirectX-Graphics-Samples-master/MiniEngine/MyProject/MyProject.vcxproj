@@ -160,6 +160,7 @@
     <None Include="Shaders\ParticleDrawCommon.hlsli" />
     <None Include="Shaders\ParticleListCommon.hlsli" />
     <None Include="Shaders\SpriteAlpha.hlsli" />
+    <None Include="Shaders\SpriteDissolve.hlsli" />
     <None Include="Shaders\SpriteFacing.hlsli" />
     <None Include="Shaders\ParticleUber.hlsli" />
   </ItemGroup>

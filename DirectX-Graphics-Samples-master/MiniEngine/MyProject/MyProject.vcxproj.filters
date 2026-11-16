@@ -309,6 +309,9 @@
     <None Include="Shaders\SpriteAlpha.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
+    <None Include="Shaders\SpriteDissolve.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\DebugLineVS.hlsl">

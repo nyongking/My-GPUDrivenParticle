@@ -25,12 +25,13 @@ struct EmitterAsset
 	std::vector<ModuleDesc> modules;                         // 실행 순서 그대로
 	RendererDesc            sprite = SpriteRenderer::Desc(); // 바인딩 (칸 순서 = Desc())
 	std::string             texture;                         // 빈 문자열 = 기본 원형
+	std::string             dissolveTexture;                 // 빈 문자열 = 디졸브 끔
 	SpriteSettings          settings;
 };
 
 // 지금 편집 중인 상태를 에셋으로 (UI 가 보고 있는 값 = 다음 ApplyPending 에서 적용될 값)
 EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::string& name);
-// 재시작 요청 + 텍스처 / 스프라이트 설정 바로 반영. 텍스처를 못 읽으면 false (magenta 로 그려짐)
+// 재시작 요청 + 텍스처 / 스프라이트 설정 바로 반영. 텍스처나 디졸브 마스크를 못 읽으면 false
 bool         ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset);
 // 아직 시작하지 않은 런타임을 에셋으로 시작 (재시작 없이 한 번에). capacity == 0 이면 에셋 값
 //   실패하면 false (runtime.LastError()). 텍스처를 못 읽는 것은 출력 창 경고만 (magenta 로 그려짐)

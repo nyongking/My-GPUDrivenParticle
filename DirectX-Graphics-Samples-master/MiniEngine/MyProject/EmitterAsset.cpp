@@ -334,6 +334,7 @@ EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::strin
 	a.modules = runtime.Modules();
 	a.sprite = runtime.SpriteBindings();
 	a.texture = runtime.SpriteTexture();
+	a.dissolveTexture = runtime.DissolveTexture();
 	a.settings = runtime.GetSpriteSettings();
 	return a;
 }
@@ -342,7 +343,9 @@ bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset)
 {
 	runtime.ReplaceDescription(asset.modules, asset.sprite, asset.capacity, asset.backend);
 	runtime.SetSpriteSettings(asset.settings);
-	return runtime.SetSpriteTexture(asset.texture);
+	const bool textureOk = runtime.SetSpriteTexture(asset.texture);
+	const bool maskOk = runtime.SetDissolveTexture(asset.dissolveTexture);
+	return textureOk && maskOk;
 }
 
 bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& asset, uint32_t capacity)
@@ -359,6 +362,8 @@ bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& ass
 	runtime.SetSpriteSettings(asset.settings);
 	if (!runtime.SetSpriteTexture(asset.texture))
 		Utility::Printf("[EmitterAsset] '%s': texture '%s' could not be loaded (drawn magenta)\n", asset.name.c_str(), asset.texture.c_str());
+	if (!runtime.SetDissolveTexture(asset.dissolveTexture))
+		Utility::Printf("[EmitterAsset] '%s': dissolve mask '%s' could not be loaded (dissolve off)\n", asset.name.c_str(), asset.dissolveTexture.c_str());
 	return true;
 }
 
@@ -406,6 +411,16 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
 	sprite.Set("velocityStretch", JsonValue(s.velocityStretch));
 	sprite.Set("blendNear", JsonValue(s.blendNear));
 	sprite.Set("blendFar", JsonValue(s.blendFar));
+
+	// 디졸브 (texture 가 비어 있으면 꺼짐. 값은 다시 켤 때를 위해 같이 남긴다)
+	JsonValue dissolve = JsonValue::MakeObject();
+	dissolve.Set("texture", JsonValue(a.dissolveTexture));
+	dissolve.Set("range", Float2Json(s.dissolveRange));
+	dissolve.Set("edgeWidth", JsonValue(s.dissolveEdgeWidth));
+	dissolve.Set("softness", JsonValue(s.dissolveSoftness));
+	dissolve.Set("edgeColor", EncodeValue(&Types::Float3, reinterpret_cast<const uint8_t*>(&s.dissolveEdgeColor)));
+	dissolve.Set("edgeIntensity", JsonValue(s.dissolveEdgeIntensity));
+	sprite.Set("dissolve", std::move(dissolve));
 
 	JsonValue bindings = JsonValue::MakeObject();
 	for (const RenderBinding& b : a.sprite.bindings)
@@ -554,6 +569,35 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 		ReadFloat(*sprite, "blendFar", s.blendFar, warnings);
 		s.blendNear = (std::max)(s.blendNear, 0.f);
 		s.blendFar = (std::max)(s.blendFar, s.blendNear);
+
+		// 디졸브 (없으면 꺼짐 = 이전 버전 파일)
+		if (const JsonValue* dissolve = sprite->Find("dissolve"))
+		{
+			if (const JsonValue* v = dissolve->Find("texture"))
+				a.dissolveTexture = v->AsString();
+			if (const JsonValue* v = dissolve->Find("range"))
+			{
+				float r[2] = {};
+				if (DecodeValue(*v, &Types::Float2, reinterpret_cast<uint8_t*>(r)))
+					s.dissolveRange = { r[0], r[1] };
+				else
+					warnings.push_back("sprite.dissolve.range: expected [start, end] -> kept default");
+			}
+			if (const JsonValue* v = dissolve->Find("edgeColor"))
+			{
+				float c[3] = {};
+				if (DecodeValue(*v, &Types::Float3, reinterpret_cast<uint8_t*>(c)))
+					s.dissolveEdgeColor = { c[0], c[1], c[2] };
+				else
+					warnings.push_back("sprite.dissolve.edgeColor: expected [r, g, b] -> kept default");
+			}
+			ReadFloat(*dissolve, "edgeWidth", s.dissolveEdgeWidth, warnings);
+			ReadFloat(*dissolve, "softness", s.dissolveSoftness, warnings);
+			ReadFloat(*dissolve, "edgeIntensity", s.dissolveEdgeIntensity, warnings);
+			s.dissolveEdgeWidth = (std::max)(s.dissolveEdgeWidth, 0.f);
+			s.dissolveSoftness = (std::max)(s.dissolveSoftness, 0.f);
+			s.dissolveEdgeIntensity = (std::max)(s.dissolveEdgeIntensity, 0.f);
+		}
 
 		if (const JsonValue* bindings = sprite->Find("bindings"))
 		{

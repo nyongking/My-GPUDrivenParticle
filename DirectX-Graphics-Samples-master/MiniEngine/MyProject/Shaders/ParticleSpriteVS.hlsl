@@ -46,7 +46,8 @@ cbuffer SpriteConstants : register(b0)
     float VelocityStretch; // 284
     float BlendNear; // 288
     float BlendFar; // 292
-    float2 _Pad; // 296
+    uint DissolveOffset; // 296 디졸브 바인딩 (연결이 없으면 DefaultDissolve)
+    float DefaultDissolve; // 300
 };
 
 ByteAddressBuffer ParticleData : register(t0);
@@ -59,6 +60,8 @@ struct VSOutput
     float4 color : COLOR0;
     float4 uv : TEXCOORD0; // xy = 현재 프레임 uv, zw = 다음 프레임 uv
     nointerpolation float blend : TEXCOORD1; // 다음 프레임 비율 (0 = 현재 프레임만)
+    float2 quadUV : TEXCOORD2; // 사각형 uv (SubUV 와 무관, 디졸브 마스크용)
+    nointerpolation float dissolve : TEXCOORD3; // 디졸브 바인딩 값 (진행도로 바꾸는 것은 PS)
 };
 
 static const float2 kCorners[6] =
@@ -135,5 +138,7 @@ VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
     const uint frame1 = (frame0 + 1) % total;
     output.uv = float4(SubImageUV(frame0, uv), SubImageUV(frame1, uv));
     output.blend = SubUVBlend ? frac(index) : 0.f;
+    output.quadUV = uv;
+    output.dissolve = ReadF1(DissolveOffset, idx, DefaultDissolve);
     return output;
 }
