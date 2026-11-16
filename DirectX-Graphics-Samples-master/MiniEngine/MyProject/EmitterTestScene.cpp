@@ -231,6 +231,19 @@ void EmitterTestScene::Shutdown()
 
 void EmitterTestScene::Tick(ComputeContext& ctx, float deltaTime)
 {
+	// Emitter order: 이미터 하나의 모든 단계를 끝낸 뒤 다음 이미터 (단계마다 배리어 -> 디스패치가 차례로 실행)
+	//   Stage order 와 같은 단계 함수(GpuEmitterInstance::Tick 안의 BeginTick / StageBarriers / StageWork / EndTick)를 쓰고 루프 순서만 다르다
+	if (!m_StageMajor)
+	{
+		for (Item& item : m_Items)
+		{
+			item.runtime->ApplyPending();
+			item.runtime->Tick(ctx, deltaTime, item.owner);
+		}
+		return;
+	}
+
+	// Stage order: 단계마다 모든 이미터 (같은 단계끼리는 독립이라 배리어를 모아 걸고 디스패치를 연달아 넣는다)
 	std::vector<GpuEmitterInstance*>& gpus = m_StagedScratch;
 	gpus.clear();
 	for (Item& item : m_Items)

@@ -19,6 +19,7 @@ ModuleDesc GravityForce(float3 gravity);
 ModuleDesc SubUVAnimation(float startFrame, float endFrame, bool loop = false, float framePerSecond = 30.f);
 ModuleDesc SpriteRotationRate(float degreesPerSecond);  // SpriteRotation += rate * dt
 ModuleDesc ScaleColor(Input<float3> scaleRGB, Input<float> scaleAlpha);   // Color = Initial.Color * (ScaleRGB, ScaleAlpha). 수명에 따른 변화는 Curve<T>(...) 로
+ModuleDesc CurlNoiseForce(Input<float> strength, Input<float> frequency, Input<float3> offset);   // Acceleration += CurlNoise(Position * Frequency + Offset) * Strength / Mass
 
 // ---- 데이터(에셋) 용 ----
 // 저장 파일에 쓰는 모듈 이름. 바꾸면 기존 파일을 못 읽으므로 이름은 고정 (ModuleId 순서와는 무관)

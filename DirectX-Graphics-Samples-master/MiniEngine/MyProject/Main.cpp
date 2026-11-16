@@ -88,6 +88,7 @@ private:
     bool            m_StepOnce = false;         // 정지 중 한 프레임만 진행
 
     static constexpr const wchar_t* kSimTimerName = L"Particle Simulation";   // 모든 이미터 시뮬레이션의 GPU 타이머
+    static constexpr const char*    kBenchCsvPath = "ParticleProfile_week5_bench_v3.csv";
 
     EmitterTestScene            m_TestScene;
     EmitterTestScene::Settings  m_TestDraft;          // UI 가 편집, Build 를 눌러야 적용
@@ -99,8 +100,16 @@ private:
     ProfileRecorder             m_Recorder;
     char                        m_RecordTag[64] = "Generated";
     int                         m_RecordFrames = 600;
-    bool                        m_LastSaveOk = true;
     GpuSimFrameStats            m_LastSimStats;       // 지난 프레임 값 (UI 표시 / CSV)
+
+    // CSV 한 줄. 저장이 실패하면 (OneDrive 동기화 / 다른 프로그램이 파일을 잡고 있음) 들고 있다가 다시 시도한다
+    //   다음 Record 를 시작하기 전까지 기록기의 샘플이 그대로라 같은 줄을 다시 쓸 수 있다
+    struct CsvRow { std::string path, header, values, tag; uint32_t capacity = 0; };
+    void                        SaveCsvRow(const CsvRow& row);
+    CsvRow                      m_PendingCsv;
+    bool                        m_CsvPending = false;
+    uint32_t                    m_CsvRetryWait = 0;   // 남은 프레임 (0 이 되면 다시 시도)
+    std::string                 m_CsvStatus;          // 마지막 저장 결과 (전체 경로 포함)
 
     struct BenchStep { uint32_t count; GpuSimMode mode; bool stageMajor; };
     static constexpr uint32_t   kBenchCountOptions = 6;
@@ -529,16 +538,66 @@ void MyProject::UpdateTestSceneImGui()
     // ---------- 기록 ----------
     ImGui::InputText("Tag", m_RecordTag, sizeof(m_RecordTag));
     ImGui::InputInt("Frames", &m_RecordFrames);
+    // Space (패드 Start) 는 엔진 프로파일러를 멈춘다. 멈춘 동안은 타이머가 갱신되지 않아 기록도 진행되지 않는다
+    if (EngineProfiling::IsPaused())
+        ImGui::TextColored(ImVec4(1.f, 0.8f, 0.2f, 1.f), "Profiler paused (Space) - recording is on hold");
+
     if (m_Recorder.IsBusy())
         ImGui::ProgressBar(m_Recorder.GetProgress(), ImVec2(-1.f, 0.f), m_Recorder.GetStateText());
-    else if (ImGui::Button("Record"))
-        m_Recorder.Start(120, uint32_t(m_RecordFrames > 0 ? m_RecordFrames : 1));
-    if (!m_LastSaveOk)
-        ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "CSV save failed (open in Excel?)");
+    else if (m_CsvPending)
+    {
+        // 새로 기록하면 아직 못 쓴 줄의 샘플이 지워지므로 먼저 처리하게 한다
+        ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "%s", m_CsvStatus.c_str());
+        if (ImGui::SmallButton("Retry now"))
+            SaveCsvRow(m_PendingCsv);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Discard row"))
+        {
+            m_CsvPending = false;
+            m_CsvStatus = "Row discarded";
+        }
+    }
+    else
+    {
+        if (ImGui::Button("Record"))
+            m_Recorder.Start(120, uint32_t(m_RecordFrames > 0 ? m_RecordFrames : 1));
+        if (!m_CsvStatus.empty())
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", m_CsvStatus.c_str());
+        }
+    }
+}
+
+void MyProject::SaveCsvRow(const CsvRow& row)
+{
+    std::string full = row.path;
+    char fullBuf[MAX_PATH] = {};
+    if (GetFullPathNameA(row.path.c_str(), MAX_PATH, fullBuf, nullptr) > 0)
+        full = fullBuf;
+
+    if (m_Recorder.AppendCSV(row.path, row.header, row.values, row.tag, row.capacity))
+    {
+        m_CsvPending = false;
+        m_CsvStatus = "Saved -> " + full;
+        Utility::Print(("[Record] " + m_CsvStatus + "\n").c_str());
+        return;
+    }
+
+    char reason[128] = {};
+    strerror_s(reason, errno);
+    m_PendingCsv = row;
+    m_CsvPending = true;
+    m_CsvRetryWait = 60;    // 약 1 초 뒤 다시
+    m_CsvStatus = std::string("CSV save failed (") + reason + "), retrying: " + full;
+    Utility::Print(("[Record] " + m_CsvStatus + "\n").c_str());
 }
 
 void MyProject::TickRecorder()
 {
+    if (m_CsvPending && m_CsvRetryWait > 0 && --m_CsvRetryWait == 0)
+        SaveCsvRow(m_PendingCsv);
+
     const uint32_t alive = m_UseTestScene ? m_TestScene.AliveTotal() : m_Runtime.AliveCount();
     if (!m_Recorder.Tick(alive))
         return;
@@ -583,12 +642,12 @@ void MyProject::TickRecorder()
         sprintf_s(extra, ",%s,%u,%d,%u,%u",
             UberGpuProgram::ModeName(UberGpuProgram::Mode()), ps.livePrograms,
             EmitterRuntime::ProgramCacheEnabled() ? 1 : 0, fs.uberEmitters, variants);
-        m_LastSaveOk = m_Recorder.AppendCSV("ParticleProfile_week5_bench_v3.csv",
-            header + ",mode,generatedPrograms,cache,uberEmitters,shaderVariants", std::string(values) + extra, m_RecordTag, capacity);
+        SaveCsvRow({ kBenchCsvPath, header + ",mode,generatedPrograms,cache,uberEmitters,shaderVariants",
+            std::string(values) + extra, m_RecordTag, capacity });
         return;
     }
 
-    m_LastSaveOk = m_Recorder.AppendCSV("ParticleProfile_week5.csv", header, values, m_RecordTag, capacity);
+    SaveCsvRow({ "ParticleProfile_week5.csv", header, values, m_RecordTag, capacity });
 }
 void MyProject::StartBenchmark()
 {
@@ -614,13 +673,14 @@ void MyProject::StartBenchmark()
 
 void MyProject::TickBenchmark()
 {
-    if (!m_BenchRunning || m_Recorder.IsBusy())
+    // 못 쓴 줄이 있으면 다음 칸으로 넘어가지 않는다 (다음 Start 가 샘플을 지움)
+    if (!m_BenchRunning || m_Recorder.IsBusy() || m_CsvPending)
         return;
 
     if (m_BenchIndex >= m_BenchSteps.size())
     {
         m_BenchRunning = false;
-        Utility::Print("[Benchmark] done -> ParticleProfile_week5_bench.csv\n");
+        Utility::Printf("[Benchmark] done -> %s\n", kBenchCsvPath);
         return;
     }
 

@@ -88,8 +88,8 @@ const char* ProfileRecorder::GetStateText() const
 {
 	switch (m_State)
 	{
-	case State::Warmup:		return "Warmup...";
-	case State::Recording:	return "Recording...";
+	case State::Warmup:		return EngineProfiling::IsPaused() ? "Paused (Space) - warmup on hold" : "Warmup...";
+	case State::Recording:	return EngineProfiling::IsPaused() ? "Paused (Space) - recording on hold" : "Recording...";
 	default:				return "Idle";
 	}
 }

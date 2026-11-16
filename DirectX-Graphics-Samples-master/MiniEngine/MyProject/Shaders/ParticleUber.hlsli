@@ -26,6 +26,7 @@
 #define MODID_INITIALIZE_SPRITE         8   // ParticleSpawn
 #define MODID_SPRITE_ROTATION_RATE      9   // ParticleUpdate
 #define MODID_SCALE_COLOR               10  // ParticleUpdate
+#define MODID_CURL_NOISE_FORCE          11  // ParticleUpdate
 
 // ---------------------------------------------------------------------
 // 1. 레이아웃 (b2). 이미터마다 다른 값. 전부 uint 라 C++ 구조체(EmitterLayoutCB) 와 그대로 맞는다
@@ -148,6 +149,7 @@ float4 CurveParam4(ModuleInst m, uint k, uint paramIndex, float t)
 //   InitializeSprite     : SpriteSize 0~1/2~3, SpriteRotation 4/5
 //   SpriteRotationRate   : RotationRate 0
 //   ScaleColor           : ScaleRGB 0~2, ScaleAlpha 3
+//   CurlNoiseForce       : Strength 0, Frequency 1, Offset 2~4
 //   ParticleUpdate 모듈의 float 계열 입력값은 Curve 일 수 있다 (CurveParamN 으로 읽는다. dword 배치는 같다)
 
 // =====================================================================
@@ -479,6 +481,16 @@ void Module_ScaleColor(inout Particle p, uint index, ModuleInst m)
     p.Color = p.Initial_Color * float4(PARAM(ScaleRGB), PARAM(ScaleAlpha));
 }
 
+
+// ---- [ParticleUpdate] Curl Noise Force ----
+void Module_CurlNoiseForce(inout Particle p, uint index, ModuleInst m)
+{
+    const float  P_Strength  = CurveParam1(m, 0, 0, p.NormalizedAge);
+    const float  P_Frequency = CurveParam1(m, 1, 1, p.NormalizedAge);
+    const float3 P_Offset    = CurveParam3(m, 2, 2, p.NormalizedAge);
+
+    p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset)) * (PARAM(Strength) / p.Mass);
+}
 #undef PARAM
 
 // =====================================================================
@@ -536,6 +548,7 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
         case MODID_SUBUV_ANIMATION:          Module_SubUVAnimation(p, index, m);        break;
         case MODID_SPRITE_ROTATION_RATE:     Module_SpriteRotationRate(p, index, m);    break;
         case MODID_SCALE_COLOR:              Module_ScaleColor(p, index, m);            break;
+        case MODID_CURL_NOISE_FORCE:         Module_CurlNoiseForce(p, index, m);        break;
         default: break;
         }
     }

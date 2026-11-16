@@ -127,3 +127,71 @@ float4 SampleCurve(uint slot, float t)
 }
 
 #define KILL() (alive = false)
+
+// ---------------------------------------------------------------------
+// 컬 노이즈 (Curl Noise Force). C++ CurlNoise.h 와 같은 식으로 같이 고친다
+//   벡터 퍼텐셜 Psi = 채널마다 salt 가 다른 3D 그래디언트 노이즈 3 개
+//   각 노이즈의 도함수를 해석적으로 같이 구해 curl(Psi) 를 만든다 (차분 없이 노이즈 3 번)
+//   curl 이라 발산이 0: 파티클이 한 점으로 모이거나 흩어지지 않고 소용돌이친다
+//   반환값은 노이즈 공간의 도함수라 Frequency 를 바꿔도 크기가 그대로다 (세기는 Strength 로만)
+// ---------------------------------------------------------------------
+#define CURL_SALT_X 0x68E31DA4u
+#define CURL_SALT_Y 0xB5297A4Du
+#define CURL_SALT_Z 0x1B56C4E9u
+
+// 격자점의 그래디언트 (각 성분 -1 ~ 1)
+float3 NoiseGradient(int3 c, uint salt)
+{
+    const uint h = Hash(uint(c.x) + Hash(uint(c.y) + Hash(uint(c.z) + salt)));
+    return float3(h & 0x3FFu, (h >> 10) & 0x3FFu, (h >> 20) & 0x3FFu) * (2.f / 1023.f) - 1.f;
+}
+
+// 3D 그래디언트 노이즈의 도함수 (quintic 보간, 값은 버리고 기울기만)
+float3 GradientNoiseDeriv(float3 x, uint salt)
+{
+    const float3 f = floor(x);
+    const int3 i = int3(f);
+    const float3 w = x - f;
+    const float3 u = w * w * w * (w * (w * 6.f - 15.f) + 10.f);
+    const float3 du = 30.f * w * w * (w * (w - 2.f) + 1.f);
+
+    const float3 ga = NoiseGradient(i + int3(0, 0, 0), salt);
+    const float3 gb = NoiseGradient(i + int3(1, 0, 0), salt);
+    const float3 gc = NoiseGradient(i + int3(0, 1, 0), salt);
+    const float3 gd = NoiseGradient(i + int3(1, 1, 0), salt);
+    const float3 ge = NoiseGradient(i + int3(0, 0, 1), salt);
+    const float3 gf = NoiseGradient(i + int3(1, 0, 1), salt);
+    const float3 gg = NoiseGradient(i + int3(0, 1, 1), salt);
+    const float3 gh = NoiseGradient(i + int3(1, 1, 1), salt);
+
+    const float va = dot(ga, w - float3(0.f, 0.f, 0.f));
+    const float vb = dot(gb, w - float3(1.f, 0.f, 0.f));
+    const float vc = dot(gc, w - float3(0.f, 1.f, 0.f));
+    const float vd = dot(gd, w - float3(1.f, 1.f, 0.f));
+    const float ve = dot(ge, w - float3(0.f, 0.f, 1.f));
+    const float vf = dot(gf, w - float3(1.f, 0.f, 1.f));
+    const float vg = dot(gg, w - float3(0.f, 1.f, 1.f));
+    const float vh = dot(gh, w - float3(1.f, 1.f, 1.f));
+
+    const float kxy = va - vb - vc + vd;
+    const float kyz = va - vc - ve + vg;
+    const float kzx = va - vb - ve + vf;
+    const float kxyz = -va + vb + vc - vd + ve - vf - vg + vh;
+
+    float3 d = ga + u.x * (gb - ga) + u.y * (gc - ga) + u.z * (ge - ga)
+        + u.x * u.y * (ga - gb - gc + gd) + u.y * u.z * (ga - gc - ge + gg) + u.z * u.x * (ga - gb - ge + gf)
+        + u.x * u.y * u.z * (-ga + gb + gc - gd + ge - gf - gg + gh);
+    d += du * float3(
+        vb - va + u.y * kxy + u.z * kzx + u.y * u.z * kxyz,
+        vc - va + u.z * kyz + u.x * kxy + u.z * u.x * kxyz,
+        ve - va + u.x * kzx + u.y * kyz + u.x * u.y * kxyz);
+    return d;
+}
+
+float3 CurlNoise(float3 x)
+{
+    const float3 dPx = GradientNoiseDeriv(x, CURL_SALT_X);
+    const float3 dPy = GradientNoiseDeriv(x, CURL_SALT_Y);
+    const float3 dPz = GradientNoiseDeriv(x, CURL_SALT_Z);
+    return float3(dPz.y - dPy.z, dPx.z - dPz.x, dPy.x - dPx.y);
+}

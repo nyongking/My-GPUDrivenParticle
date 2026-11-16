@@ -165,6 +165,7 @@ enum class ModuleId : uint32_t
     InitializeSprite,
     SpriteRotationRate,
     ScaleColor,
+    CurlNoiseForce,
     Count,
     Unknown = 0xFFFFFFFFu       // ModuleLibrary 밖에서 만든 모듈 (공유 셰이더로 실행 불가)
 };

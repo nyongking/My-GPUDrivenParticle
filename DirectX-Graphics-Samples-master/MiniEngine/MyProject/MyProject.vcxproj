@@ -74,6 +74,7 @@
     <ClInclude Include="ModuleDesc.h" />
     <ClInclude Include="ModuleLibrary.h" />
     <ClInclude Include="CurveLibrary.h" />
+    <ClInclude Include="CurlNoise.h" />
     <ClInclude Include="OwnerTransform.h" />
     <ClInclude Include="ParticleEmitter.h" />
     <ClInclude Include="ParticleNamespace.h" />
