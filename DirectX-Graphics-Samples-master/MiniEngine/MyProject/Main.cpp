@@ -168,7 +168,7 @@ void MyProject::Startup(void)
 
     InitializeEmitter();
 
-    m_Floor.SetFloor(Vector3(0.f, -1.f, 0.f), 20.f);
+    m_Floor.SetFloor(Vector3(0.f, -3.f, 0.f), 10.f);
     m_Floor.SetTint(Color(0.35f, 0.35f, 0.38f));
 }
 

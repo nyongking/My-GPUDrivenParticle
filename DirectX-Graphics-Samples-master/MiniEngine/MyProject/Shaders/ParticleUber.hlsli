@@ -136,7 +136,6 @@ float4 CurveParam4(ModuleInst m, uint k, uint paramIndex, float t)
 
 // 모듈별 입력값 배치 (dword 단위, ModuleLibrary 의 m.params 순서).
 //   ParticleSpawn 모듈의 float 계열은 Min, Max 두 벌 (상수면 Min == Max). NBool 은 uint 1 칸.
-//   C++ UberParamRecord() 가 같은 규칙으로 계산한다 (검사: 리눅스 대조 테스트)
 //   SpawnRate            : Rate 0
 //   InitializeParticle   : Size 0/1, Mass 2/3, Lifetime 4/5, Pos 6~8/9~11, Color 12~15/16~19
 //   SphereLocation       : Radius 0/1, SurfaceOnly 2
@@ -161,6 +160,7 @@ float4 CurveParam4(ModuleInst m, uint k, uint paramIndex, float t)
 //   Min == Max (상수) 이면 랜덤을 계산하지 않는다. 생성 방식에서 상수는 랜덤을 안 부르므로
 //   비용을 맞추기 위해서다. 조건이 cbuffer 값이라 분기는 발산하지 않는다.
 // =====================================================================
+
 uint ParamSalt(uint slot, uint paramIndex)
 {
     return 0x10000u + slot * 0x100u + paramIndex * 4u;

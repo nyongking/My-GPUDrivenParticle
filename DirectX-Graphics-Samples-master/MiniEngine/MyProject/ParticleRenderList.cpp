@@ -287,6 +287,7 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	m_Layers.insert(m_Layers.end(), layers, layers + kMaxSpriteLayers);
 	m_Emitters.push_back(info);
 
+	// 각 이미터의 파티클이 어떠한 데이터를 갖느냐에 대한 내용
 	GatherConstants gc = {};
 	gc.positionOffset = src.positionOffset;
 	gc.colorOffset = src.colorOffset;

@@ -27,7 +27,7 @@ struct CurveKey
 
 namespace CurveLibrary
 {
-	constexpr uint32_t kSamples = 128;       // HLSL CURVE_SAMPLES. 키가 샘플 사이에 있으면 꺾이는 곳이 그만큼 뭉개진다
+	constexpr uint32_t kSamples = 128;       // HLSL CURVE_SAMPLES
 	constexpr uint32_t kMaxCurves = 1024;    // HLSL CURVE_MAX_CURVES (128 x 16 B x 1024 = 2 MB)
 	constexpr uint32_t kIdentitySlot = 0;    // 항상 (1,1,1,1). 칸이 모자랄 때의 대체 칸
 

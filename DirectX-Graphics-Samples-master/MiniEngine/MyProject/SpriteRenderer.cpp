@@ -169,7 +169,7 @@ namespace
 		if (s_PipelineReady)
 			return;
 
-		s_RootSig.Reset(kNumRootParams, 1);
+		s_RootSig.Reset(kNumRootParams, 2);
 		s_RootSig[kRootCBV].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
 		s_RootSig[kRootSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, kNumSRVs, D3D12_SHADER_VISIBILITY_VERTEX);
 		
@@ -409,7 +409,6 @@ void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera,
 	if (!m_Ready || !emitter.Ready())
 		return;
 
-	// GPU 이미터의 Tick 이 이미 전환해 두지만, 비교(CompareWithCpu) 등으로 상태가 바뀌었을 수 있어 한 번 더
 	gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 	// 정렬 (CPU 경로와 같은 조건). 개수를 CPU 로 읽지 않고 DrawArgs 의 alive 를 GPU 에서 바로 쓴다
