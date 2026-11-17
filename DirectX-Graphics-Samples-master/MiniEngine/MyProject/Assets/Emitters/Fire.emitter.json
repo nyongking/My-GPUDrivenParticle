@@ -1,0 +1,280 @@
+{
+  "format": "MyProject.Emitter",
+  "version": 1,
+  "name": "Fire",
+  "capacity": 2048,
+  "backend": "Gpu",
+  "modules": [
+    {
+      "module": "SpawnRate",
+      "params": {
+        "Rate": 60
+      }
+    },
+    {
+      "module": "InitializeParticle",
+      "params": {
+        "Size": 0.2,
+        "Mass": 1,
+        "Lifetime": {
+          "min": 0.8,
+          "max": 1.2
+        },
+        "Pos": [0, 0, 0],
+        "Color": [1.5, 0.85, 0.45, 1]
+      }
+    },
+    {
+      "module": "SphereLocation",
+      "params": {
+        "Radius": 0.15,
+        "SurfaceOnly": false
+      }
+    },
+    {
+      "module": "AddVelocityInCone",
+      "params": {
+        "Speed": {
+          "min": 0.8,
+          "max": 1.4
+        },
+        "ConeAngle": 15,
+        "ConeAxis": [0, 1, 0],
+        "InnerConeAngle": 0,
+        "SpeedFalloff": 0,
+        "Distribution": 1,
+        "LocalSpace": false
+      }
+    },
+    {
+      "module": "InitializeSprite",
+      "params": {
+        "SpriteSize": {
+          "min": [0.6, 0.6],
+          "max": [0.9, 0.9],
+          "perComponent": false
+        },
+        "SpriteRotation": {
+          "min": -10,
+          "max": 10
+        }
+      }
+    },
+    {
+      "module": "ParticleState",
+      "params": {
+        "KillOnLifetime": true
+      }
+    },
+    {
+      "module": "ScaleColor",
+      "params": {
+        "ScaleRGB": {
+          "value": [1, 1, 1],
+          "curve": [
+            {
+              "time": 0,
+              "value": [1, 1, 1]
+            },
+            {
+              "time": 0.5,
+              "value": [1, 0.8, 0.6]
+            },
+            {
+              "time": 1,
+              "value": [0.6, 0.2, 0.05]
+            }
+          ],
+          "index": "Particles.NormalizedAge"
+        },
+        "ScaleAlpha": {
+          "value": 0,
+          "curve": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 0.1,
+              "value": 1
+            },
+            {
+              "time": 0.7,
+              "value": 1
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ],
+          "index": "Particles.NormalizedAge"
+        }
+      }
+    },
+    {
+      "module": "SubUVAnimation",
+      "params": {
+        "StartFrame": 0,
+        "EndFrame": 35,
+        "Loop": false,
+        "FramesPerSecond": 30
+      }
+    },
+    {
+      "module": "CurlNoiseForce",
+      "params": {
+        "Strength": 1.5,
+        "Frequency": 1,
+        "Offset": [0, 0, 0],
+        "Pan": [0, -0.5, 0]
+      }
+    },
+    {
+      "module": "GravityForce",
+      "params": {
+        "Gravity": [0, 1.5, 0]
+      }
+    },
+    {
+      "module": "SolveForceAndVelocity",
+      "params": {
+        "AccelLimit": 0,
+        "SpeedLimit": 3
+      }
+    }
+  ],
+  "sprite": {
+    "texture": "Assets/Textures/T_Fire_subUV.PNG",
+    "textureAlpha": "FromLuminance",
+    "blend": "Additive",
+    "subImage": [6, 6],
+    "subUVBlend": true,
+    "facing": "FaceCameraPlane",
+    "alignment": "Unaligned",
+    "pivot": [0.5, 0.5],
+    "cameraOffset": 0,
+    "velocityStretch": 0,
+    "blendNear": 1,
+    "blendFar": 10,
+    "layers": [
+      {
+        "op": "Distort",
+        "texture": "Assets/Textures/T_FireDistNoise.PNG",
+        "srgb": false,
+        "uv": "Quad",
+        "channel": "RGBA",
+        "tiling": [1, 1],
+        "offset": [0, 0],
+        "scroll": [0, 0.6],
+        "wrap": true,
+        "maskBySprite": true,
+        "tint": [1, 1, 1],
+        "intensity": 0.04,
+        "param": "Constant",
+        "range": [1, 1],
+        "edgeWidth": 0.05,
+        "softness": 0.02
+      },
+      {
+        "op": "Multiply",
+        "texture": "Assets/Textures/T_Fire_Tiled.PNG",
+        "srgb": true,
+        "uv": "Quad",
+        "channel": "RGBA",
+        "tiling": [1, 2],
+        "offset": [0, 0],
+        "scroll": [0, 0.5],
+        "wrap": true,
+        "maskBySprite": true,
+        "tint": [1, 1, 1],
+        "intensity": 1,
+        "param": "Constant",
+        "range": [0.5, 0.5],
+        "edgeWidth": 0.05,
+        "softness": 0.02
+      },
+      {
+        "op": "Add",
+        "texture": "Assets/Textures/T_FX_CMN_Glow_01.dds",
+        "srgb": true,
+        "uv": "Quad",
+        "channel": "RGBA",
+        "tiling": [1, 1],
+        "offset": [0, 0],
+        "scroll": [0, 0],
+        "wrap": false,
+        "maskBySprite": false,
+        "tint": [1, 0.6, 0.25],
+        "intensity": 2,
+        "param": "Param1",
+        "range": [0.15, 0],
+        "edgeWidth": 0.05,
+        "softness": 0.02
+      },
+      {
+        "op": "Erode",
+        "texture": "Assets/Textures/T_ErodeNoise.png",
+        "srgb": false,
+        "uv": "Quad",
+        "channel": "R",
+        "tiling": [1, 1],
+        "offset": [0, 0],
+        "scroll": [0, 0],
+        "wrap": false,
+        "maskBySprite": true,
+        "tint": [1, 0.35, 0.05],
+        "intensity": 3,
+        "param": "Param0",
+        "range": [0.55, 1],
+        "edgeWidth": 0.06,
+        "softness": 0.03
+      }
+    ],
+    "bindings": {
+      "Position": {
+        "attribute": "Particles.Position",
+        "default": [0, 0, 0]
+      },
+      "Color": {
+        "attribute": "Particles.Color",
+        "default": [1, 1, 1, 1]
+      },
+      "Size": {
+        "attribute": "Particles.Size",
+        "default": 0.1
+      },
+      "SubImageIndex": {
+        "attribute": "Particles.SubImageIndex",
+        "default": 0
+      },
+      "SpriteSize": {
+        "attribute": "Particles.SpriteSize",
+        "default": [0.2, 0.2]
+      },
+      "SpriteRotation": {
+        "attribute": "Particles.SpriteRotation",
+        "default": 0
+      },
+      "Velocity": {
+        "attribute": "Particles.Velocity",
+        "default": [0, 0, 0]
+      },
+      "SpriteFacing": {
+        "attribute": "Particles.SpriteFacing",
+        "default": [0, 1, 0]
+      },
+      "SpriteAlignment": {
+        "attribute": "Particles.SpriteAlignment",
+        "default": [0, 1, 0]
+      },
+      "MaterialParam0": {
+        "attribute": "Particles.NormalizedAge",
+        "default": 0
+      },
+      "MaterialParam1": {
+        "attribute": "Particles.Age",
+        "default": 0
+      }
+    }
+  }
+}
