@@ -1,0 +1,1740 @@
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterAsset.cpp b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterAsset.cpp
+index ecd9dbc..2ae98ca 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterAsset.cpp
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterAsset.cpp
+@@ -25,6 +25,24 @@ namespace
+ 	static_assert(_countof(kAlignmentNames) == size_t(SpriteAlignment::Count), "SpriteAlignment ì´ë¦„ í‘œ");
+ 	static_assert(_countof(kTextureAlphaNames) == size_t(SpriteTextureAlpha::Count), "SpriteTextureAlpha ì´ë¦„ í‘œ");
+ 
++	// ë ˆì´ì–´ enum: ì´ë¦„ í•¨ìˆ˜ (ParticleMaterial.h) ë¡œ ì°¾ëŠ”ë‹¤
++	template<typename E>
++	bool LayerEnumFromName(const JsonValue* v, const char* (*nameOf)(E), E& out, const std::string& where, std::vector<std::string>& warnings)
++	{
++		if (v == nullptr)
++			return false;
++		for (uint32_t i = 0; i < uint32_t(E::Count); ++i)
++		{
++			if (v->AsString() == nameOf(E(i)))
++			{
++				out = E(i);
++				return true;
++			}
++		}
++		warnings.push_back(where + ": unknown value '" + v->AsString() + "' -> kept default");
++		return false;
++	}
++
+ 	template<size_t N>
+ 	bool EnumFromName(const JsonValue* v, const char* const (&names)[N], uint32_t& out, const char* what, std::vector<std::string>& warnings)
+ 	{
+@@ -311,6 +329,19 @@ namespace
+ 		return a;
+ 	}
+ 
++	// float2 / float3 (out = ì²« ì„±ë¶„ ì£¼ì†Œ). ëª¨ì–‘ì´ ë‹¤ë¥´ë©´ ê²½ê³  + ê·¸ëŒ€ë¡œ
++	void ReadVector(const JsonValue& obj, const char* key, const TypeInfo* type, float* out, const std::string& where, std::vector<std::string>& warnings)
++	{
++		const JsonValue* v = obj.Find(key);
++		if (v == nullptr)
++			return;
++		float tmp[4] = {};
++		if (DecodeValue(*v, type, reinterpret_cast<uint8_t*>(tmp)))
++			std::memcpy(out, tmp, type->size);
++		else
++			warnings.push_back(where + "." + key + ": wrong shape -> kept default");
++	}
++
+ 	void ReadFloat(const JsonValue& obj, const char* key, float& out, std::vector<std::string>& warnings)
+ 	{
+ 		const JsonValue* v = obj.Find(key);
+@@ -334,6 +365,8 @@ EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::strin
+ 	a.modules = runtime.Modules();
+ 	a.sprite = runtime.SpriteBindings();
+ 	a.texture = runtime.SpriteTexture();
++	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
++		a.layerTextures[i] = runtime.LayerTexture(i);
+ 	a.settings = runtime.GetSpriteSettings();
+ 	return a;
+ }
+@@ -342,7 +375,10 @@ bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset)
+ {
+ 	runtime.ReplaceDescription(asset.modules, asset.sprite, asset.capacity, asset.backend);
+ 	runtime.SetSpriteSettings(asset.settings);
+-	return runtime.SetSpriteTexture(asset.texture);
++	bool ok = runtime.SetSpriteTexture(asset.texture);
++	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
++		ok &= runtime.SetLayerTexture(i, asset.layerTextures[i]);
++	return ok;
+ }
+ 
+ bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& asset, uint32_t capacity)
+@@ -359,6 +395,9 @@ bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& ass
+ 	runtime.SetSpriteSettings(asset.settings);
+ 	if (!runtime.SetSpriteTexture(asset.texture))
+ 		Utility::Printf("[EmitterAsset] '%s': texture '%s' could not be loaded (drawn magenta)\n", asset.name.c_str(), asset.texture.c_str());
++	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
++		if (!runtime.SetLayerTexture(i, asset.layerTextures[i]))
++			Utility::Printf("[EmitterAsset] '%s': layer %u texture '%s' could not be loaded (layer skipped)\n", asset.name.c_str(), i, asset.layerTextures[i].c_str());
+ 	return true;
+ }
+ 
+@@ -407,6 +446,34 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
+ 	sprite.Set("blendNear", JsonValue(s.blendNear));
+ 	sprite.Set("blendFar", JsonValue(s.blendFar));
+ 
++	// í…ìŠ¤ì²˜ ë ˆì´ì–´ (êº¼ì§„ ì¹¸ì€ ë¹¼ê³  ìˆœì„œëŒ€ë¡œ. ë¶ˆëŸ¬ì˜¤ë©´ ì• ì¹¸ë¶€í„° ì±„ìš´ë‹¤)
++	JsonValue layers = JsonValue::MakeArray();
++	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
++	{
++		const SpriteLayer& l = s.layers[i];
++		if (l.op == SpriteLayerOp::Off)
++			continue;
++		JsonValue jl = JsonValue::MakeObject();
++		jl.Set("op", JsonValue(SpriteLayerOpName(l.op)));
++		jl.Set("texture", JsonValue(a.layerTextures[i]));
++		jl.Set("srgb", JsonValue(l.srgb));
++		jl.Set("uv", JsonValue(SpriteLayerUVName(l.uv)));
++		jl.Set("channel", JsonValue(SpriteLayerChannelName(l.channel)));
++		jl.Set("tiling", Float2Json(l.tiling));
++		jl.Set("offset", Float2Json(l.offset));
++		jl.Set("scroll", Float2Json(l.scroll));
++		jl.Set("wrap", JsonValue(l.wrap));
++		jl.Set("maskBySprite", JsonValue(l.maskBySprite));
++		jl.Set("tint", EncodeValue(&Types::Float3, reinterpret_cast<const uint8_t*>(&l.tint)));
++		jl.Set("intensity", JsonValue(l.intensity));
++		jl.Set("param", JsonValue(SpriteLayerParamName(l.param)));
++		jl.Set("range", Float2Json(l.paramRange));   // Constant ëŠ” range[0] = ê°’
++		jl.Set("edgeWidth", JsonValue(l.edgeWidth));
++		jl.Set("softness", JsonValue(l.softness));
++		layers.Push(std::move(jl));
++	}
++	sprite.Set("layers", std::move(layers));
++
+ 	JsonValue bindings = JsonValue::MakeObject();
+ 	for (const RenderBinding& b : a.sprite.bindings)
+ 	{
+@@ -555,12 +622,77 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
+ 		s.blendNear = (std::max)(s.blendNear, 0.f);
+ 		s.blendFar = (std::max)(s.blendFar, s.blendNear);
+ 
++		// í…ìŠ¤ì²˜ ë ˆì´ì–´ (ì—†ìœ¼ë©´ ì „ë¶€ êº¼ì§ = ì´ì „ íŒŒì¼)
++		uint32_t layerCount = 0;
++		if (const JsonValue* layers = sprite->Find("layers"))
++		{
++			for (size_t i = 0; i < layers->Size(); ++i)
++			{
++				const JsonValue& jl = layers->At(i);
++				const std::string where = "sprite.layers[" + std::to_string(i) + "]";
++				if (layerCount >= kMaxSpriteLayers)
++				{
++					warnings.push_back(where + ": more than " + std::to_string(kMaxSpriteLayers) + " layers -> ignored");
++					break;
++				}
++				SpriteLayerOp op = SpriteLayerOp::Off;
++				if (!LayerEnumFromName(jl.Find("op"), &SpriteLayerOpName, op, where + ".op", warnings) || op == SpriteLayerOp::Off)
++					continue;   // ì—°ì‚°ì„ ëª¨ë¥´ë©´ ê·¸ ë ˆì´ì–´ë§Œ ëº€ë‹¤
++
++				// ì—†ëŠ” í•­ëª©ì€ ê·¸ ì—°ì‚°ì˜ ì‹œì‘ê°’
++				SpriteLayer l = DefaultSpriteLayer(op);
++				if (const JsonValue* v = jl.Find("srgb"))
++					l.srgb = v->AsBool(l.srgb);
++				LayerEnumFromName(jl.Find("uv"), &SpriteLayerUVName, l.uv, where + ".uv", warnings);
++				LayerEnumFromName(jl.Find("channel"), &SpriteLayerChannelName, l.channel, where + ".channel", warnings);
++				LayerEnumFromName(jl.Find("param"), &SpriteLayerParamName, l.param, where + ".param", warnings);
++				ReadVector(jl, "tiling", &Types::Float2, &l.tiling.x, where, warnings);
++				ReadVector(jl, "offset", &Types::Float2, &l.offset.x, where, warnings);
++				ReadVector(jl, "scroll", &Types::Float2, &l.scroll.x, where, warnings);
++				ReadVector(jl, "tint", &Types::Float3, &l.tint.x, where, warnings);
++				ReadVector(jl, "range", &Types::Float2, &l.paramRange.x, where, warnings);
++				if (const JsonValue* v = jl.Find("wrap"))
++					l.wrap = v->AsBool(l.wrap);
++				if (const JsonValue* v = jl.Find("maskBySprite"))
++					l.maskBySprite = v->AsBool(l.maskBySprite);
++				ReadFloat(jl, "intensity", l.intensity, warnings);
++				ReadFloat(jl, "edgeWidth", l.edgeWidth, warnings);
++				ReadFloat(jl, "softness", l.softness, warnings);
++				l.edgeWidth = (std::max)(l.edgeWidth, 0.f);
++				l.softness = (std::max)(l.softness, 0.f);
++
++				if (const JsonValue* v = jl.Find("texture"))
++					a.layerTextures[layerCount] = v->AsString();
++				s.layers[layerCount++] = l;
++			}
++		}
++
++		// ë””ì¡¸ë¸Œ ì „ìš©ì´ë˜ íŒŒì¼ (sprite.dissolve) -> Erode ë ˆì´ì–´ í•˜ë‚˜ë¡œ ë°”ê¿” ì½ëŠ”ë‹¤
++		if (const JsonValue* dissolve = sprite->Find("dissolve"))
++		{
++			const JsonValue* tex = dissolve->Find("texture");
++			if (tex && !tex->AsString().empty() && layerCount < kMaxSpriteLayers)
++			{
++				SpriteLayer l = DefaultSpriteLayer(SpriteLayerOp::Erode);
++				l.paramRange = { 0.f, 1.f };
++				ReadVector(*dissolve, "range", &Types::Float2, &l.paramRange.x, "sprite.dissolve", warnings);
++				ReadVector(*dissolve, "edgeColor", &Types::Float3, &l.tint.x, "sprite.dissolve", warnings);
++				ReadFloat(*dissolve, "edgeWidth", l.edgeWidth, warnings);
++				ReadFloat(*dissolve, "softness", l.softness, warnings);
++				ReadFloat(*dissolve, "edgeIntensity", l.intensity, warnings);
++				a.layerTextures[layerCount] = tex->AsString();
++				s.layers[layerCount++] = l;
++			}
++		}
++
+ 		if (const JsonValue* bindings = sprite->Find("bindings"))
+ 		{
+ 			for (const JsonValue::Member& member : bindings->Members())
+ 			{
++				// ë””ì¡¸ë¸Œ ì „ìš©ì´ë˜ íŒŒì¼ì˜ 'Dissolve' ì¹¸ = MaterialParam0
++				const std::string slot = (member.first == "Dissolve") ? std::string("MaterialParam0") : member.first;
+ 				auto it = std::find_if(a.sprite.bindings.begin(), a.sprite.bindings.end(),
+-					[&](const RenderBinding& b) { return b.slot == member.first; });
++					[&](const RenderBinding& b) { return b.slot == slot; });
+ 				if (it == a.sprite.bindings.end())
+ 				{
+ 					warnings.push_back("unknown binding slot '" + member.first + "' -> ignored");
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterAsset.h b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterAsset.h
+index f2db123..3c9989f 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterAsset.h
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterAsset.h
+@@ -2,7 +2,7 @@
+ // ì´ë¯¸í„° í•˜ë‚˜ë¥¼ ë°ì´í„°(JSON íŒŒì¼)ë¡œ ì €ì¥ / ë¶ˆëŸ¬ì˜¤ê¸°
+ //
+ //   ì €ì¥í•˜ëŠ” ê²ƒ : ëª¨ë“ˆ ìŠ¤íƒ (ëª¨ë“ˆ ì´ë¦„ + ì…ë ¥ê°’, ìˆœì„œ ê·¸ëŒ€ë¡œ), ë Œë”ëŸ¬ ë°”ì¸ë”© (ì—°ê²° ì†ì„± + ê¸°ë³¸ê°’),
+-//                 í…ìŠ¤ì²˜ ê²½ë¡œ, ìŠ¤í”„ë¼ì´íŠ¸ ì„¤ì • (í…ìŠ¤ì²˜ ì•ŒíŒŒ / SubUV / ë¸”ë Œë“œ / ë¹Œë³´ë“œ), capacity, ë°±ì—”ë“œ
++//                 í…ìŠ¤ì²˜ ê²½ë¡œ, ìŠ¤í”„ë¼ì´íŠ¸ ì„¤ì • (í…ìŠ¤ì²˜ ì•ŒíŒŒ / SubUV / ë¸”ë Œë“œ / ë¹Œë³´ë“œ / í…ìŠ¤ì²˜ ë ˆì´ì–´), capacity, ë°±ì—”ë“œ
+ //   ì €ì¥ ì•ˆ í•¨  : ëª¨ë“ˆì˜ HLSL / CPU í•¨ìˆ˜ / reads / writes / Stage
+ //                 -> ë¶ˆëŸ¬ì˜¬ ë•Œ ModuleLibrary ì˜ MakeDefaultModule(ì´ë¦„) ìœ¼ë¡œ ë‹¤ì‹œ ë§Œë“¤ê³  ì…ë ¥ê°’ë§Œ ë®ì–´ì“´ë‹¤
+ //                    (ëª¨ë“ˆ ì½”ë“œë¥¼ ê³ ì¹˜ë©´ ê¸°ì¡´ íŒŒì¼ë„ ìƒˆ ì½”ë“œë¡œ ëˆë‹¤)
+@@ -25,12 +25,13 @@ struct EmitterAsset
+ 	std::vector<ModuleDesc> modules;                         // ì‹¤í–‰ ìˆœì„œ ê·¸ëŒ€ë¡œ
+ 	RendererDesc            sprite = SpriteRenderer::Desc(); // ë°”ì¸ë”© (ì¹¸ ìˆœì„œ = Desc())
+ 	std::string             texture;                         // ë¹ˆ ë¬¸ìì—´ = ê¸°ë³¸ ì›í˜•
++	std::string             layerTextures[kMaxSpriteLayers]; // ë ˆì´ì–´ í…ìŠ¤ì²˜ (settings.layers ì™€ ê°™ì€ ë²ˆí˜¸, ë¹ˆ ë¬¸ìì—´ = ê·¸ë¦¬ì§€ ì•ŠìŒ)
+ 	SpriteSettings          settings;
+ };
+ 
+ // ì§€ê¸ˆ í¸ì§‘ ì¤‘ì¸ ìƒíƒœë¥¼ ì—ì…‹ìœ¼ë¡œ (UI ê°€ ë³´ê³  ìˆëŠ” ê°’ = ë‹¤ìŒ ApplyPending ì—ì„œ ì ìš©ë  ê°’)
+ EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::string& name);
+-// ì¬ì‹œì‘ ìš”ì²­ + í…ìŠ¤ì²˜ / ìŠ¤í”„ë¼ì´íŠ¸ ì„¤ì • ë°”ë¡œ ë°˜ì˜. í…ìŠ¤ì²˜ë¥¼ ëª» ì½ìœ¼ë©´ false (magenta ë¡œ ê·¸ë ¤ì§)
++// ì¬ì‹œì‘ ìš”ì²­ + í…ìŠ¤ì²˜ / ìŠ¤í”„ë¼ì´íŠ¸ ì„¤ì • ë°”ë¡œ ë°˜ì˜. í…ìŠ¤ì²˜ë‚˜ ë ˆì´ì–´ í…ìŠ¤ì²˜ë¥¼ ëª» ì½ìœ¼ë©´ false
+ bool         ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset);
+ // ì•„ì§ ì‹œì‘í•˜ì§€ ì•Šì€ ëŸ°íƒ€ì„ì„ ì—ì…‹ìœ¼ë¡œ ì‹œì‘ (ì¬ì‹œì‘ ì—†ì´ í•œ ë²ˆì—). capacity == 0 ì´ë©´ ì—ì…‹ ê°’
+ //   ì‹¤íŒ¨í•˜ë©´ false (runtime.LastError()). í…ìŠ¤ì²˜ë¥¼ ëª» ì½ëŠ” ê²ƒì€ ì¶œë ¥ ì°½ ê²½ê³ ë§Œ (magenta ë¡œ ê·¸ë ¤ì§)
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterRuntime.cpp b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterRuntime.cpp
+index 21846da..34b3c34 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterRuntime.cpp
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterRuntime.cpp
+@@ -318,6 +318,19 @@ bool EmitterRuntime::SetSpriteTexture(const std::string& path)
+ 	return cpuOk && gpuOk;
+ }
+ 
++bool EmitterRuntime::SetLayerTexture(uint32_t layer, const std::string& path)
++{
++	if (layer >= kMaxSpriteLayers)
++		return false;
++	m_LayerTextures[layer] = path;
++
++	// ìŠ¤í”„ë¼ì´íŠ¸ í…ìŠ¤ì²˜ì™€ ê°™ì´ ë‘ ë Œë”ëŸ¬ì— ë°”ë¡œ (ì‹¤í–‰ ì¤‘ì´ ì•„ë‹Œ ìª½ë„ ë§ì¶° ë‘”ë‹¤)
++	const std::wstring wpath = Utility::UTF8ToWideString(path);
++	const bool cpuOk = m_CpuRenderer.SetLayerTexture(layer, wpath);
++	const bool gpuOk = m_GpuRenderer.SetLayerTexture(layer, wpath);
++	return cpuOk && gpuOk;
++}
++
+ void EmitterRuntime::SetSpriteSettings(const SpriteSettings& settings)
+ {
+ 	// ìƒìˆ˜ ë²„í¼ / ë£¨íŠ¸ ìƒìˆ˜ ê°’ì´ë¼ ë°”ë¡œ ë°˜ì˜ (ì‹¤í–‰ ì¤‘ì´ ì•„ë‹Œ ìª½ë„ ë§ì¶° ë‘”ë‹¤)
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterRuntime.h b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterRuntime.h
+index 4a34df8..cca0925 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterRuntime.h
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/EmitterRuntime.h
+@@ -64,6 +64,10 @@ public:
+ 	// ë¹ˆ ë¬¸ìì—´ = ê¸°ë³¸ ì›í˜•. ì¬ì»´íŒŒì¼ / ì¬ì‹œì‘ ì—†ì´ ë°”ë¡œ ë°˜ì˜. ì‹¤íŒ¨í•˜ë©´ magenta ë¡œ ê·¸ë ¤ì§€ê³  false
+ 	bool SetSpriteTexture(const std::string& path);
+ 	const std::string& SpriteTexture() const { return m_SpriteTexture; }
++	// í…ìŠ¤ì²˜ ë ˆì´ì–´ (ParticleMaterial.h). ë¹ˆ ë¬¸ìì—´ = ê·¸ ë ˆì´ì–´ë¥¼ ê·¸ë¦¬ì§€ ì•ŠìŒ. ì¬ì‹œì‘ ì—†ì´ ë°”ë¡œ ë°˜ì˜
++	//   ë ˆì´ì–´ ì—°ì‚° / UV / ì„¸ê¸°ëŠ” SpriteSettings::layers (SetSpriteSettings). ëª» ì½ìœ¼ë©´ ê·¸ ë ˆì´ì–´ë§Œ ë¹ ì§„ ì±„ë¡œ false
++	bool SetLayerTexture(uint32_t layer, const std::string& path);
++	const std::string& LayerTexture(uint32_t layer) const { return m_LayerTextures[layer < kMaxSpriteLayers ? layer : 0]; }
+ 
+ 	void SetSpriteSettings(const SpriteSettings& settings);
+ 	const SpriteSettings& GetSpriteSettings() const { return m_CpuRenderer.Settings(); }
+@@ -115,6 +119,7 @@ private:
+ 	CompiledEmitter         m_Compiled;         // m_AppliedModules ì˜ ì»´íŒŒì¼ ê²°ê³¼
+ 	UberEmitterData			m_Uber;
+ 	std::string             m_SpriteTexture;    // ë Œë”ëŸ¬ê°€ ì¬ì‹œì‘í•´ë„ ìœ ì§€ (ë Œë”ëŸ¬ ìª½ ìºì‹œ)
++	std::string             m_LayerTextures[kMaxSpriteLayers];   // ìœ„ì™€ ê°™ìŒ
+ 
+ 	EmitterBackend          m_Backend = EmitterBackend::Gpu;        // ìš”ì²­ëœ ë°±ì—”ë“œ
+ 	EmitterBackend          m_ActiveBackend = EmitterBackend::Gpu;  // ì‹¤ì œë¡œ ì‹¤í–‰ ì¤‘ì¸ ë°±ì—”ë“œ
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Main.cpp b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Main.cpp
+index 8ffd434..570615f 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Main.cpp
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Main.cpp
+@@ -35,6 +35,7 @@
+ #include <cmath>
+ #include "ModuleStackPanel.h"
+ #include "EmitterAsset.h"
++#include "ParticleMaterial.h"
+ 
+ using namespace GameCore;
+ using namespace Graphics;
+@@ -83,6 +84,7 @@ private:
+     float           m_RotateSpeedDeg = 90.f;    // ì´ˆë‹¹ íšŒì „ (Box Location ë°©í–¥ì´ ëŒì•„ê°)
+     bool            m_MoveOwner = false;        // ìœ„ì•„ë˜ë¡œ ì›€ì§ì´ê¸° (Owner.Velocity í™•ì¸)
+     float           m_OwnerTime = 0.f;
++    float           m_MaterialTime = 0.f;     // í…ìŠ¤ì²˜ ë ˆì´ì–´ ìŠ¤í¬ë¡¤ (ì‹œë®¬ë ˆì´ì…˜ ì‹œê°„ê³¼ ê°™ì´ ë©ˆì¶¤)
+ 
+     bool            m_TimeStop = false;         // true = ì‹œë®¬ë ˆì´ì…˜ ì •ì§€ (ì¹´ë©”ë¼ / UI ëŠ” ê³„ì†)
+     bool            m_StepOnce = false;         // ì •ì§€ ì¤‘ í•œ í”„ë ˆì„ë§Œ ì§„í–‰
+@@ -205,6 +207,8 @@ void MyProject::Update(float deltaT)
+ 
+     // ì†Œìœ ì: Y ì¶• íšŒì „ + (ì„ íƒ) ìœ„ì•„ë˜ ì´ë™
+     m_OwnerTime += ownerDt;
++    m_MaterialTime += simDt;
++    ParticleMaterial::SetTime(m_MaterialTime);
+     m_OwnerAngle += m_RotateSpeedDeg * (3.14159265f / 180.f) * ownerDt;
+     const float bob = m_MoveOwner ? std::sin(m_OwnerTime * 2.f) : 0.f;   // ìœ„ì•„ë˜ 1m
+ 
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ModuleStackPanel.cpp b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ModuleStackPanel.cpp
+index c15de20..0c37176 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ModuleStackPanel.cpp
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ModuleStackPanel.cpp
+@@ -155,6 +155,156 @@ namespace
+ 		}
+ 	}
+ 
++	// ---- í…ìŠ¤ì²˜ ë ˆì´ì–´ (ParticleMaterial.h) ----
++	template<typename E>
++	bool LayerEnumCombo(const char* label, E& value, const char* (*nameOf)(E))
++	{
++		bool changed = false;
++		ImGui::SetNextItemWidth(160.f);
++		if (ImGui::BeginCombo(label, nameOf(value)))
++		{
++			for (uint32_t i = 0; i < uint32_t(E::Count); ++i)
++			{
++				if (ImGui::Selectable(nameOf(E(i)), E(i) == value))
++				{
++					value = E(i);
++					changed = true;
++				}
++			}
++			ImGui::EndCombo();
++		}
++		return changed;
++	}
++
++	bool DrawFloat2(const char* label, float2& v, float speed)
++	{
++		float f[2] = { v.x, v.y };
++		ImGui::SetNextItemWidth(160.f);
++		if (!ImGui::DragFloat2(label, f, speed))
++			return false;
++		v = { f[0], f[1] };
++		return true;
++	}
++
++	// ë°˜í™˜ = ì„¤ì •ì´ ë°”ë€Œì—ˆëŠ”ì§€ (í…ìŠ¤ì²˜ ì„ íƒì€ ë°”ë¡œ runtime ì— ë°˜ì˜)
++	bool DrawTextureLayers(EmitterRuntime& runtime, SpriteSettings& s)
++	{
++		bool changed = false;
++		ImGui::SeparatorText("Texture Layers");
++		ImGui::TextDisabled("Applied in order on top of the base texture (Distort layers first)");
++
++		// ë ˆì´ì–´ ì„¸ê¸°ë¥¼ íŒŒí‹°í´ë§ˆë‹¤ ë°”ê¾¸ëŠ” ì¹¸ (ì•„ë˜ ë°”ì¸ë”© ëª©ë¡ì˜ MaterialParam0 / 1)
++		const RendererDesc& desc = runtime.SpriteBindings();
++		for (size_t i = 0; i < desc.bindings.size(); ++i)
++		{
++			const RenderBinding& b = desc.bindings[i];
++			if (b.slot.compare(0, 13, "MaterialParam") != 0)
++				continue;
++			ImGui::PushID(static_cast<int>(i));
++			ImGui::TextDisabled("%s = %s", b.slot.c_str(), b.attribute.empty() ? "(default value)" : b.attribute.c_str());
++			if (b.attribute.empty())
++			{
++				ImGui::SameLine();
++				if (ImGui::SmallButton("Bind to NormalizedAge"))
++					runtime.SetBindingAttribute(i, "Particles.NormalizedAge");
++			}
++			ImGui::PopID();
++		}
++
++		for (uint32_t k = 0; k < kMaxSpriteLayers; ++k)
++		{
++			SpriteLayer& l = s.layers[k];
++			ImGui::PushID(static_cast<int>(k));
++
++			char header[64];
++			sprintf_s(header, "Layer %u: %s###layer", k, SpriteLayerOpName(l.op));
++			if (ImGui::TreeNodeEx(header, l.op != SpriteLayerOp::Off ? ImGuiTreeNodeFlags_DefaultOpen : 0))
++			{
++				SpriteLayerOp op = l.op;
++				if (LayerEnumCombo("Op", op, &SpriteLayerOpName))
++				{
++					// ì²˜ìŒ ì¼¤ ë•Œë§Œ ê·¸ ì—°ì‚°ì˜ ì‹œì‘ê°’. ì´ë¯¸ ì¼œì§„ ë ˆì´ì–´ëŠ” ì—°ì‚°ë§Œ ë°”ê¾¼ë‹¤
++					if (l.op == SpriteLayerOp::Off)
++						l = DefaultSpriteLayer(op);
++					else
++						l.op = op;
++					changed = true;
++				}
++
++				if (l.op != SpriteLayerOp::Off)
++				{
++					const std::string& tex = runtime.LayerTexture(k);
++					const std::string preview = tex.empty() ? std::string("(none)") : tex;
++					ImGui::SetNextItemWidth(300.f);
++					if (ImGui::BeginCombo("Texture", preview.c_str()))
++					{
++						if (ImGui::Selectable("(none)", tex.empty()))
++							runtime.SetLayerTexture(k, std::string());
++						for (const std::string& path : ListTextureFiles())
++							if (ImGui::Selectable(path.c_str(), path == tex))
++								runtime.SetLayerTexture(k, path);
++						ImGui::EndCombo();
++					}
++					if (tex.empty())
++						ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f), "Pick a texture (the layer is skipped without one)");
++
++					changed |= ImGui::Checkbox("sRGB (color texture)", &l.srgb);
++					ImGui::SameLine();
++					changed |= ImGui::Checkbox("Wrap", &l.wrap);
++					changed |= LayerEnumCombo("UV", l.uv, &SpriteLayerUVName);
++					changed |= LayerEnumCombo("Channel", l.channel, &SpriteLayerChannelName);
++					changed |= DrawFloat2("Tiling", l.tiling, 0.01f);
++					changed |= DrawFloat2("Offset", l.offset, 0.01f);
++					changed |= DrawFloat2("Scroll (uv/s)", l.scroll, 0.01f);
++
++					if (l.op == SpriteLayerOp::Multiply || l.op == SpriteLayerOp::Add || l.op == SpriteLayerOp::Erode)
++					{
++						float tint[3] = { l.tint.x, l.tint.y, l.tint.z };
++						ImGui::SetNextItemWidth(220.f);
++						if (ImGui::ColorEdit3(l.op == SpriteLayerOp::Erode ? "Edge Color" : "Tint", tint))
++						{
++							l.tint = { tint[0], tint[1], tint[2] };
++							changed = true;
++						}
++					}
++					if (l.op == SpriteLayerOp::Add)
++						changed |= ImGui::Checkbox("Mask by sprite", &l.maskBySprite);
++
++					// ì—°ì‚°ë§ˆë‹¤ Intensity ì˜ ëœ»ì´ ë‹¤ë¥´ë‹¤
++					const char* intensityLabel =
++						(l.op == SpriteLayerOp::Multiply || l.op == SpriteLayerOp::AlphaMask) ? "Amount (0-1)" :
++						(l.op == SpriteLayerOp::Erode) ? "Edge Intensity" :
++						(l.op == SpriteLayerOp::Distort) ? "Strength (uv)" : "Intensity";
++					ImGui::SetNextItemWidth(160.f);
++					changed |= ImGui::DragFloat(intensityLabel, &l.intensity, 0.01f);
++
++					if (l.op == SpriteLayerOp::Erode)
++					{
++						ImGui::SetNextItemWidth(160.f);
++						changed |= ImGui::SliderFloat("Edge Width", &l.edgeWidth, 0.f, 0.5f);
++						ImGui::SetNextItemWidth(160.f);
++						changed |= ImGui::SliderFloat("Softness", &l.softness, 0.f, 0.5f);
++					}
++
++					// ì„¸ê¸° (Erode = ì§„í–‰ë„ 0 ë³´ì„ ~ 1 ì‚¬ë¼ì§)
++					changed |= LayerEnumCombo("Param", l.param, &SpriteLayerParamName);
++					if (l.param == SpriteLayerParam::Constant)
++					{
++						ImGui::SetNextItemWidth(160.f);
++						changed |= ImGui::DragFloat("Value", &l.paramRange.x, 0.01f);
++					}
++					else
++					{
++						changed |= DrawFloat2("Range (start/end)", l.paramRange, 0.01f);
++					}
++				}
++				ImGui::TreePop();
++			}
++			ImGui::PopID();
++		}
++		return changed;
++	}
++
+ 	// ---- SubUV / ë¸”ë Œë“œ ----
+ 	void DrawSpriteSettings(EmitterRuntime& runtime)
+ 	{
+@@ -276,6 +426,9 @@ namespace
+ 			}
+ 		}
+ 
++		// ---- í…ìŠ¤ì²˜ ë ˆì´ì–´ ----
++		changed |= DrawTextureLayers(runtime, s);
++
+ 		if (changed)
+ 			runtime.SetSpriteSettings(s);
+ 	}
+@@ -517,9 +670,9 @@ namespace
+ 			return;
+ 		}
+ 
+-		const bool textureOk = ApplyEmitterAsset(runtime, asset);
+-		if (!textureOk)
+-			st.warnings.push_back("texture '" + asset.texture + "' could not be loaded (drawn magenta)");
++		const bool texturesOk = ApplyEmitterAsset(runtime, asset);
++		if (!texturesOk)
++			st.warnings.push_back("texture or layer texture could not be loaded (see Output window)");
+ 		strncpy_s(st.name, sizeof(st.name), name.c_str(), _TRUNCATE);
+ 		SetAssetStatus("Loaded " + path + " (restarting emitter)", false);
+ 	}
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/MyProject.vcxproj b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/MyProject.vcxproj
+index 81d41b5..e60ad26 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/MyProject.vcxproj
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/MyProject.vcxproj
+@@ -67,6 +67,7 @@
+     <ClInclude Include="EmitterTestScene.h" />
+     <ClInclude Include="ModuleStackPanel.h" />
+     <ClInclude Include="EmitterAsset.h" />
++    <ClInclude Include="ParticleMaterial.h" />
+     <ClInclude Include="Json.h" />
+     <ClInclude Include="GpuEmitterInstance.h" />
+     <ClInclude Include="LayoutBuilder.h" />
+@@ -107,6 +108,7 @@
+     <ClCompile Include="EmitterTestScene.cpp" />
+     <ClCompile Include="ModuleStackPanel.cpp" />
+     <ClCompile Include="EmitterAsset.cpp" />
++    <ClCompile Include="ParticleMaterial.cpp" />
+     <ClCompile Include="Json.cpp" />
+     <ClCompile Include="GpuEmitterInstance.cpp" />
+     <ClCompile Include="LayoutBuilder.cpp" />
+@@ -160,6 +162,7 @@
+     <None Include="Shaders\ParticleDrawCommon.hlsli" />
+     <None Include="Shaders\ParticleListCommon.hlsli" />
+     <None Include="Shaders\SpriteAlpha.hlsli" />
++    <None Include="Shaders\SpriteMaterial.hlsli" />
+     <None Include="Shaders\SpriteFacing.hlsli" />
+     <None Include="Shaders\ParticleUber.hlsli" />
+   </ItemGroup>
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/MyProject.vcxproj.filters b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/MyProject.vcxproj.filters
+index 575b605..8a2479f 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/MyProject.vcxproj.filters
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/MyProject.vcxproj.filters
+@@ -123,6 +123,9 @@
+     <ClCompile Include="ParticleRenderList.cpp">
+       <Filter>Particle\Renderer</Filter>
+     </ClCompile>
++    <ClCompile Include="ParticleMaterial.cpp">
++      <Filter>Particle\Renderer</Filter>
++    </ClCompile>
+     <ClCompile Include="ParticleSorter.cpp">
+       <Filter>Particle\Sorter</Filter>
+     </ClCompile>
+@@ -234,6 +237,9 @@
+     <ClInclude Include="ParticleRenderList.h">
+       <Filter>Particle\Renderer</Filter>
+     </ClInclude>
++    <ClInclude Include="ParticleMaterial.h">
++      <Filter>Particle\Renderer</Filter>
++    </ClInclude>
+     <ClInclude Include="ParticleSorter.h">
+       <Filter>Particle\Sorter</Filter>
+     </ClInclude>
+@@ -309,6 +315,9 @@
+     <None Include="Shaders\SpriteAlpha.hlsli">
+       <Filter>Shaders\Particle</Filter>
+     </None>
++    <None Include="Shaders\SpriteMaterial.hlsli">
++      <Filter>Shaders\Particle</Filter>
++    </None>
+   </ItemGroup>
+   <ItemGroup>
+     <FxCompile Include="Shaders\DebugLineVS.hlsl">
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleMaterial.cpp b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleMaterial.cpp
+new file mode 100644
+index 0000000..970a240
+--- /dev/null
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleMaterial.cpp
+@@ -0,0 +1,99 @@
++ï»¿#include "pch.h"
++#include "ParticleMaterial.h"
++
++#include <cstring>
++
++namespace
++{
++    const char* const kOpNames[] = { "Off", "Multiply", "Add", "AlphaMask", "Erode", "Distort" };
++    const char* const kUVNames[] = { "Quad", "SubUV" };
++    const char* const kChannelNames[] = { "RGBA", "R", "G", "B", "A", "Luminance" };
++    const char* const kParamNames[] = { "Constant", "Param0", "Param1" };
++    static_assert(_countof(kOpNames) == size_t(SpriteLayerOp::Count), "SpriteLayerOp ì´ë¦„ í‘œ");
++    static_assert(_countof(kUVNames) == size_t(SpriteLayerUV::Count), "SpriteLayerUV ì´ë¦„ í‘œ");
++    static_assert(_countof(kChannelNames) == size_t(SpriteLayerChannel::Count), "SpriteLayerChannel ì´ë¦„ í‘œ");
++    static_assert(_countof(kParamNames) == size_t(SpriteLayerParam::Count), "SpriteLayerParam ì´ë¦„ í‘œ");
++
++    template<size_t N>
++    const char* NameOf(const char* const (&names)[N], uint32_t v) { return v < N ? names[v] : "?"; }
++
++    float s_Time = 0.f;
++}
++
++const char* SpriteLayerOpName(SpriteLayerOp v) { return NameOf(kOpNames, uint32_t(v)); }
++const char* SpriteLayerUVName(SpriteLayerUV v) { return NameOf(kUVNames, uint32_t(v)); }
++const char* SpriteLayerChannelName(SpriteLayerChannel v) { return NameOf(kChannelNames, uint32_t(v)); }
++const char* SpriteLayerParamName(SpriteLayerParam v) { return NameOf(kParamNames, uint32_t(v)); }
++
++SpriteLayer DefaultSpriteLayer(SpriteLayerOp op)
++{
++    SpriteLayer l;
++    l.op = op;
++    switch (op)
++    {
++    case SpriteLayerOp::Multiply:
++        l.srgb = true;                                  // ìƒ‰ í…ìŠ¤ì²˜
++        break;
++    case SpriteLayerOp::Add:
++        l.srgb = true;
++        l.intensity = 2.f;
++        break;
++    case SpriteLayerOp::AlphaMask:
++        l.channel = SpriteLayerChannel::R;
++        break;
++    case SpriteLayerOp::Erode:
++        // ë””ì¡¸ë¸Œ: ìˆ˜ëª… í›„ë°˜ì— ë…¸ì´ì¦ˆ ëª¨ì–‘ìœ¼ë¡œ ì‚¬ë¼ì§€ë©° ê²½ê³„ê°€ íƒ„ë‹¤ (MaterialParam0 <- NormalizedAge ë¡œ ì—°ê²°)
++        l.channel = SpriteLayerChannel::R;
++        l.param = SpriteLayerParam::Param0;
++        l.paramRange = { 0.5f, 1.f };
++        l.tint = { 1.f, 0.35f, 0.05f };
++        l.intensity = 4.f;
++        break;
++    case SpriteLayerOp::Distort:
++        l.channel = SpriteLayerChannel::RGBA;           // rg = ë°©í–¥
++        l.intensity = 0.03f;
++        l.wrap = true;
++        l.scroll = { 0.f, 0.2f };
++        break;
++    default:
++        break;
++    }
++    return l;
++}
++
++uint32_t PackSpriteLayers(const SpriteLayer (&layers)[kMaxSpriteLayers], const bool (&hasTexture)[kMaxSpriteLayers],
++    SpriteLayerGpu (&out)[kMaxSpriteLayers], uint32_t (&sourceIndex)[kMaxSpriteLayers])
++{
++    std::memset(out, 0, sizeof(out));
++    uint32_t n = 0;
++    for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
++    {
++        const SpriteLayer& l = layers[i];
++        if (l.op == SpriteLayerOp::Off || l.op >= SpriteLayerOp::Count || !hasTexture[i])
++            continue;
++
++        SpriteLayerGpu& g = out[n];
++        g.op = uint32_t(l.op);
++        g.uv = uint32_t(l.uv);
++        g.channel = uint32_t(l.channel);
++        g.flags = (l.wrap ? kSpriteLayerWrap : 0u) | (l.maskBySprite ? kSpriteLayerMaskBySprite : 0u);
++        g.tiling[0] = l.tiling.x;       g.tiling[1] = l.tiling.y;
++        g.offset[0] = l.offset.x;       g.offset[1] = l.offset.y;
++        g.scroll[0] = l.scroll.x;       g.scroll[1] = l.scroll.y;
++        g.paramRange[0] = l.paramRange.x; g.paramRange[1] = l.paramRange.y;
++        g.tint[0] = l.tint.x; g.tint[1] = l.tint.y; g.tint[2] = l.tint.z;
++        g.intensity = l.intensity;
++        g.param = uint32_t(l.param);
++        g.textureIndex = n;
++        g.edgeWidth = l.edgeWidth;
++        g.softness = l.softness;
++        sourceIndex[n] = i;
++        ++n;
++    }
++    for (uint32_t k = n; k < kMaxSpriteLayers; ++k)
++        sourceIndex[k] = 0;
++    return n;
++}
++
++void  ParticleMaterial::SetTime(float seconds) { s_Time = seconds; }
++float ParticleMaterial::Time() { return s_Time; }
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleMaterial.h b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleMaterial.h
+new file mode 100644
+index 0000000..7020f9d
+--- /dev/null
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleMaterial.h
+@@ -0,0 +1,81 @@
++ï»¿#pragma once
++// ìŠ¤í”„ë¼ì´íŠ¸ í…ìŠ¤ì²˜ ë ˆì´ì–´ = ë² ì´ìŠ¤ í…ìŠ¤ì²˜ ìœ„ì— í…ìŠ¤ì²˜ë¥¼ ìµœëŒ€ 4 ì¥ê¹Œì§€ ë°ì´í„°ë¡œ ìŒ“ëŠ”ë‹¤
++//
++//   ë ˆì´ì–´ë§ˆë‹¤ : í…ìŠ¤ì²˜ (sRGB / ì„ í˜•) + UV (ì‚¬ê°í˜• ë˜ëŠ” SubUV ì¹¸, íƒ€ì¼ë§ / ì˜¤í”„ì…‹ / ìŠ¤í¬ë¡¤ / ë°˜ë³µ)
++//                + ì±„ë„ + ì—°ì‚° + ì„¸ê¸°
++//   ì—°ì‚°       : Multiply  ìƒ‰ ê³±í•˜ê¸°          (ì˜ˆ: ìƒ‰ ë³€í™” í…ìŠ¤ì²˜, ë””í…Œì¼)
++//                Add       ë°œê´‘ ë”í•˜ê¸°        (ì˜ˆ: ë¶ˆì”¨ / í•˜ì´ë¼ì´íŠ¸)
++//                AlphaMask ë¶ˆíˆ¬ëª…ë„ ê³±í•˜ê¸°    (ì˜ˆ: ê°€ì¥ìë¦¬ ë§ˆìŠ¤í¬)
++//                Erode     ì˜ë¼ë‚´ê¸° + ê²½ê³„ ë°œê´‘ (ì˜ˆ: ë””ì¡¸ë¸Œ)
++//                Distort   UV ì™œê³¡           (ë² ì´ìŠ¤ì™€ ë’¤ ë ˆì´ì–´ì˜ uv ë¥¼ ë¯¼ë‹¤. ì˜ˆ: ì—´ê¸° / ì¼ë ì„)
++//   ì„¸ê¸°       : ìƒìˆ˜, ë˜ëŠ” íŒŒí‹°í´ë³„ MaterialParam0 / 1 ë°”ì¸ë”©ì„ ë²”ìœ„ë¡œ 0~1 ë¡œ ë°”ê¾¼ ê°’
++//                (ì˜ˆ: MaterialParam0 <- Particles.NormalizedAge -> ìˆ˜ëª…ì— ë”°ë¼ ë””ì¡¸ë¸Œ / ë°œê´‘)
++//
++//   PS ëŠ” í•˜ë‚˜ (SpriteMaterial.hlsli). ë ˆì´ì–´ êµ¬ì„±ì´ ë‹¬ë¼ë„ PSO ê°€ ê°™ì•„ì„œ ì „ì²´ ì •ë ¬ ê²½ë¡œì˜ Draw 1ë²ˆì´ ìœ ì§€ëœë‹¤
++
++#include "AttributeType.h"
++
++#include <cstdint>
++
++constexpr uint32_t kMaxSpriteLayers = 4;   // HLSL MAX_SPRITE_LAYERS
++
++// ë²ˆí˜¸ = HLSL LAYER_* / LAYER_UV_* / CHANNEL_* / PARAM_*
++enum class SpriteLayerOp : uint32_t { Off, Multiply, Add, AlphaMask, Erode, Distort, Count };
++enum class SpriteLayerUV : uint32_t { Quad, SubUV, Count };                      // ì‚¬ê°í˜• 0~1 / ë² ì´ìŠ¤ì™€ ê°™ì€ SubUV ì¹¸
++enum class SpriteLayerChannel : uint32_t { RGBA, R, G, B, A, Luminance, Count }; // í•œ ì±„ë„ì„ ê³ ë¥´ë©´ 4 ì„±ë¶„ì— ë³µì‚¬
++enum class SpriteLayerParam : uint32_t { Constant, Param0, Param1, Count };
++
++// UI / ì €ì¥ íŒŒì¼ì— ì“°ëŠ” ì´ë¦„ (ë°”ê¾¸ë©´ ê¸°ì¡´ íŒŒì¼ì„ ëª» ì½ëŠ”ë‹¤)
++const char* SpriteLayerOpName(SpriteLayerOp v);
++const char* SpriteLayerUVName(SpriteLayerUV v);
++const char* SpriteLayerChannelName(SpriteLayerChannel v);
++const char* SpriteLayerParamName(SpriteLayerParam v);
++
++struct SpriteLayer
++{
++    SpriteLayerOp      op = SpriteLayerOp::Off;
++    bool               srgb = false;                     // ìƒ‰ í…ìŠ¤ì²˜ = true, ë§ˆìŠ¤í¬ / ë…¸ì´ì¦ˆ = false (ê²½ë¡œëŠ” SetLayerTexture)
++    SpriteLayerUV      uv = SpriteLayerUV::Quad;
++    SpriteLayerChannel channel = SpriteLayerChannel::RGBA;
++    float2             tiling = { 1.f, 1.f };
++    float2             offset = { 0.f, 0.f };
++    float2             scroll = { 0.f, 0.f };            // uv / ì´ˆ (ParticleMaterial::Time ê¸°ì¤€)
++    bool               wrap = false;                     // ë°˜ë³µ (íƒ€ì¼ë§ / ìŠ¤í¬ë¡¤ í•  ë•Œ)
++    bool               maskBySprite = true;              // Add: ë² ì´ìŠ¤ ëª¨ì–‘ ì•ˆì—ë§Œ ë”í•œë‹¤
++    float3             tint = { 1.f, 1.f, 1.f };         // Multiply / Add ìƒ‰, Erode ê²½ê³„ìƒ‰
++    float              intensity = 1.f;                  // Multiply / AlphaMask = ì„ëŠ” ë¹„ìœ¨, Add / Erode = ë°ê¸°, Distort = uv ì´ë™ëŸ‰
++    SpriteLayerParam   param = SpriteLayerParam::Constant;
++    float2             paramRange = { 1.f, 1.f };        // Constant: x = ê°’ / Param: (ì‹œì‘, ë) -> 0~1 (ë < ì‹œì‘ ì´ë©´ ê±°ê¾¸ë¡œ)
++    float              edgeWidth = 0.05f;                // Erode: ê²½ê³„ ë°œê´‘ í­ (ë§ˆìŠ¤í¬ ê°’ ë‹¨ìœ„)
++    float              softness = 0.02f;                 // Erode: ì˜ë¦¬ëŠ” ê³³ì˜ ë¶€ë“œëŸ¬ìš´ í­
++};
++
++// ì—°ì‚°ë§ˆë‹¤ ì“¸ ë§Œí•œ ì‹œì‘ê°’ (UI ì—ì„œ ì—°ì‚°ì„ ì²˜ìŒ ê³ ë¥¼ ë•Œ)
++SpriteLayer DefaultSpriteLayer(SpriteLayerOp op);
++
++// HLSL SpriteLayerGpu ì™€ ê°™ì€ ë°°ì¹˜ (80 B = 16 B ì¤„ 5ê°œ. cbuffer ë°°ì—´ / StructuredBuffer ì–´ëŠ ìª½ì´ë“  ê°™ì€ ë°°ì¹˜)
++struct SpriteLayerGpu
++{
++    uint32_t op, uv, channel, flags;          // 0
++    float    tiling[2], offset[2];            // 16
++    float    scroll[2], paramRange[2];        // 32
++    float    tint[3], intensity;              // 48
++    uint32_t param, textureIndex;             // 64  textureIndex: ì´ë¯¸í„°ë³„ ê²½ë¡œ = ë ˆì´ì–´ ì¹¸, ì „ì²´ ì •ë ¬ = í…ìŠ¤ì²˜ í‘œ ë²ˆí˜¸
++    float    edgeWidth, softness;             // 72
++};
++static_assert(sizeof(SpriteLayerGpu) == 80, "SpriteLayerGpu 80 B");
++
++constexpr uint32_t kSpriteLayerWrap = 1u;          // HLSL LAYER_FLAG_WRAP
++constexpr uint32_t kSpriteLayerMaskBySprite = 2u;  // HLSL LAYER_FLAG_MASK_BY_SPRITE
++
++// êº¼ì§„ ë ˆì´ì–´ / í…ìŠ¤ì²˜ê°€ ì—†ëŠ” ë ˆì´ì–´ë¥¼ ë¹¼ê³  ì•ìœ¼ë¡œ ëª¨ì€ë‹¤. ë°˜í™˜ = ê°œìˆ˜
++//   sourceIndex[k] = ì›ë˜ ë ˆì´ì–´ ë²ˆí˜¸ (í…ìŠ¤ì²˜ë¥¼ ì°¾ì„ ë•Œ). textureIndex ëŠ” í˜¸ì¶œí•œ ìª½ì´ ì±„ìš´ë‹¤
++uint32_t PackSpriteLayers(const SpriteLayer (&layers)[kMaxSpriteLayers], const bool (&hasTexture)[kMaxSpriteLayers],
++    SpriteLayerGpu (&out)[kMaxSpriteLayers], uint32_t (&sourceIndex)[kMaxSpriteLayers]);
++
++// ë ˆì´ì–´ ìŠ¤í¬ë¡¤ìš© ì‹œê°„ (ì´ˆ). Main ì´ ë§¤ í”„ë ˆì„ ë„£ëŠ”ë‹¤ (Time stop ì´ë©´ ë©ˆì¶¤)
++namespace ParticleMaterial
++{
++    void  SetTime(float seconds);
++    float Time();
++}
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleRenderList.cpp b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleRenderList.cpp
+index 90c9bd5..72340e7 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleRenderList.cpp
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleRenderList.cpp
+@@ -57,10 +57,14 @@ namespace
+ 		float    blendNear;        // 208
+ 		float    blendFar;         // 212
+ 		uint32_t cullEnable;       // 216
+-		float    _pad0;            // 220
++		uint32_t param0Offset;     // 220  MaterialParam0 (ì—°ê²°ì´ ì—†ìœ¼ë©´ defaultParam0)
+ 		float4   frustumPlanes[6]; // 224  ì›”ë“œ ê³µê°„, ì•ˆìª½ì´ +
++		float    defaultParam0;    // 320
++		uint32_t param1Offset;     // 324  MaterialParam1
++		float    defaultParam1;    // 328
++		float    _pad1;            // 332
+ 	};
+-	static_assert(sizeof(GatherConstants) == 320, "GatherConstants 320 B");
++	static_assert(sizeof(GatherConstants) == 336, "GatherConstants 336 B");
+ 	static_assert(offsetof(GatherConstants, defaultColor) == 48, "DefaultColor offset 48");
+ 	static_assert(offsetof(GatherConstants, camPos) == 80, "CamPos offset 80");
+ 	static_assert(offsetof(GatherConstants, camForward) == 96, "CamForward offset 96");
+@@ -71,7 +75,10 @@ namespace
+ 	static_assert(offsetof(GatherConstants, defaultSpriteAlignment) == 176, "DefaultSpriteAlignment offset 176");
+ 	static_assert(offsetof(GatherConstants, pivot) == 192, "Pivot offset 192");
+ 	static_assert(offsetof(GatherConstants, cullEnable) == 216, "CullEnable offset 216");
++	static_assert(offsetof(GatherConstants, param0Offset) == 220, "Param0Offset offset 220");
+ 	static_assert(offsetof(GatherConstants, frustumPlanes) == 224, "FrustumPlanes offset 224");
++	static_assert(offsetof(GatherConstants, defaultParam0) == 320, "DefaultParam0 offset 320");
++	static_assert(offsetof(GatherConstants, param1Offset) == 324, "Param1Offset offset 324");
+ 
+ 	// ParticleListVS.hlsl ì˜ cbuffer ListDrawConstants ì™€ ê°™ì€ ë°°ì¹˜ (ë¹Œë³´ë“œ ì¶•ì€ Gather ê°€ ê³„ì‚°)
+ 	struct alignas(16) DrawConstants
+@@ -81,7 +88,7 @@ namespace
+ 	static_assert(sizeof(DrawConstants) == 64, "DrawConstants 64 B");
+ 
+ 	enum GatherRoot { kGatherCB, kGatherSRVs, kGatherUAVs, kNumGatherRoot };
+-	enum DrawRoot { kDrawCB, kDrawSRVs, kDrawEmitters, kDrawTextures, kNumDrawRoot };
++	enum DrawRoot { kDrawCB, kDrawSRVs, kDrawEmitters, kDrawTextures, kDrawLayers, kDrawPSConstants, kNumDrawRoot };
+ 
+ 	const uint32_t kGatherGroupSize = 256;            // ParticleGatherCS ì˜ numthreads
+ 
+@@ -107,12 +114,12 @@ namespace
+ 		s_GatherPSO.SetComputeShader(g_pParticleGatherCS, sizeof(g_pParticleGatherCS));
+ 		s_GatherPSO.Finalize();
+ 
+-		// VS: b0 = DrawConstants, t0 = RenderParticles, t1 = SortList, t2 = EmitterInfo (ë£¨íŠ¸ SRV)
+-		// PS: t0~t15 (space1) = í…ìŠ¤ì²˜ í‘œ
+-		s_DrawRootSig.Reset(kNumDrawRoot, 1);
++		// VS: b0 = DrawConstants, t0 = RenderParticles, t1 = SortList, t2 = EmitterInfo (ë£¨íŠ¸ SRV, PS ë„ ì½ìŒ)
++		// PS: t0~t31 (space1) = í…ìŠ¤ì²˜ í‘œ, t3 = ë ˆì´ì–´ (ë£¨íŠ¸ SRV), b1 = ì‹œê°„, s0 = clamp, s1 = wrap (ë ˆì´ì–´)
++		s_DrawRootSig.Reset(kNumDrawRoot, 2);
+ 		s_DrawRootSig[kDrawCB].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
+ 		s_DrawRootSig[kDrawSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 2, D3D12_SHADER_VISIBILITY_VERTEX);
+-		s_DrawRootSig[kDrawEmitters].InitAsBufferSRV(2, D3D12_SHADER_VISIBILITY_VERTEX);
++		s_DrawRootSig[kDrawEmitters].InitAsBufferSRV(2, D3D12_SHADER_VISIBILITY_ALL);   // PS ë„ ë ˆì´ì–´ ìˆ˜ë¥¼ ì½ëŠ”ë‹¤
+ 		s_DrawRootSig[kDrawTextures].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, ParticleRenderList::kMaxTextures,
+ 			D3D12_SHADER_VISIBILITY_PIXEL, 1);
+ 
+@@ -120,6 +127,9 @@ namespace
+ 		SamplerDesc particleSampler = SamplerLinearClampDesc;
+ 		particleSampler.MaxLOD = 1.f;
+ 		s_DrawRootSig.InitStaticSampler(0, particleSampler, D3D12_SHADER_VISIBILITY_PIXEL);
++		s_DrawRootSig.InitStaticSampler(1, SamplerLinearWrapDesc, D3D12_SHADER_VISIBILITY_PIXEL);   // ë ˆì´ì–´ ë°˜ë³µ
++		s_DrawRootSig[kDrawLayers].InitAsBufferSRV(3, D3D12_SHADER_VISIBILITY_PIXEL);
++		s_DrawRootSig[kDrawPSConstants].InitAsConstants(1, 4, D3D12_SHADER_VISIBILITY_PIXEL);
+ 
+ 		s_DrawRootSig.Finalize(L"Particle List RootSig");
+ 
+@@ -169,6 +179,7 @@ void ParticleRenderList::Shutdown()
+ 	m_Capacity = 0;
+ 	m_Active = false;
+ 	m_Emitters.clear();
++	m_Layers.clear();
+ 	m_Textures.clear();
+ }
+ 
+@@ -176,6 +187,7 @@ void ParticleRenderList::Begin(GraphicsContext& gfx, const Math::Camera& camera)
+ {
+ 	m_Active = (m_Capacity > 0);
+ 	m_Emitters.clear();
++	m_Layers.clear();
+ 	m_Textures.clear();
+ 	if (!m_Active)
+ 		return;
+@@ -223,6 +235,25 @@ uint32_t ParticleRenderList::TextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv)
+ 	return uint32_t(m_Textures.size() - 1);
+ }
+ 
++uint32_t ParticleRenderList::TryTextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv)
++{
++	for (uint32_t i = 0; i < uint32_t(m_Textures.size()); ++i)
++		if (m_Textures[i].ptr == srv.ptr)
++			return i;
++
++	if (m_Textures.size() >= kMaxTextures)
++	{
++		if (!m_TextureOverflowLogged)
++		{
++			Utility::Printf("[ParticleRenderList] í…ìŠ¤ì²˜ê°€ %u ê°œë¥¼ ë„˜ìŒ -> ë„˜ëŠ” ë ˆì´ì–´ëŠ” ë¹ ì§\n", kMaxTextures);
++			m_TextureOverflowLogged = true;
++		}
++		return kNoTexture;
++	}
++	m_Textures.push_back(srv);
++	return uint32_t(m_Textures.size() - 1);
++}
++
+ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
+ {
+ 	if (!m_Active || src.particles == nullptr || src.capacity == 0 || src.texture.ptr == 0)
+@@ -239,6 +270,21 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
+ 	info.blendMode = src.blendMode;
+ 	info.textureAlpha = src.textureAlpha;
+ 	info.textureIndex = TextureIndex(src.texture);
++
++	// ë ˆì´ì–´: í…ìŠ¤ì²˜ í‘œ ë²ˆí˜¸ë¥¼ ë¶™ì¸ë‹¤. í‘œê°€ ê½‰ ì°¨ë©´ ê·¸ ë ˆì´ì–´ë§Œ ëº€ë‹¤ (ë‹¤ë¥¸ í…ìŠ¤ì²˜ë¡œ ëŒ€ì‹ í•˜ë©´ ì—‰ëš±í•˜ê²Œ ê·¸ë ¤ì§)
++	SpriteLayerGpu layers[kMaxSpriteLayers] = {};
++	uint32_t layerCount = 0;
++	for (uint32_t k = 0; k < (std::min)(src.layerCount, kMaxSpriteLayers); ++k)
++	{
++		const uint32_t index = src.layerTextures[k].ptr ? TryTextureIndex(src.layerTextures[k]) : kNoTexture;
++		if (index == kNoTexture)
++			continue;
++		layers[layerCount] = src.layers[k];
++		layers[layerCount].textureIndex = index;
++		++layerCount;
++	}
++	info.layerCount = layerCount;
++	m_Layers.insert(m_Layers.end(), layers, layers + kMaxSpriteLayers);
+ 	m_Emitters.push_back(info);
+ 
+ 	// ê° ì´ë¯¸í„°ì˜ íŒŒí‹°í´ì´ ì–´ë– í•œ ë°ì´í„°ë¥¼ ê°–ëŠëƒì— ëŒ€í•œ ë‚´ìš©
+@@ -274,6 +320,10 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
+ 	gc.blendNear = src.blendNear;
+ 	gc.blendFar = src.blendFar;
+ 	gc.cullEnable = m_Culling ? 1u : 0u;
++	gc.param0Offset = src.param0Offset;
++	gc.defaultParam0 = src.defaultParam0;
++	gc.param1Offset = src.param1Offset;
++	gc.defaultParam1 = src.defaultParam1;
+ 	for (int k = 0; k < 6; ++k)
+ 		gc.frustumPlanes[k] = { m_FrustumPlanes[k].x, m_FrustumPlanes[k].y, m_FrustumPlanes[k].z, m_FrustumPlanes[k].w };
+ 	const float camRight[3] = { m_CamRight.x, m_CamRight.y, m_CamRight.z };
+@@ -353,5 +403,8 @@ void ParticleRenderList::Render(GraphicsContext& gfx, bool sorted)
+ 		textures[i] = (i < m_Textures.size()) ? m_Textures[i] : m_Textures[0];
+ 	gfx.SetDynamicDescriptors(kDrawTextures, 0, kMaxTextures, textures);
+ 
++	gfx.SetDynamicSRV(kDrawLayers, m_Layers.size() * sizeof(SpriteLayerGpu), m_Layers.data());
++	gfx.SetConstants(kDrawPSConstants, ParticleMaterial::Time(), 0u, 0u, 0u);
++
+ 	gfx.DrawIndirect(m_DrawArgs);
+ }
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleRenderList.h b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleRenderList.h
+index fb6ebfa..8bf1d62 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleRenderList.h
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/ParticleRenderList.h
+@@ -15,7 +15,9 @@
+ 
+ #include "GpuBuffer.h"
+ #include "ModuleDesc.h"
++#include "ParticleMaterial.h"
+ 
++#include <cstddef>
+ #include <cstdint>
+ #include <string>
+ #include <vector>
+@@ -27,7 +29,8 @@ class ParticleRenderList
+ {
+ public:
+ 	static const uint32_t kNoAttribute = 0xFFFFFFFFu;
+-	static const uint32_t kMaxTextures = 16;          // í•œ ëª©ë¡ì—ì„œ ì“¸ ìˆ˜ ìˆëŠ” ì„œë¡œ ë‹¤ë¥¸ í…ìŠ¤ì²˜ ìˆ˜ (ë„˜ìœ¼ë©´ 0 ë²ˆ í…ìŠ¤ì²˜)
++	static const uint32_t kMaxTextures = 32;          // í•œ ëª©ë¡ì˜ ì„œë¡œ ë‹¤ë¥¸ í…ìŠ¤ì²˜ ìˆ˜ (ë² ì´ìŠ¤ + ë ˆì´ì–´). ë„˜ìœ¼ë©´ ë² ì´ìŠ¤ëŠ” 0 ë²ˆ, ë ˆì´ì–´ëŠ” ë¹ ì§
++	static const uint32_t kNoTexture = 0xFFFFFFFFu;
+ 	static const uint32_t kRenderParticleBytes = 64;  // HLSL RenderParticle ê³¼ ê°™ìŒ (ì¤‘ì‹¬ + ìƒ‰ + ë¹Œë³´ë“œ ì¶• 2ê°œ)
+ 
+ 	// ì´ë¯¸í„° í•˜ë‚˜ë¥¼ ëª©ë¡ì— ë„£ì„ ë•Œ í•„ìš”í•œ ì •ë³´ (SpriteRenderer ê°€ ì±„ìš´ë‹¤)
+@@ -48,6 +51,8 @@ public:
+ 		uint32_t velocityOffset = kNoAttribute;
+ 		uint32_t spriteFacingOffset = kNoAttribute;
+ 		uint32_t spriteAlignmentOffset = kNoAttribute;
++		uint32_t param0Offset = kNoAttribute;           // MaterialParam0 (ì—†ìœ¼ë©´ defaultParam0)
++		uint32_t param1Offset = kNoAttribute;           // MaterialParam1
+ 
+ 		float3   defaultPosition = { 0.f, 0.f, 0.f };
+ 		float4   defaultColor = { 1.f, 1.f, 1.f, 1.f };
+@@ -57,6 +62,8 @@ public:
+ 		float3   defaultVelocity = { 0.f, 0.f, 0.f };
+ 		float3   defaultSpriteFacing = { 0.f, 1.f, 0.f };
+ 		float3   defaultSpriteAlignment = { 0.f, 1.f, 0.f };
++		float    defaultParam0 = 0.f;
++		float    defaultParam1 = 0.f;
+ 
+ 		// ë¹Œë³´ë“œ (SpriteSettings ì™€ ê°™ì€ ëœ», ë²ˆí˜¸ = SpriteFacingMode / SpriteAlignment)
+ 		uint32_t facingMode = 0;
+@@ -73,6 +80,11 @@ public:
+ 		uint32_t blendMode = 0;                    // 0 = Translucent, 1 = Additive (SpriteBlendMode)
+ 		uint32_t textureAlpha = 0;				// 0, 1, 2
+ 		D3D12_CPU_DESCRIPTOR_HANDLE texture = {};   // ì´ë¯¸í„° í…ìŠ¤ì²˜ (ê¸°ë³¸ ì›í˜• í¬í•¨)
++
++		// í…ìŠ¤ì²˜ ë ˆì´ì–´ (ì¼œì§„ ê²ƒë§Œ ì•ì—ì„œë¶€í„°. textureIndex ëŠ” Add ê°€ í…ìŠ¤ì²˜ í‘œ ë²ˆí˜¸ë¡œ ë°”ê¾¼ë‹¤)
++		uint32_t                    layerCount = 0;
++		SpriteLayerGpu              layers[kMaxSpriteLayers] = {};
++		D3D12_CPU_DESCRIPTOR_HANDLE layerTextures[kMaxSpriteLayers] = {};
+ 	};
+ 
+ 	// ëª¨ë“  ì´ë¯¸í„° capacity ì˜ í•©ë§Œí¼ ë²„í¼ë¥¼ ì¡ëŠ”ë‹¤. í¬ê¸°ê°€ ë°”ë€Œë©´ GPU idle ìƒíƒœì—ì„œ ë¶ˆëŸ¬ì•¼ í•œë‹¤
+@@ -100,11 +112,13 @@ private:
+ 		uint32_t blendMode;
+ 		uint32_t textureIndex;
+ 		uint32_t textureAlpha;
+-		uint32_t _pad[2];
++		uint32_t layerCount;    // ë ˆì´ì–´ = m_Layers[ì´ë¯¸í„° ë²ˆí˜¸ * kMaxSpriteLayers ...]
++		uint32_t _pad;
+ 	};
+ 	static_assert(sizeof(EmitterInfo) == 32, "EmitterInfo 32 B");
+ 
+ 	uint32_t TextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv);
++	uint32_t TryTextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv);   // í‘œê°€ ê½‰ ì°¨ë©´ kNoTexture (0 ë²ˆìœ¼ë¡œ ëŒ€ì‹ í•˜ì§€ ì•ŠìŒ)
+ 
+ 	ByteAddressBuffer  m_RenderParticles;   // RenderParticle x capacity
+ 	ByteAddressBuffer  m_SortList;          // uint2(ëª©ë¡ ë²ˆí˜¸, ê¹Šì´ í‚¤) x capacity
+@@ -123,6 +137,7 @@ private:
+ 	bool                m_Culling = false;
+ 
+ 	std::vector<EmitterInfo>                 m_Emitters;
++	std::vector<SpriteLayerGpu>              m_Layers;     // ì´ë¯¸í„°ë§ˆë‹¤ kMaxSpriteLayers ì¹¸ (ë¹ˆ ì¹¸ì€ 0)
+ 	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> m_Textures;
+ 	bool                                     m_TextureOverflowLogged = false;
+ };
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleGatherCS.hlsl b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleGatherCS.hlsl
+index 015c6a0..800575f 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleGatherCS.hlsl
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleGatherCS.hlsl
+@@ -6,7 +6,7 @@
+ #include "ParticleListCommon.hlsli"
+ #include "SpriteFacing.hlsli"
+ 
+-// C++ GatherConstants ¿Í °°Àº ¹èÄ¡ (320 B)
++// C++ GatherConstants ¿Í °°Àº ¹èÄ¡ (336 B)
+ cbuffer GatherConstants : register(b0)
+ {
+     uint PositionOffset; // 0   ¼Ó¼º ¿­ offset (ÆÄÆ¼Å¬ ÇÏ³ª ±âÁØ ¹ÙÀÌÆ®), NO_ATTRIBUTE = ±âº»°ª
+@@ -44,8 +44,12 @@ cbuffer GatherConstants : register(b0)
+     float BlendNear; // 208
+     float BlendFar; // 212
+     uint CullEnable; // 216  0 = ÄÃ¸µ ¾È ÇÔ (ÀüºÎ append)
+-    float _Pad0; // 220
++    uint Param0Offset; // 220  MaterialParam0 ¹ÙÀÎµù (¿¬°áÀÌ ¾øÀ¸¸é DefaultParam0)
+     float4 FrustumPlanes[6]; // 224  ¿ùµå °ø°£, ¾ÈÂÊÀÌ + (dot(n, p) + d >= 0), Á¤±ÔÈ­µÊ
++    float DefaultParam0; // 320
++    uint Param1Offset; // 324  MaterialParam1
++    float DefaultParam1; // 328
++    float _Pad1; // 332
+ };
+ 
+ ByteAddressBuffer ParticleData : register(t0);
+@@ -132,6 +136,7 @@ void main(uint3 dtid : SV_DispatchThreadID)
+         p.Color = ReadF4(ColorOffset, i, DefaultColor);
+         p.SubImage = ReadF1(SubImageOffset, i, DefaultSubImage);
+         p.EmitterIndex = EmitterIndex;
++        p.MaterialParams = PackMaterialParams(float2(ReadF1(Param0Offset, i, DefaultParam0), ReadF1(Param1Offset, i, DefaultParam1)));
+ 
+         // ±íÀÌ´Â ÆÄÆ¼Å¬ À§Ä¡ ±âÁØ (ÇÇ¹ş / Ä«¸Ş¶ó ¿ÀÇÁ¼Â°ú »ó°ü¾øÀÌ ¼ø¼­°¡ °°°Ô)
+         depth = dot(s.Position - CamPos, CamForward);
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListCommon.hlsli b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListCommon.hlsli
+index 2b9012b..d83b8a7 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListCommon.hlsli
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListCommon.hlsli
+@@ -7,7 +7,7 @@
+ //   0  float3 Center     12 float SubImage
+ //   16 float4 Color
+ //   32 float3 AxisX      44 uint  EmitterIndex
+-//   48 float3 AxisY      60 (pad)
++//   48 float3 AxisY      60 uint  MaterialParams (MaterialParam0 / 1 À» half 2 °³·Î)
+ #define RENDER_PARTICLE_BYTES 64
+ 
+ struct RenderParticle
+@@ -18,15 +18,20 @@ struct RenderParticle
+     float3 AxisX; // °¡·Î ¹İ Ãà (corner.x ¸¦ °öÇÔ)
+     uint EmitterIndex;
+     float3 AxisY; // ¼¼·Î ¹İ Ãà
++    uint MaterialParams; // PackMaterialParams
+ };
+ 
++// half Á¤¹Ğµµ (0~1 ±ÙÃ³¿¡¼­ ¾à 0.0005). ·¹ÀÌ¾î ¼¼±â ¿ëµµ¶ó ÃæºĞÇÏ´Ù
++uint PackMaterialParams(float2 p) { return f32tof16(p.x) | (f32tof16(p.y) << 16); }
++float2 UnpackMaterialParams(uint v) { return float2(f16tof32(v & 0xFFFF), f16tof32(v >> 16)); }
++
+ void StoreRenderParticle(RWByteAddressBuffer buf, uint slot, RenderParticle p)
+ {
+     const uint a = slot * RENDER_PARTICLE_BYTES;
+     buf.Store4(a + 0, uint4(asuint(p.Center), asuint(p.SubImage)));
+     buf.Store4(a + 16, asuint(p.Color));
+     buf.Store4(a + 32, uint4(asuint(p.AxisX), p.EmitterIndex));
+-    buf.Store4(a + 48, uint4(asuint(p.AxisY), 0));
++    buf.Store4(a + 48, uint4(asuint(p.AxisY), p.MaterialParams));
+ }
+ 
+ RenderParticle LoadRenderParticle(ByteAddressBuffer buf, uint slot)
+@@ -35,18 +40,20 @@ RenderParticle LoadRenderParticle(ByteAddressBuffer buf, uint slot)
+     const uint4 v0 = buf.Load4(a + 0);
+     const uint4 v1 = buf.Load4(a + 16);
+     const uint4 v2 = buf.Load4(a + 32);
+-    const uint3 v3 = buf.Load3(a + 48);
++    const uint4 v3 = buf.Load4(a + 48);
+     RenderParticle p;
+     p.Center = asfloat(v0.xyz);
+     p.SubImage = asfloat(v0.w);
+     p.Color = asfloat(v1);
+     p.AxisX = asfloat(v2.xyz);
+     p.EmitterIndex = v2.w;
+-    p.AxisY = asfloat(v3);
++    p.AxisY = asfloat(v3.xyz);
++    p.MaterialParams = v3.w;
+     return p;
+ }
+ 
+ // ÀÌ¹ÌÅÍº° ±×¸®±â ¼³Á¤ (C++ ParticleRenderList::EmitterInfo, 32 ¹ÙÀÌÆ®)
++//   ·¹ÀÌ¾î´Â µû·Î StructuredBuffer<SpriteLayerGpu> (ÀÌ¹ÌÅÍ ¹øÈ£ * MAX_SPRITE_LAYERS ºÎÅÍ LayerCount °³)
+ struct EmitterInfo
+ {
+     uint SubImageCols;
+@@ -55,5 +62,6 @@ struct EmitterInfo
+     uint BlendMode; // 0 = Translucent, 1 = Additive
+     uint TextureIndex;
+     uint TextureAlpha;
+-    uint2 _Pad;
++    uint LayerCount;
++    uint _Pad;
+ };
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListPS.hlsl b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListPS.hlsl
+index d6828fd..89d6ce7 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListPS.hlsl
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListPS.hlsl
+@@ -1,8 +1,17 @@
+-#include "SpriteAlpha.hlsli"
+-#define MAX_TEXTURES 16 // C++ ParticleRenderList::kMaxTextures
++#include "SpriteMaterial.hlsli"
++#include "ParticleListCommon.hlsli"
++#define MAX_TEXTURES 32 // C++ ParticleRenderList::kMaxTextures (º£ÀÌ½º + ·¹ÀÌ¾î ÅØ½ºÃ³)
+ 
+ Texture2D<float4> SpriteTextures[MAX_TEXTURES] : register(t0, space1);
++StructuredBuffer<EmitterInfo> Emitters : register(t2); // VS ¿Í °°Àº ·çÆ® SRV (PS ¿¡¼­µµ º¸ÀÌ°Ô ÇÔ)
++StructuredBuffer<SpriteLayerGpu> Layers : register(t3); // ÀÌ¹ÌÅÍ¸¶´Ù MAX_SPRITE_LAYERS Ä­
+ SamplerState LinearClamp : register(s0);
++SamplerState LinearWrap : register(s1);
++
++cbuffer ListPSConstants : register(b1)
++{
++    float Time; // ·¹ÀÌ¾î ½ºÅ©·Ñ (ÃÊ)
++};
+ 
+ struct PSInput
+ {
+@@ -13,21 +22,54 @@ struct PSInput
+     nointerpolation uint textureIndex : TEXCOORD2;
+     nointerpolation uint blendMode : TEXCOORD3;
+     nointerpolation uint textureAlpha : TEXCOORD4;
++    float2 quadUV : TEXCOORD5;
++    nointerpolation uint emitterIndex : TEXCOORD6;
++    nointerpolation float2 params : TEXCOORD7;
+ };
+ 
++// ÇÑ draw ¾È¿¡¼­ ÀÌ¹ÌÅÍ¸¶´Ù ÅØ½ºÃ³°¡ ´Ş¶ó¼­ non-uniform ÀÎµ¦½º
++float4 SampleLayer(SpriteLayerGpu L, float2 uv)
++{
++    const uint t = NonUniformResourceIndex(L.TextureIndex);
++    return (L.Flags & LAYER_FLAG_WRAP) ? SpriteTextures[t].Sample(LinearWrap, uv) : SpriteTextures[t].Sample(LinearClamp, uv);
++}
++
+ float4 main(PSInput input) : SV_TARGET
+ {
+-    // ÇÑ draw ¾È¿¡¼­ ÀÌ¹ÌÅÍ¸¶´Ù ÅØ½ºÃ³°¡ ´Ş¶ó¼­ non-uniform ÀÎµ¦½º
++    const EmitterInfo e = Emitters[input.emitterIndex];
++    const uint layerBase = input.emitterIndex * MAX_SPRITE_LAYERS;
++
++    // 1) Distort ·¹ÀÌ¾î: º£ÀÌ½º¿Í µÚ ·¹ÀÌ¾îÀÇ uv ¸¦ ¹Î´Ù
++    float2 distort = 0.f;
++    for (uint d = 0; d < e.LayerCount; ++d)
++    {
++        const SpriteLayerGpu L = Layers[layerBase + d];
++        if (L.Op == LAYER_DISTORT)
++        {
++            const float4 s = SampleLayer(L, LayerUV(L, input.quadUV, input.uv.xy, Time, 0.f));
++            distort += DistortOffset(L, s, LayerParam(L, input.params));
++        }
++    }
++
++    // 2) º£ÀÌ½º ÅØ½ºÃ³ (·¹ÀÌ¾î°¡ ¾øÀ¸¸é ¿¹Àü°ú °°Àº °á°ú)
+     const uint t = NonUniformResourceIndex(input.textureIndex);
+-    const float4 tex0 = SpriteTextures[t].Sample(LinearClamp, input.uv.xy);
+-    const float4 tex1 = SpriteTextures[t].Sample(LinearClamp, input.uv.zw);
++    const float4 tex0 = SpriteTextures[t].Sample(LinearClamp, input.uv.xy + distort);
++    const float4 tex1 = SpriteTextures[t].Sample(LinearClamp, input.uv.zw + distort);
+     const float4 tex = lerp(tex0, tex1, input.blend);
+ 
+-    const float a = input.color.a * tex.a;
+-    const float3 rgb = input.color.rgb * tex.rgb * a;
+-
+     // premultiplied ºí·»µå: Additive ´Â alpha 0 (µÚ¸¦ Áö¿ìÁö ¾Ê°í ´õÇÏ±â¸¸)
+-    
+-    return ResolveSpriteColor(input.color, tex, input.textureAlpha, input.blendMode);
++    float4 result = ResolveSpriteColor(input.color, tex, input.textureAlpha, input.blendMode);
++    const float coverage = SpriteCoverage(input.color, tex, input.textureAlpha);
+ 
++    // 3) ³ª¸ÓÁö ·¹ÀÌ¾î¸¦ ¼ø¼­´ë·Î
++    for (uint k = 0; k < e.LayerCount; ++k)
++    {
++        const SpriteLayerGpu L = Layers[layerBase + k];
++        if (L.Op != LAYER_DISTORT)
++        {
++            const float4 s = SampleLayer(L, LayerUV(L, input.quadUV, input.uv.xy, Time, distort));
++            result = ApplyLayer(result, coverage, L, s, LayerParam(L, input.params));
++        }
++    }
++    return result;
+ }
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListVS.hlsl b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListVS.hlsl
+index 624f72e..ec5e947 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListVS.hlsl
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleListVS.hlsl
+@@ -21,6 +21,9 @@ struct VSOutput
+     nointerpolation uint textureIndex : TEXCOORD2;
+     nointerpolation uint blendMode : TEXCOORD3;
+     nointerpolation uint textureAlpha : TEXCOORD4;
++    float2 quadUV : TEXCOORD5; // »ç°¢Çü uv (·¹ÀÌ¾î¿ë, SubUV ¿Í ¹«°ü)
++    nointerpolation uint emitterIndex : TEXCOORD6; // PS °¡ EmitterInfo / ·¹ÀÌ¾î¸¦ ÀĞ´Â´Ù
++    nointerpolation float2 params : TEXCOORD7; // MaterialParam0 / 1
+ };
+ 
+ static const float2 kCorners[6] =
+@@ -59,5 +62,8 @@ VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
+     output.textureIndex = e.TextureIndex;
+     output.blendMode = e.BlendMode;
+     output.textureAlpha = e.TextureAlpha;
++    output.quadUV = uv;
++    output.emitterIndex = p.EmitterIndex;
++    output.params = UnpackMaterialParams(p.MaterialParams);
+     return output;
+ }
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleSpritePS.hlsl b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleSpritePS.hlsl
+index d0bba7b..ca76b53 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleSpritePS.hlsl
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleSpritePS.hlsl
+@@ -1,12 +1,18 @@
+-#include "SpriteAlpha.hlsli"
++#include "SpriteMaterial.hlsli"
+ 
+ Texture2D<float4> SpriteTexture : register(t2); // t0, t1 Àº VS (ÆÄÆ¼Å¬ / Á¤·Ä ÀÎµ¦½º)
++Texture2D<float4> LayerTextures[MAX_SPRITE_LAYERS] : register(t3); // t3 ~ t6 = ÄÑÁø ·¹ÀÌ¾î ¼ø¼­ (¾ø´Â Ä­Àº ÀĞÁö ¾ÊÀ½)
+ SamplerState LinearClamp : register(s0);
++SamplerState LinearWrap : register(s1);    // ·¹ÀÌ¾î ¹İº¹ (Å¸ÀÏ¸µ / ½ºÅ©·Ñ)
+ 
++// C++ SpritePSConstants ¿Í °°Àº ¹èÄ¡ (336 B)
+ cbuffer SpritePSConstants : register(b1)
+ {
+     uint BlendMode; // 0 = Translucent, 1 = Additive
+     uint TextureAlpha; // 0 = Straight, 1 = Premultiplied, 2 = FromLuminance
++    uint LayerCount; // ÄÑÁø ·¹ÀÌ¾î ¼ö (¾Õ¿¡¼­ºÎÅÍ)
++    float Time; // ·¹ÀÌ¾î ½ºÅ©·Ñ (ÃÊ)
++    SpriteLayerGpu Layers[MAX_SPRITE_LAYERS];
+ };
+ 
+ struct PSInput
+@@ -15,14 +21,49 @@ struct PSInput
+     float4 color : COLOR0;
+     float4 uv : TEXCOORD0;
+     nointerpolation float blend : TEXCOORD1;
++    float2 quadUV : TEXCOORD2;
++    nointerpolation float2 params : TEXCOORD3; // MaterialParam0 / 1
+ };
+ 
++// ·¹ÀÌ¾î Ä­ ¹øÈ£´Â ÆîÄ£ ·çÇÁÀÇ »ó¼ö¶ó ÅØ½ºÃ³ ¹è¿­À» ¹Ù·Î °í¸¦ ¼ö ÀÖ´Ù
++float4 SampleLayer(uint k, float2 uv, uint flags)
++{
++    return (flags & LAYER_FLAG_WRAP) ? LayerTextures[k].Sample(LinearWrap, uv) : LayerTextures[k].Sample(LinearClamp, uv);
++}
++
+ float4 main(PSInput input) : SV_TARGET
+ {
+-    const float4 tex0 = SpriteTexture.Sample(LinearClamp, input.uv.xy);
+-    const float4 tex1 = SpriteTexture.Sample(LinearClamp, input.uv.zw);
+-    float4 tex = lerp(tex0, tex1, input.blend);
+-    
+-    
+-    return ResolveSpriteColor(input.color, tex, TextureAlpha, BlendMode);
++    // 1) Distort ·¹ÀÌ¾î: º£ÀÌ½º¿Í µÚ ·¹ÀÌ¾îÀÇ uv ¸¦ ¹Î´Ù
++    float2 distort = 0.f;
++    [unroll]
++    for (uint d = 0; d < MAX_SPRITE_LAYERS; ++d)
++    {
++        if (d < LayerCount && Layers[d].Op == LAYER_DISTORT)
++        {
++            const SpriteLayerGpu L = Layers[d];
++            const float4 s = SampleLayer(d, LayerUV(L, input.quadUV, input.uv.xy, Time, 0.f), L.Flags);
++            distort += DistortOffset(L, s, LayerParam(L, input.params));
++        }
++    }
++
++    // 2) º£ÀÌ½º ÅØ½ºÃ³ (·¹ÀÌ¾î°¡ ¾øÀ¸¸é ¿¹Àü°ú °°Àº °á°ú)
++    const float4 tex0 = SpriteTexture.Sample(LinearClamp, input.uv.xy + distort);
++    const float4 tex1 = SpriteTexture.Sample(LinearClamp, input.uv.zw + distort);
++    const float4 tex = lerp(tex0, tex1, input.blend);
++
++    float4 result = ResolveSpriteColor(input.color, tex, TextureAlpha, BlendMode);
++    const float coverage = SpriteCoverage(input.color, tex, TextureAlpha);
++
++    // 3) ³ª¸ÓÁö ·¹ÀÌ¾î¸¦ ¼ø¼­´ë·Î
++    [unroll]
++    for (uint k = 0; k < MAX_SPRITE_LAYERS; ++k)
++    {
++        if (k < LayerCount && Layers[k].Op != LAYER_DISTORT)
++        {
++            const SpriteLayerGpu L = Layers[k];
++            const float4 s = SampleLayer(k, LayerUV(L, input.quadUV, input.uv.xy, Time, distort), L.Flags);
++            result = ApplyLayer(result, coverage, L, s, LayerParam(L, input.params));
++        }
++    }
++    return result;
+ }
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleSpriteVS.hlsl b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleSpriteVS.hlsl
+index e6546d4..9f85330 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleSpriteVS.hlsl
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/ParticleSpriteVS.hlsl
+@@ -2,7 +2,7 @@
+ 
+ #define NO_ATTRIBUTE 0xFFFFFFFF
+ 
+-// C++ SpriteConstants ¿Í °°Àº ¹èÄ¡ (304 B)
++// C++ SpriteConstants ¿Í °°Àº ¹èÄ¡ (320 B)
+ cbuffer SpriteConstants : register(b0)
+ {
+     float4x4 ViewProj; // 0
+@@ -46,7 +46,11 @@ cbuffer SpriteConstants : register(b0)
+     float VelocityStretch; // 284
+     float BlendNear; // 288
+     float BlendFar; // 292
+-    float2 _Pad; // 296
++    uint Param0Offset; // 296 MaterialParam0 ¹ÙÀÎµù (¿¬°áÀÌ ¾øÀ¸¸é DefaultParam0)
++    float DefaultParam0; // 300
++    uint Param1Offset; // 304 MaterialParam1
++    float DefaultParam1; // 308
++    float2 _Pad; // 312
+ };
+ 
+ ByteAddressBuffer ParticleData : register(t0);
+@@ -59,6 +63,8 @@ struct VSOutput
+     float4 color : COLOR0;
+     float4 uv : TEXCOORD0; // xy = ÇöÀç ÇÁ·¹ÀÓ uv, zw = ´ÙÀ½ ÇÁ·¹ÀÓ uv
+     nointerpolation float blend : TEXCOORD1; // ´ÙÀ½ ÇÁ·¹ÀÓ ºñÀ² (0 = ÇöÀç ÇÁ·¹ÀÓ¸¸)
++    float2 quadUV : TEXCOORD2; // »ç°¢Çü uv (SubUV ¿Í ¹«°ü, µğÁ¹ºê ¸¶½ºÅ©¿ë)
++    nointerpolation float2 params : TEXCOORD3; // MaterialParam0 / 1 (·¹ÀÌ¾î ¼¼±â·Î ¹Ù²Ù´Â °ÍÀº PS)
+ };
+ 
+ static const float2 kCorners[6] =
+@@ -135,5 +141,7 @@ VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
+     const uint frame1 = (frame0 + 1) % total;
+     output.uv = float4(SubImageUV(frame0, uv), SubImageUV(frame1, uv));
+     output.blend = SubUVBlend ? frac(index) : 0.f;
++    output.quadUV = uv;
++    output.params = float2(ReadF1(Param0Offset, idx, DefaultParam0), ReadF1(Param1Offset, idx, DefaultParam1));
+     return output;
+ }
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/SpriteMaterial.hlsli b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/SpriteMaterial.hlsli
+new file mode 100644
+index 0000000..aecc9ee
+--- /dev/null
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/Shaders/SpriteMaterial.hlsli
+@@ -0,0 +1,138 @@
++// ½ºÇÁ¶óÀÌÆ® ÅØ½ºÃ³ ·¹ÀÌ¾î (ParticleSpritePS / ParticleListPS °ø¿ë). C++ ParticleMaterial.h ¿Í °°Àº Á¤ÀÇ
++//   PS ¼ø¼­: 1) Distort ·¹ÀÌ¾î·Î uv ÀÌµ¿·® °è»ê -> 2) º£ÀÌ½º ÅØ½ºÃ³ (ÀÌµ¿µÈ uv) -> 3) ³ª¸ÓÁö ·¹ÀÌ¾î¸¦ ¼ø¼­´ë·Î Àû¿ë
++//   ¸ğµç °ªÀº premultiplied ±âÁØ (BlendPreMultiplied)
++#ifndef SPRITE_MATERIAL_HLSLI
++#define SPRITE_MATERIAL_HLSLI
++
++#include "SpriteAlpha.hlsli"
++
++#define MAX_SPRITE_LAYERS 4
++
++#define LAYER_OFF        0
++#define LAYER_MULTIPLY   1
++#define LAYER_ADD        2
++#define LAYER_ALPHA_MASK 3
++#define LAYER_ERODE      4
++#define LAYER_DISTORT    5
++
++#define LAYER_UV_QUAD    0
++#define LAYER_UV_SUBUV   1
++
++#define CHANNEL_RGBA      0
++#define CHANNEL_R         1
++#define CHANNEL_G         2
++#define CHANNEL_B         3
++#define CHANNEL_A         4
++#define CHANNEL_LUMINANCE 5
++
++#define PARAM_CONSTANT 0
++#define PARAM_0        1
++#define PARAM_1        2
++
++#define LAYER_FLAG_WRAP           1
++#define LAYER_FLAG_MASK_BY_SPRITE 2
++
++// C++ SpriteLayerGpu ¿Í °°Àº ¹èÄ¡ (80 B, 16 B ÁÙ 5°³)
++struct SpriteLayerGpu
++{
++    uint Op;
++    uint UV;
++    uint Channel;
++    uint Flags;
++    float2 Tiling;
++    float2 Offset;
++    float2 Scroll;
++    float2 ParamRange;
++    float3 Tint;
++    float Intensity;
++    uint Param;
++    uint TextureIndex; // ÀÌ¹ÌÅÍº° °æ·Î = ·¹ÀÌ¾î Ä­, ÀüÃ¼ Á¤·Ä °æ·Î = ÅØ½ºÃ³ Ç¥ ¹øÈ£
++    float EdgeWidth;
++    float Softness;
++};
++
++// ºí·»µå ¸ğµå¿Í »ó°ü¾ø´Â ½ºÇÁ¶óÀÌÆ® ºÒÅõ¸íµµ (¹ß±¤À» ½ºÇÁ¶óÀÌÆ® ¸ğ¾ç ¾È¿¡¸¸ ³ÖÀ» ¶§)
++float SpriteCoverage(float4 color, float4 tex, uint alphaMode)
++{
++    const float a = (alphaMode == ALPHA_FROM_LUMINANCE) ? max(tex.r, max(tex.g, tex.b)) : tex.a;
++    return saturate(color.a * a);
++}
++
++float4 SelectChannel(float4 s, uint channel)
++{
++    if (channel == CHANNEL_R) return s.rrrr;
++    if (channel == CHANNEL_G) return s.gggg;
++    if (channel == CHANNEL_B) return s.bbbb;
++    if (channel == CHANNEL_A) return s.aaaa;
++    if (channel == CHANNEL_LUMINANCE) return dot(s.rgb, float3(0.299f, 0.587f, 0.114f)).xxxx;
++    return s;
++}
++
++// ·¹ÀÌ¾î ¼¼±â 0~1 (Constant ´Â ParamRange.x ±×´ë·Î). params = (MaterialParam0, MaterialParam1)
++float LayerParam(SpriteLayerGpu L, float2 params)
++{
++    if (L.Param == PARAM_CONSTANT)
++        return L.ParamRange.x;
++    const float v = (L.Param == PARAM_1) ? params.y : params.x;
++    const float span = L.ParamRange.y - L.ParamRange.x;
++    if (abs(span) < 1e-4f)
++        return (v >= L.ParamRange.x) ? 1.f : 0.f;
++    return saturate((v - L.ParamRange.x) / span);
++}
++
++float2 LayerUV(SpriteLayerGpu L, float2 quadUV, float2 frameUV, float time, float2 distort)
++{
++    const float2 base = (L.UV == LAYER_UV_SUBUV) ? frameUV : quadUV;
++    return base * L.Tiling + L.Offset + L.Scroll * time + distort;
++}
++
++// Distort: rg (0~1) -> ¹æÇâ (-1~1) x ¼¼±â
++float2 DistortOffset(SpriteLayerGpu L, float4 s, float p)
++{
++    const float2 v = SelectChannel(s, L.Channel).rg;
++    return (v * 2.f - 1.f) * (L.Intensity * p);
++}
++
++// Erode: ¸¶½ºÅ© < ÁøÇàµµ ÀÎ °÷ºÎÅÍ »ç¶óÁö°í °æ°è¿¡ Tint x Intensity ¸¦ ´õÇÑ´Ù (ÁøÇàµµ 0 = ±×´ë·Î, 1 = ÀüºÎ »ç¶óÁü)
++float4 ErodeLayer(float4 premul, float coverage, float mask, float progress, SpriteLayerGpu L)
++{
++    const float w = max(L.EdgeWidth, 0.f);
++    const float s = max(L.Softness, 1e-4f);
++    const float dist = mask - progress * (1.f + w + s) + w + s;
++    const float keep = saturate(dist / s);
++    const float edge = (w > 0.f) ? 1.f - saturate((dist - s) / w) : 0.f;
++
++    float4 o = premul * keep;
++    o.rgb += L.Tint * (L.Intensity * edge * keep * coverage);
++    return o;
++}
++
++// Distort ¸¦ »« ¿¬»ê. s = ·¹ÀÌ¾î ÅØ½ºÃ³ »ùÇÃ, p = LayerParam
++float4 ApplyLayer(float4 premul, float coverage, SpriteLayerGpu L, float4 s, float p)
++{
++    const float4 v = SelectChannel(s, L.Channel);
++    const float scalar = (L.Channel == CHANNEL_RGBA) ? v.r : v.x;
++
++    if (L.Op == LAYER_MULTIPLY)
++    {
++        premul.rgb *= lerp(float3(1.f, 1.f, 1.f), v.rgb * L.Tint, saturate(L.Intensity * p));
++    }
++    else if (L.Op == LAYER_ADD)
++    {
++        const float a = (L.Channel == CHANNEL_RGBA) ? v.a : 1.f;
++        const float m = (L.Flags & LAYER_FLAG_MASK_BY_SPRITE) ? coverage : 1.f;
++        premul.rgb += v.rgb * L.Tint * (L.Intensity * p * a * m);
++    }
++    else if (L.Op == LAYER_ALPHA_MASK)
++    {
++        const float m = (L.Channel == CHANNEL_RGBA) ? v.a : v.x;
++        premul *= lerp(1.f, m, saturate(L.Intensity * p));
++    }
++    else if (L.Op == LAYER_ERODE)
++    {
++        premul = ErodeLayer(premul, coverage, scalar, p, L);
++    }
++    return premul;
++}
++
++#endif // SPRITE_MATERIAL_HLSLI
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/SpriteRenderer.cpp b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/SpriteRenderer.cpp
+index f82c5ce..1b7bb6d 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/SpriteRenderer.cpp
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/SpriteRenderer.cpp
+@@ -74,9 +74,13 @@ namespace
+ 		float               velocityStretch;        // 284
+ 		float               blendNear;              // 288
+ 		float               blendFar;               // 292
+-		float               _pad[2];                // 296
++		uint32_t            param0Offset;           // 296  MaterialParam0 (¿¬°áÀÌ ¾øÀ¸¸é defaultParam0)
++		float               defaultParam0;          // 300
++		uint32_t            param1Offset;           // 304  MaterialParam1
++		float               defaultParam1;          // 308
++		float               _pad[2];                // 312
+ 	};
+-	static_assert(sizeof(SpriteConstants) == 304, "HLSL cbuffer SpriteConstants(304 B)¿Í ÀÏÄ¡ÇØ¾ß ÇÔ");
++	static_assert(sizeof(SpriteConstants) == 320, "HLSL cbuffer SpriteConstants(320 B)¿Í ÀÏÄ¡ÇØ¾ß ÇÔ");
+ 	static_assert(offsetof(SpriteConstants, positionOffset) == 128, "PositionOffset offset 128");
+ 	static_assert(offsetof(SpriteConstants, defaultColor) == 144, "DefaultColor offset 144");
+ 	static_assert(offsetof(SpriteConstants, sortEnabled) == 176, "SortEnabled offset 176");
+@@ -87,6 +91,20 @@ namespace
+ 	static_assert(offsetof(SpriteConstants, defaultSpriteAlignment) == 256, "DefaultSpriteAlignment offset 256");
+ 	static_assert(offsetof(SpriteConstants, pivot) == 272, "Pivot offset 272");
+ 	static_assert(offsetof(SpriteConstants, blendFar) == 292, "BlendFar offset 292");
++	static_assert(offsetof(SpriteConstants, param0Offset) == 296, "Param0Offset offset 296");
++	static_assert(offsetof(SpriteConstants, param1Offset) == 304, "Param1Offset offset 304");
++
++	// HLSL ParticleSpritePS ÀÇ cbuffer SpritePSConstants (b1) ¿Í °°Àº ¹èÄ¡ (SetDynamicConstantBufferView °¡ 16 B Á¤·ÄÀ» ¿ä±¸)
++	struct alignas(16) SpritePSConstants
++	{
++		uint32_t       blendMode;                   // 0
++		uint32_t       textureAlpha;                // 4
++		uint32_t       layerCount;                  // 8
++		float          time;                        // 12
++		SpriteLayerGpu layers[kMaxSpriteLayers];    // 16  (80 B ¾¿)
++	};
++	static_assert(sizeof(SpritePSConstants) == 336, "SpritePSConstants 336 B");
++	static_assert(offsetof(SpritePSConstants, layers) == 16, "Layers offset 16");
+ 
+ 	// GPU Á¤·Ä Å° »ı¼º (ParticleSortKeyCS.hlsl ÀÇ cbuffer SortKeyConstants ¿Í °°Àº ¹èÄ¡)
+ 	struct SortKeyConstants
+@@ -108,6 +126,7 @@ namespace
+ 
+ 
+ 	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kNumRootParams };
++	static const uint32_t kNumPSTextures = 1 + kMaxSpriteLayers;   // t2 = ½ºÇÁ¶óÀÌÆ®, t3 ~ t6 = ·¹ÀÌ¾î (ÄÑÁø ¼ø¼­)
+ 	static const uint32_t kNumSRVs = 2;
+ 
+ 	// ·çÆ® ½Ã±×´ÏÃ³ / PSO ´Â ¸ğµç SpriteRenderer °¡ °°ÀÌ ¾´´Ù (ÇÑ ¹ø¸¸ ¸¸µç´Ù)
+@@ -150,20 +169,22 @@ namespace
+ 		if (s_PipelineReady)
+ 			return;
+ 
+-		s_RootSig.Reset(kNumRootParams, 1);
++		s_RootSig.Reset(kNumRootParams, 2);
+ 		s_RootSig[kRootCBV].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
+ 		s_RootSig[kRootSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, kNumSRVs, D3D12_SHADER_VISIBILITY_VERTEX);
+ 		
+ 		// ÅØ½ºÃ³ ¹× »ùÇÃ·¯ ¼³Á¤
+-		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1, D3D12_SHADER_VISIBILITY_PIXEL);
++		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, kNumPSTextures, D3D12_SHADER_VISIBILITY_PIXEL);
+ 
+ 		// SubUV ¾ÆÆ²¶ó½º: ³ôÀº ¹Ó¿¡¼­ ÀÌ¿ô ÇÁ·¹ÀÓÀÌ ¼¯ÀÌ¹Ç·Î ¹Ó 4 ±îÁö¸¸ »ç¿ë
+ 		SamplerDesc particleSampler = SamplerLinearClampDesc;   // °ø¿ë ¼³Á¤Àº °Çµå¸®Áö ¾Ê°í º¹»çº»
+ 		particleSampler.MaxLOD = 1.f;
+ 		s_RootSig.InitStaticSampler(0, particleSampler, D3D12_SHADER_VISIBILITY_PIXEL);
++		s_RootSig.InitStaticSampler(1, SamplerLinearWrapDesc, D3D12_SHADER_VISIBILITY_PIXEL);   // ·¹ÀÌ¾î ¹İº¹ (Å¸ÀÏ¸µ / ½ºÅ©·Ñ)
+ 
+ 		// Blendmode »ó¼ö¹öÆÛ ¼³Á¤
+-		s_RootSig[kRootPSConstants].InitAsConstants(1, 2, D3D12_SHADER_VISIBILITY_PIXEL);
++		// PS »ó¼ö (ºí·»µå / ¾ËÆÄ / ·¹ÀÌ¾î). ·çÆ® »ó¼ö·Î´Â ³Ê¹« Ä¿¼­ CBV
++		s_RootSig[kRootPSConstants].InitAsConstantBuffer(1, D3D12_SHADER_VISIBILITY_PIXEL);
+ 		
+ 		
+ 		s_RootSig.Finalize(L"Particle Sprite RootSig");
+@@ -214,7 +235,10 @@ RendererDesc SpriteRenderer::Desc()
+ 		MakeRenderBinding<float>("SpriteRotation",   Particles::SpriteRotation,  0.f),
+ 		MakeRenderBinding<float3>("Velocity",        Particles::Velocity,        float3{ 0.f, 0.f, 0.f }),
+ 		MakeRenderBinding<float3>("SpriteFacing",    Particles::SpriteFacing,    float3{ 0.f, 1.f, 0.f }),
+-		MakeRenderBinding<float3>("SpriteAlignment", Particles::SpriteAlignment, float3{ 0.f, 1.f, 0.f })
++		MakeRenderBinding<float3>("SpriteAlignment", Particles::SpriteAlignment, float3{ 0.f, 1.f, 0.f }),
++		// ·¹ÀÌ¾î ¼¼±â: ±âº»Àº ¿¬°á ¾øÀ½ (·¹ÀÌ¾Æ¿ôÀÌ ¹Ù²îÁö ¾Ê°Ô). ¼ö¸í¿¡ ¸ÂÃß·Á¸é Particles.NormalizedAge ¸¦ ¿¬°á
++		MakeRenderBinding<float>("MaterialParam0",   std::string(),              0.f),
++		MakeRenderBinding<float>("MaterialParam1",   std::string(),              0.f)
+ 	};
+ 
+ 	return desc;
+@@ -310,7 +334,8 @@ bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity, const Re
+ 	static const TypeInfo* kSlotTypes[kNumSlots] =
+ 	{
+ 		&Types::Float3, &Types::Float4, &Types::Float, &Types::Float,
+-		&Types::Float2, &Types::Float, &Types::Float3, &Types::Float3, &Types::Float3
++		&Types::Float2, &Types::Float, &Types::Float3, &Types::Float3, &Types::Float3,
++		&Types::Float, &Types::Float
+ 	};
+ 	if (desc.bindings.size() != kNumSlots)
+ 	{
+@@ -374,6 +399,8 @@ void SpriteRenderer::SetDefaults(const RendererDesc& desc)
+ 	std::memcpy(&m_DefaultVelocity, desc.bindings[kVelocity].defaultValue.data(), sizeof(float3));
+ 	std::memcpy(&m_DefaultSpriteFacing, desc.bindings[kSpriteFacing].defaultValue.data(), sizeof(float3));
+ 	std::memcpy(&m_DefaultSpriteAlignment, desc.bindings[kSpriteAlignment].defaultValue.data(), sizeof(float3));
++	std::memcpy(&m_DefaultParam0, desc.bindings[kMaterialParam0].defaultValue.data(), sizeof(float));
++	std::memcpy(&m_DefaultParam1, desc.bindings[kMaterialParam1].defaultValue.data(), sizeof(float));
+ }
+ 
+ 
+@@ -494,6 +521,12 @@ ParticleRenderList::Source SpriteRenderer::MakeListSource() const
+ 	src.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
+ 	src.texture = TextureSRV();
+ 
++	src.param0Offset = m_Offsets[kMaterialParam0];
++	src.param1Offset = m_Offsets[kMaterialParam1];
++	src.defaultParam0 = m_DefaultParam0;
++	src.defaultParam1 = m_DefaultParam1;
++	src.layerCount = PackLayers(src.layers, src.layerTextures);
++
+ 	return src;
+ }
+ 
+@@ -543,6 +576,10 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
+ 	sc.velocityStretch = m_Settings.velocityStretch;
+ 	sc.blendNear = m_Settings.blendNear;
+ 	sc.blendFar = m_Settings.blendFar;
++	sc.param0Offset = m_Offsets[kMaterialParam0];
++	sc.defaultParam0 = m_DefaultParam0;
++	sc.param1Offset = m_Offsets[kMaterialParam1];
++	sc.defaultParam1 = m_DefaultParam1;
+ 
+ 	gfx.SetRootSignature(s_RootSig);
+ 	gfx.SetPipelineState(s_PSO);
+@@ -551,8 +588,21 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
+ 
+ 	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), sortedIndices.GetSRV() };
+ 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
+-	gfx.SetDynamicDescriptor(kRootTexture, 0, TextureSRV());
+-	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend), static_cast<uint32_t>(m_Settings.textureAlpha));
++	SpritePSConstants pc = {};
++	pc.blendMode = static_cast<uint32_t>(m_Settings.blend);
++	pc.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
++	pc.time = ParticleMaterial::Time();
++
++	// ·¹ÀÌ¾î ÅØ½ºÃ³´Â ÄÑÁø ¼ø¼­´ë·Î t3 ~. ºó Ä­µµ Å×ÀÌºíÀÌ À¯È¿ÇØ¾ß ÇØ¼­ ±âº» ¿øÇüÀ¸·Î Ã¤¿î´Ù (¼ÎÀÌ´õ´Â ÀĞÁö ¾ÊÀ½)
++	D3D12_CPU_DESCRIPTOR_HANDLE layerTextures[kMaxSpriteLayers] = {};
++	pc.layerCount = PackLayers(pc.layers, layerTextures);
++
++	D3D12_CPU_DESCRIPTOR_HANDLE textures[kNumPSTextures];
++	textures[0] = TextureSRV();
++	for (uint32_t k = 0; k < kMaxSpriteLayers; ++k)
++		textures[1 + k] = (k < pc.layerCount) ? layerTextures[k] : s_SoftCircle.GetSRV();
++	gfx.SetDynamicDescriptors(kRootTexture, 0, kNumPSTextures, textures);
++	gfx.SetDynamicConstantBufferView(kRootPSConstants, sizeof(pc), &pc);
+ }
+ 
+ void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camera& camera, const EmitterInstance& emitter)
+@@ -599,19 +649,79 @@ bool SpriteRenderer::SetTexture(const std::wstring& path)
+ 	return true;
+ }
+ 
++bool SpriteRenderer::SetLayerTexture(uint32_t layer, const std::wstring& path)
++{
++	if (layer >= kMaxSpriteLayers)
++		return false;
++	m_LayerPaths[layer] = path;
++	return LoadLayerTexture(layer);
++}
++
++bool SpriteRenderer::LoadLayerTexture(uint32_t layer)
++{
++	m_LayerTextures[layer] = nullptr;
++	const std::wstring& path = m_LayerPaths[layer];
++	if (path.empty())
++		return true;    // ÅØ½ºÃ³ ¾øÀ½ = ±× ·¹ÀÌ¾î´Â ±×¸®Áö ¾ÊÀ½
++
++	const bool srgb = m_Settings.layers[layer].srgb;
++	const std::wstring key = path + (srgb ? L"|sRGB" : L"|linear");
++	auto it = m_LayerCache.find(key);
++	if (it == m_LayerCache.end())
++	{
++		// DDS º¯È¯Àº Ã³À½ ÇÑ ¹ø (°°Àº ¿øº»À» ´Ù¸¥ »ö °ø°£À¸·Î ¸ÕÀú º¯È¯ÇßÀ¸¸é ±× DDS ¸¦ ¾´´Ù)
++		CompileTextureOnDemand(path, TextureOptions(srgb, true));
++		const std::wstring ddsPath = Utility::RemoveExtension(path) + L".dds";
++		it = m_LayerCache.emplace(key, TextureManager::LoadDDSFromFile(ddsPath, Graphics::kMagenta2D, srgb)).first;
++	}
++
++	if (!it->second.IsValid())
++	{
++		Utility::Printf(L"[SpriteRenderer] Layer %u texture load failed : %ws\n", layer, path.c_str());
++		return false;   // ÀÌ ·¹ÀÌ¾î´Â ºüÁø Ã¤·Î µĞ´Ù
++	}
++	m_LayerTextures[layer] = &it->second;
++	return true;
++}
++
++uint32_t SpriteRenderer::PackLayers(SpriteLayerGpu (&out)[kMaxSpriteLayers], D3D12_CPU_DESCRIPTOR_HANDLE (&textures)[kMaxSpriteLayers]) const
++{
++	bool hasTexture[kMaxSpriteLayers];
++	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
++		hasTexture[i] = m_LayerTextures[i] != nullptr;
++
++	uint32_t source[kMaxSpriteLayers];
++	const uint32_t n = PackSpriteLayers(m_Settings.layers, hasTexture, out, source);
++	for (uint32_t k = 0; k < kMaxSpriteLayers; ++k)
++		textures[k] = (k < n) ? m_LayerTextures[source[k]]->GetSRV() : D3D12_CPU_DESCRIPTOR_HANDLE{};
++	return n;
++}
++
+ void SpriteRenderer::ReleaseTextures()
+ {
+ 	// ÇÁ·¹ÀÓÀÌ ¾ÆÁ÷ ¾²°í ÀÖÀ» ¼ö ÀÖÀ¸¹Ç·Î GPU idle µÚ¿¡¸¸ ºÎ¸¥´Ù
+ 	m_Texture = nullptr;
+ 	m_Textures.clear();
++	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
++		m_LayerTextures[i] = nullptr;
++	m_LayerCache.clear();
+ }
+ 
+ void SpriteRenderer::SetSettings(const SpriteSettings& settings)
+ {
++	bool srgbChanged[kMaxSpriteLayers];
++	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
++		srgbChanged[i] = m_Settings.layers[i].srgb != settings.layers[i].srgb;
++
+ 	m_Settings = settings;
+ 
+ 	m_Settings.subImageCols = max(m_Settings.subImageCols, 1u);
+ 	m_Settings.subImageRows = max(m_Settings.subImageRows, 1u);
++
++	// »ö °ø°£ÀÌ ¹Ù²ï ·¹ÀÌ¾î´Â ´Ù¸¥ SRV ·Î ´Ù½Ã ÀĞ´Â´Ù (Ä³½Ã¿¡ ÀÖÀ¸¸é ¹Ù·Î)
++	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
++		if (srgbChanged[i] && !m_LayerPaths[i].empty())
++			LoadLayerTexture(i);
+ }
+ 
+ D3D12_CPU_DESCRIPTOR_HANDLE SpriteRenderer::TextureSRV() const
+diff --git a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/SpriteRenderer.h b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/SpriteRenderer.h
+index fd34aa0..02d7efe 100644
+--- a/DirectX-Graphics-Samples-master/MiniEngine/MyProject/SpriteRenderer.h
++++ b/DirectX-Graphics-Samples-master/MiniEngine/MyProject/SpriteRenderer.h
+@@ -2,6 +2,7 @@
+ 
+ #include "GpuBuffer.h"
+ #include "ModuleDesc.h"
++#include "ParticleMaterial.h"
+ #include "ParticleRenderList.h"
+ #include "ParticleSorter.h"
+ #include "TextureManager.h"
+@@ -68,6 +69,9 @@ struct SpriteSettings
+     float       velocityStretch = 0.f;      // VelocityAligned: ¼¼·Î ±æÀÌ += ¼Ó·Â * ÀÌ °ª (ÃÊ)
+     float       blendNear = 1.f;            // FaceCameraDistanceBlend: ÀÌ °Å¸®±îÁö CameraPosition
+     float       blendFar = 10.f;            //                          ÀÌ °Å¸®ºÎÅÍ CameraPlane
++
++    // ---- ÅØ½ºÃ³ ·¹ÀÌ¾î (ParticleMaterial.h). ÅØ½ºÃ³ °æ·Î´Â SpriteRenderer::SetLayerTexture ----
++    SpriteLayer layers[kMaxSpriteLayers];
+ };
+ 
+ 
+@@ -84,6 +88,8 @@ public:
+         kVelocity,          // float3 VelocityAligned ¿ë
+         kSpriteFacing,      // float3 CustomFacingVector ¿ë (¿¬°áÀÌ ¾øÀ¸¸é ±âº»°ªÀÌ »ó¼ö º¤ÅÍ)
+         kSpriteAlignment,   // float3 CustomAlignment ¿ë
++        kMaterialParam0,    // float  ·¹ÀÌ¾î ¼¼±â¿ë (¿¹: Particles.NormalizedAge). ±âº»Àº ¿¬°á ¾øÀ½ = ±âº»°ª
++        kMaterialParam1,    // float
+         kNumSlots
+     };
+ 
+@@ -109,6 +115,8 @@ public:
+     SortMode GetSortMode() const { return m_SortMode; }
+ 
+     bool SetTexture(const std::wstring& path);
++    // ·¹ÀÌ¾î ÅØ½ºÃ³. ºó ¹®ÀÚ¿­ = ±× ·¹ÀÌ¾î¸¦ ±×¸®Áö ¾ÊÀ½. sRGB / ¼±ÇüÀº Settings().layers[layer].srgb
++    bool SetLayerTexture(uint32_t layer, const std::wstring& path);
+     void ReleaseTextures();
+ 
+     void SetSettings(const SpriteSettings& settings);
+@@ -140,6 +148,13 @@ private:
+     // ÇÑ ¹ø ºÒ·¯¿Â ÅØ½ºÃ³´Â ¹Ù²ãµµ Áö¿ìÁö ¾Ê´Â´Ù (ÀÌÀü ÇÁ·¹ÀÓÀÌ ¾ÆÁ÷ ÀĞ°í ÀÖÀ» ¼ö ÀÖ¾î¼­)
+     std::map<std::wstring, TextureRef> m_Textures;
+     const TextureRef* m_Texture = nullptr;       // nullptr = ±âº» ¿øÇü
++    // ·¹ÀÌ¾î: »ö ÅØ½ºÃ³ Ä³½Ã¿Í µû·Î (Å° = °æ·Î + sRGB / ¼±Çü). ¸¶½ºÅ© / ³ëÀÌÁî´Â ¼±ÇüÀ¸·Î ÀĞ¾î¾ß °ªÀÌ ¸Â´Ù
++    bool LoadLayerTexture(uint32_t layer);
++    // ÄÑÁ® ÀÖ°í ÅØ½ºÃ³°¡ ÀÖ´Â ·¹ÀÌ¾î¸¸ ¾ÕÀ¸·Î ¸ğÀº´Ù (textures = °°Àº ¼ø¼­ÀÇ SRV). ¹İÈ¯ = °³¼ö
++    uint32_t PackLayers(SpriteLayerGpu (&out)[kMaxSpriteLayers], D3D12_CPU_DESCRIPTOR_HANDLE (&textures)[kMaxSpriteLayers]) const;
++    std::map<std::wstring, TextureRef> m_LayerCache;
++    std::wstring      m_LayerPaths[kMaxSpriteLayers];
++    const TextureRef* m_LayerTextures[kMaxSpriteLayers] = {};
+ 
+     ByteAddressBuffer   m_ParticleBuffer;
+     ByteAddressBuffer   m_SortedIndexBuffer;    // CPU: Á¤·ÄµÈ ÀÎµ¦½º (uint)
+@@ -155,6 +170,8 @@ private:
+     float3              m_DefaultVelocity = { 0.f, 0.f, 0.f };
+     float3              m_DefaultSpriteFacing = { 0.f, 1.f, 0.f };
+     float3              m_DefaultSpriteAlignment = { 0.f, 1.f, 0.f };
++    float               m_DefaultParam0 = 0.f;
++    float               m_DefaultParam1 = 0.f;
+ 
+     SpriteSettings      m_Settings;
+ 
