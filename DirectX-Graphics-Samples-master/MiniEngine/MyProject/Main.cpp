@@ -35,7 +35,6 @@
 #include <cmath>
 #include "ModuleStackPanel.h"
 #include "EmitterAsset.h"
-#include "ParticleMaterial.h"
 
 using namespace GameCore;
 using namespace Graphics;
@@ -84,7 +83,6 @@ private:
     float           m_RotateSpeedDeg = 90.f;    // 초당 회전 (Box Location 방향이 돌아감)
     bool            m_MoveOwner = false;        // 위아래로 움직이기 (Owner.Velocity 확인)
     float           m_OwnerTime = 0.f;
-    float           m_MaterialTime = 0.f;     // 텍스처 레이어 스크롤 (시뮬레이션 시간과 같이 멈춤)
 
     bool            m_TimeStop = false;         // true = 시뮬레이션 정지 (카메라 / UI 는 계속)
     bool            m_StepOnce = false;         // 정지 중 한 프레임만 진행
@@ -207,8 +205,6 @@ void MyProject::Update(float deltaT)
 
     // 소유자: Y 축 회전 + (선택) 위아래 이동
     m_OwnerTime += ownerDt;
-    m_MaterialTime += simDt;
-    ParticleMaterial::SetTime(m_MaterialTime);
     m_OwnerAngle += m_RotateSpeedDeg * (3.14159265f / 180.f) * ownerDt;
     const float bob = m_MoveOwner ? std::sin(m_OwnerTime * 2.f) : 0.f;   // 위아래 1m
 

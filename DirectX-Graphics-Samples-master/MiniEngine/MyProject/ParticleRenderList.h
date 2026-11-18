@@ -15,9 +15,7 @@
 
 #include "GpuBuffer.h"
 #include "ModuleDesc.h"
-#include "ParticleMaterial.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -29,8 +27,7 @@ class ParticleRenderList
 {
 public:
 	static const uint32_t kNoAttribute = 0xFFFFFFFFu;
-	static const uint32_t kMaxTextures = 32;          // 한 목록의 서로 다른 텍스처 수 (베이스 + 레이어). 넘으면 베이스는 0 번, 레이어는 빠짐
-	static const uint32_t kNoTexture = 0xFFFFFFFFu;
+	static const uint32_t kMaxTextures = 16;          // 한 목록에서 쓸 수 있는 서로 다른 텍스처 수 (넘으면 0 번 텍스처)
 	static const uint32_t kRenderParticleBytes = 64;  // HLSL RenderParticle 과 같음 (중심 + 색 + 빌보드 축 2개)
 
 	// 이미터 하나를 목록에 넣을 때 필요한 정보 (SpriteRenderer 가 채운다)
@@ -51,8 +48,6 @@ public:
 		uint32_t velocityOffset = kNoAttribute;
 		uint32_t spriteFacingOffset = kNoAttribute;
 		uint32_t spriteAlignmentOffset = kNoAttribute;
-		uint32_t param0Offset = kNoAttribute;           // MaterialParam0 (없으면 defaultParam0)
-		uint32_t param1Offset = kNoAttribute;           // MaterialParam1
 
 		float3   defaultPosition = { 0.f, 0.f, 0.f };
 		float4   defaultColor = { 1.f, 1.f, 1.f, 1.f };
@@ -62,8 +57,6 @@ public:
 		float3   defaultVelocity = { 0.f, 0.f, 0.f };
 		float3   defaultSpriteFacing = { 0.f, 1.f, 0.f };
 		float3   defaultSpriteAlignment = { 0.f, 1.f, 0.f };
-		float    defaultParam0 = 0.f;
-		float    defaultParam1 = 0.f;
 
 		// 빌보드 (SpriteSettings 와 같은 뜻, 번호 = SpriteFacingMode / SpriteAlignment)
 		uint32_t facingMode = 0;
@@ -80,11 +73,6 @@ public:
 		uint32_t blendMode = 0;                    // 0 = Translucent, 1 = Additive (SpriteBlendMode)
 		uint32_t textureAlpha = 0;				// 0, 1, 2
 		D3D12_CPU_DESCRIPTOR_HANDLE texture = {};   // 이미터 텍스처 (기본 원형 포함)
-
-		// 텍스처 레이어 (켜진 것만 앞에서부터. textureIndex 는 Add 가 텍스처 표 번호로 바꾼다)
-		uint32_t                    layerCount = 0;
-		SpriteLayerGpu              layers[kMaxSpriteLayers] = {};
-		D3D12_CPU_DESCRIPTOR_HANDLE layerTextures[kMaxSpriteLayers] = {};
 	};
 
 	// 모든 이미터 capacity 의 합만큼 버퍼를 잡는다. 크기가 바뀌면 GPU idle 상태에서 불러야 한다
@@ -112,13 +100,11 @@ private:
 		uint32_t blendMode;
 		uint32_t textureIndex;
 		uint32_t textureAlpha;
-		uint32_t layerCount;    // 레이어 = m_Layers[이미터 번호 * kMaxSpriteLayers ...]
-		uint32_t _pad;
+		uint32_t _pad[2];
 	};
 	static_assert(sizeof(EmitterInfo) == 32, "EmitterInfo 32 B");
 
 	uint32_t TextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv);
-	uint32_t TryTextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv);   // 표가 꽉 차면 kNoTexture (0 번으로 대신하지 않음)
 
 	ByteAddressBuffer  m_RenderParticles;   // RenderParticle x capacity
 	ByteAddressBuffer  m_SortList;          // uint2(목록 번호, 깊이 키) x capacity
@@ -137,7 +123,6 @@ private:
 	bool                m_Culling = false;
 
 	std::vector<EmitterInfo>                 m_Emitters;
-	std::vector<SpriteLayerGpu>              m_Layers;     // 이미터마다 kMaxSpriteLayers 칸 (빈 칸은 0)
 	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> m_Textures;
 	bool                                     m_TextureOverflowLogged = false;
 };

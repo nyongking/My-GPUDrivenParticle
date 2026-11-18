@@ -7,7 +7,7 @@
 //   0  float3 Center     12 float SubImage
 //   16 float4 Color
 //   32 float3 AxisX      44 uint  EmitterIndex
-//   48 float3 AxisY      60 uint  MaterialParams (MaterialParam0 / 1 을 half 2 개로)
+//   48 float3 AxisY      60 (pad)
 #define RENDER_PARTICLE_BYTES 64
 
 struct RenderParticle
@@ -18,12 +18,7 @@ struct RenderParticle
     float3 AxisX; // 가로 반 축 (corner.x 를 곱함)
     uint EmitterIndex;
     float3 AxisY; // 세로 반 축
-    uint MaterialParams; // PackMaterialParams
 };
-
-// half 정밀도 (0~1 근처에서 약 0.0005). 레이어 세기 용도라 충분하다
-uint PackMaterialParams(float2 p) { return f32tof16(p.x) | (f32tof16(p.y) << 16); }
-float2 UnpackMaterialParams(uint v) { return float2(f16tof32(v & 0xFFFF), f16tof32(v >> 16)); }
 
 void StoreRenderParticle(RWByteAddressBuffer buf, uint slot, RenderParticle p)
 {
@@ -31,7 +26,7 @@ void StoreRenderParticle(RWByteAddressBuffer buf, uint slot, RenderParticle p)
     buf.Store4(a + 0, uint4(asuint(p.Center), asuint(p.SubImage)));
     buf.Store4(a + 16, asuint(p.Color));
     buf.Store4(a + 32, uint4(asuint(p.AxisX), p.EmitterIndex));
-    buf.Store4(a + 48, uint4(asuint(p.AxisY), p.MaterialParams));
+    buf.Store4(a + 48, uint4(asuint(p.AxisY), 0));
 }
 
 RenderParticle LoadRenderParticle(ByteAddressBuffer buf, uint slot)
@@ -40,20 +35,18 @@ RenderParticle LoadRenderParticle(ByteAddressBuffer buf, uint slot)
     const uint4 v0 = buf.Load4(a + 0);
     const uint4 v1 = buf.Load4(a + 16);
     const uint4 v2 = buf.Load4(a + 32);
-    const uint4 v3 = buf.Load4(a + 48);
+    const uint3 v3 = buf.Load3(a + 48);
     RenderParticle p;
     p.Center = asfloat(v0.xyz);
     p.SubImage = asfloat(v0.w);
     p.Color = asfloat(v1);
     p.AxisX = asfloat(v2.xyz);
     p.EmitterIndex = v2.w;
-    p.AxisY = asfloat(v3.xyz);
-    p.MaterialParams = v3.w;
+    p.AxisY = asfloat(v3);
     return p;
 }
 
 // 이미터별 그리기 설정 (C++ ParticleRenderList::EmitterInfo, 32 바이트)
-//   레이어는 따로 StructuredBuffer<SpriteLayerGpu> (이미터 번호 * MAX_SPRITE_LAYERS 부터 LayerCount 개)
 struct EmitterInfo
 {
     uint SubImageCols;
@@ -62,6 +55,5 @@ struct EmitterInfo
     uint BlendMode; // 0 = Translucent, 1 = Additive
     uint TextureIndex;
     uint TextureAlpha;
-    uint LayerCount;
-    uint _Pad;
+    uint2 _Pad;
 };

@@ -21,9 +21,6 @@ struct VSOutput
     nointerpolation uint textureIndex : TEXCOORD2;
     nointerpolation uint blendMode : TEXCOORD3;
     nointerpolation uint textureAlpha : TEXCOORD4;
-    float2 quadUV : TEXCOORD5; // 사각형 uv (레이어용, SubUV 와 무관)
-    nointerpolation uint emitterIndex : TEXCOORD6; // PS 가 EmitterInfo / 레이어를 읽는다
-    nointerpolation float2 params : TEXCOORD7; // MaterialParam0 / 1
 };
 
 static const float2 kCorners[6] =
@@ -62,8 +59,5 @@ VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
     output.textureIndex = e.TextureIndex;
     output.blendMode = e.BlendMode;
     output.textureAlpha = e.TextureAlpha;
-    output.quadUV = uv;
-    output.emitterIndex = p.EmitterIndex;
-    output.params = UnpackMaterialParams(p.MaterialParams);
     return output;
 }

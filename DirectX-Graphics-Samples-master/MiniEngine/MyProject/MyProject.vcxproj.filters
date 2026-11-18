@@ -123,9 +123,6 @@
     <ClCompile Include="ParticleRenderList.cpp">
       <Filter>Particle\Renderer</Filter>
     </ClCompile>
-    <ClCompile Include="ParticleMaterial.cpp">
-      <Filter>Particle\Renderer</Filter>
-    </ClCompile>
     <ClCompile Include="ParticleSorter.cpp">
       <Filter>Particle\Sorter</Filter>
     </ClCompile>
@@ -237,9 +234,6 @@
     <ClInclude Include="ParticleRenderList.h">
       <Filter>Particle\Renderer</Filter>
     </ClInclude>
-    <ClInclude Include="ParticleMaterial.h">
-      <Filter>Particle\Renderer</Filter>
-    </ClInclude>
     <ClInclude Include="ParticleSorter.h">
       <Filter>Particle\Sorter</Filter>
     </ClInclude>
@@ -313,9 +307,6 @@
       <Filter>Shaders\Particle</Filter>
     </None>
     <None Include="Shaders\SpriteAlpha.hlsli">
-      <Filter>Shaders\Particle</Filter>
-    </None>
-    <None Include="Shaders\SpriteMaterial.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
   </ItemGroup>

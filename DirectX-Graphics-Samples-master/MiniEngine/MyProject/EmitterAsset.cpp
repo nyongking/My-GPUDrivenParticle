@@ -25,24 +25,6 @@ namespace
 	static_assert(_countof(kAlignmentNames) == size_t(SpriteAlignment::Count), "SpriteAlignment 이름 표");
 	static_assert(_countof(kTextureAlphaNames) == size_t(SpriteTextureAlpha::Count), "SpriteTextureAlpha 이름 표");
 
-	// 레이어 enum: 이름 함수 (ParticleMaterial.h) 로 찾는다
-	template<typename E>
-	bool LayerEnumFromName(const JsonValue* v, const char* (*nameOf)(E), E& out, const std::string& where, std::vector<std::string>& warnings)
-	{
-		if (v == nullptr)
-			return false;
-		for (uint32_t i = 0; i < uint32_t(E::Count); ++i)
-		{
-			if (v->AsString() == nameOf(E(i)))
-			{
-				out = E(i);
-				return true;
-			}
-		}
-		warnings.push_back(where + ": unknown value '" + v->AsString() + "' -> kept default");
-		return false;
-	}
-
 	template<size_t N>
 	bool EnumFromName(const JsonValue* v, const char* const (&names)[N], uint32_t& out, const char* what, std::vector<std::string>& warnings)
 	{
@@ -329,19 +311,6 @@ namespace
 		return a;
 	}
 
-	// float2 / float3 (out = 첫 성분 주소). 모양이 다르면 경고 + 그대로
-	void ReadVector(const JsonValue& obj, const char* key, const TypeInfo* type, float* out, const std::string& where, std::vector<std::string>& warnings)
-	{
-		const JsonValue* v = obj.Find(key);
-		if (v == nullptr)
-			return;
-		float tmp[4] = {};
-		if (DecodeValue(*v, type, reinterpret_cast<uint8_t*>(tmp)))
-			std::memcpy(out, tmp, type->size);
-		else
-			warnings.push_back(where + "." + key + ": wrong shape -> kept default");
-	}
-
 	void ReadFloat(const JsonValue& obj, const char* key, float& out, std::vector<std::string>& warnings)
 	{
 		const JsonValue* v = obj.Find(key);
@@ -365,8 +334,6 @@ EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::strin
 	a.modules = runtime.Modules();
 	a.sprite = runtime.SpriteBindings();
 	a.texture = runtime.SpriteTexture();
-	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
-		a.layerTextures[i] = runtime.LayerTexture(i);
 	a.settings = runtime.GetSpriteSettings();
 	return a;
 }
@@ -375,10 +342,7 @@ bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset)
 {
 	runtime.ReplaceDescription(asset.modules, asset.sprite, asset.capacity, asset.backend);
 	runtime.SetSpriteSettings(asset.settings);
-	bool ok = runtime.SetSpriteTexture(asset.texture);
-	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
-		ok &= runtime.SetLayerTexture(i, asset.layerTextures[i]);
-	return ok;
+	return runtime.SetSpriteTexture(asset.texture);
 }
 
 bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& asset, uint32_t capacity)
@@ -395,9 +359,6 @@ bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& ass
 	runtime.SetSpriteSettings(asset.settings);
 	if (!runtime.SetSpriteTexture(asset.texture))
 		Utility::Printf("[EmitterAsset] '%s': texture '%s' could not be loaded (drawn magenta)\n", asset.name.c_str(), asset.texture.c_str());
-	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
-		if (!runtime.SetLayerTexture(i, asset.layerTextures[i]))
-			Utility::Printf("[EmitterAsset] '%s': layer %u texture '%s' could not be loaded (layer skipped)\n", asset.name.c_str(), i, asset.layerTextures[i].c_str());
 	return true;
 }
 
@@ -445,34 +406,6 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
 	sprite.Set("velocityStretch", JsonValue(s.velocityStretch));
 	sprite.Set("blendNear", JsonValue(s.blendNear));
 	sprite.Set("blendFar", JsonValue(s.blendFar));
-
-	// 텍스처 레이어 (꺼진 칸은 빼고 순서대로. 불러오면 앞 칸부터 채운다)
-	JsonValue layers = JsonValue::MakeArray();
-	for (uint32_t i = 0; i < kMaxSpriteLayers; ++i)
-	{
-		const SpriteLayer& l = s.layers[i];
-		if (l.op == SpriteLayerOp::Off)
-			continue;
-		JsonValue jl = JsonValue::MakeObject();
-		jl.Set("op", JsonValue(SpriteLayerOpName(l.op)));
-		jl.Set("texture", JsonValue(a.layerTextures[i]));
-		jl.Set("srgb", JsonValue(l.srgb));
-		jl.Set("uv", JsonValue(SpriteLayerUVName(l.uv)));
-		jl.Set("channel", JsonValue(SpriteLayerChannelName(l.channel)));
-		jl.Set("tiling", Float2Json(l.tiling));
-		jl.Set("offset", Float2Json(l.offset));
-		jl.Set("scroll", Float2Json(l.scroll));
-		jl.Set("wrap", JsonValue(l.wrap));
-		jl.Set("maskBySprite", JsonValue(l.maskBySprite));
-		jl.Set("tint", EncodeValue(&Types::Float3, reinterpret_cast<const uint8_t*>(&l.tint)));
-		jl.Set("intensity", JsonValue(l.intensity));
-		jl.Set("param", JsonValue(SpriteLayerParamName(l.param)));
-		jl.Set("range", Float2Json(l.paramRange));   // Constant 는 range[0] = 값
-		jl.Set("edgeWidth", JsonValue(l.edgeWidth));
-		jl.Set("softness", JsonValue(l.softness));
-		layers.Push(std::move(jl));
-	}
-	sprite.Set("layers", std::move(layers));
 
 	JsonValue bindings = JsonValue::MakeObject();
 	for (const RenderBinding& b : a.sprite.bindings)
@@ -622,77 +555,12 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 		s.blendNear = (std::max)(s.blendNear, 0.f);
 		s.blendFar = (std::max)(s.blendFar, s.blendNear);
 
-		// 텍스처 레이어 (없으면 전부 꺼짐 = 이전 파일)
-		uint32_t layerCount = 0;
-		if (const JsonValue* layers = sprite->Find("layers"))
-		{
-			for (size_t i = 0; i < layers->Size(); ++i)
-			{
-				const JsonValue& jl = layers->At(i);
-				const std::string where = "sprite.layers[" + std::to_string(i) + "]";
-				if (layerCount >= kMaxSpriteLayers)
-				{
-					warnings.push_back(where + ": more than " + std::to_string(kMaxSpriteLayers) + " layers -> ignored");
-					break;
-				}
-				SpriteLayerOp op = SpriteLayerOp::Off;
-				if (!LayerEnumFromName(jl.Find("op"), &SpriteLayerOpName, op, where + ".op", warnings) || op == SpriteLayerOp::Off)
-					continue;   // 연산을 모르면 그 레이어만 뺀다
-
-				// 없는 항목은 그 연산의 시작값
-				SpriteLayer l = DefaultSpriteLayer(op);
-				if (const JsonValue* v = jl.Find("srgb"))
-					l.srgb = v->AsBool(l.srgb);
-				LayerEnumFromName(jl.Find("uv"), &SpriteLayerUVName, l.uv, where + ".uv", warnings);
-				LayerEnumFromName(jl.Find("channel"), &SpriteLayerChannelName, l.channel, where + ".channel", warnings);
-				LayerEnumFromName(jl.Find("param"), &SpriteLayerParamName, l.param, where + ".param", warnings);
-				ReadVector(jl, "tiling", &Types::Float2, &l.tiling.x, where, warnings);
-				ReadVector(jl, "offset", &Types::Float2, &l.offset.x, where, warnings);
-				ReadVector(jl, "scroll", &Types::Float2, &l.scroll.x, where, warnings);
-				ReadVector(jl, "tint", &Types::Float3, &l.tint.x, where, warnings);
-				ReadVector(jl, "range", &Types::Float2, &l.paramRange.x, where, warnings);
-				if (const JsonValue* v = jl.Find("wrap"))
-					l.wrap = v->AsBool(l.wrap);
-				if (const JsonValue* v = jl.Find("maskBySprite"))
-					l.maskBySprite = v->AsBool(l.maskBySprite);
-				ReadFloat(jl, "intensity", l.intensity, warnings);
-				ReadFloat(jl, "edgeWidth", l.edgeWidth, warnings);
-				ReadFloat(jl, "softness", l.softness, warnings);
-				l.edgeWidth = (std::max)(l.edgeWidth, 0.f);
-				l.softness = (std::max)(l.softness, 0.f);
-
-				if (const JsonValue* v = jl.Find("texture"))
-					a.layerTextures[layerCount] = v->AsString();
-				s.layers[layerCount++] = l;
-			}
-		}
-
-		// 디졸브 전용이던 파일 (sprite.dissolve) -> Erode 레이어 하나로 바꿔 읽는다
-		if (const JsonValue* dissolve = sprite->Find("dissolve"))
-		{
-			const JsonValue* tex = dissolve->Find("texture");
-			if (tex && !tex->AsString().empty() && layerCount < kMaxSpriteLayers)
-			{
-				SpriteLayer l = DefaultSpriteLayer(SpriteLayerOp::Erode);
-				l.paramRange = { 0.f, 1.f };
-				ReadVector(*dissolve, "range", &Types::Float2, &l.paramRange.x, "sprite.dissolve", warnings);
-				ReadVector(*dissolve, "edgeColor", &Types::Float3, &l.tint.x, "sprite.dissolve", warnings);
-				ReadFloat(*dissolve, "edgeWidth", l.edgeWidth, warnings);
-				ReadFloat(*dissolve, "softness", l.softness, warnings);
-				ReadFloat(*dissolve, "edgeIntensity", l.intensity, warnings);
-				a.layerTextures[layerCount] = tex->AsString();
-				s.layers[layerCount++] = l;
-			}
-		}
-
 		if (const JsonValue* bindings = sprite->Find("bindings"))
 		{
 			for (const JsonValue::Member& member : bindings->Members())
 			{
-				// 디졸브 전용이던 파일의 'Dissolve' 칸 = MaterialParam0
-				const std::string slot = (member.first == "Dissolve") ? std::string("MaterialParam0") : member.first;
 				auto it = std::find_if(a.sprite.bindings.begin(), a.sprite.bindings.end(),
-					[&](const RenderBinding& b) { return b.slot == slot; });
+					[&](const RenderBinding& b) { return b.slot == member.first; });
 				if (it == a.sprite.bindings.end())
 				{
 					warnings.push_back("unknown binding slot '" + member.first + "' -> ignored");
