@@ -58,7 +58,8 @@ struct VSOutput
     float4 position : SV_Position;
     float4 color : COLOR0;
     float4 uv : TEXCOORD0; // xy = 현재 프레임 uv, zw = 다음 프레임 uv
-    nointerpolation float blend : TEXCOORD1; // 다음 프레임 비율 (0 = 현재 프레임만)
+    float2 quadUV : TEXCOORD1;
+    nointerpolation float blend : TEXCOORD2; // 다음 프레임 비율 (0 = 현재 프레임만)
 };
 
 static const float2 kCorners[6] =
@@ -128,6 +129,9 @@ VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
     output.color = color;
     const float2 uv = corner * float2(0.5f, -0.5f) + 0.5f; // 왼쪽 위 (0,0) ~ 오른쪽 아래 (1,1)
 
+    // QuadUV : 일반 사각 Sprite의 UV 좌표
+    output.quadUV = uv;
+    
     // SubUV: 정수부 = 프레임, 소수부 = 다음 프레임으로 넘어가는 비율. 칸 수를 넘으면 처음으로 돈다
     const uint total = (uint) SubImageSize.x * (uint) SubImageSize.y;
     const float index = max(subImage, 0.f);

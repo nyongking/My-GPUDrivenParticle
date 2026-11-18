@@ -137,9 +137,9 @@ private:
 
     D3D12_CPU_DESCRIPTOR_HANDLE TextureSRV() const;
 
-    // 한 번 불러온 텍스처는 바꿔도 지우지 않는다 (이전 프레임이 아직 읽고 있을 수 있어서)
     std::map<std::wstring, TextureRef> m_Textures;
     const TextureRef* m_Texture = nullptr;       // nullptr = 기본 원형
+    
 
     ByteAddressBuffer   m_ParticleBuffer;
     ByteAddressBuffer   m_SortedIndexBuffer;    // CPU: 정렬된 인덱스 (uint)

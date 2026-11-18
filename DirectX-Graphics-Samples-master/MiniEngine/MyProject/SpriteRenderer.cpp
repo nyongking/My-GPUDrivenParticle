@@ -18,6 +18,8 @@
 #include "TagLibrary.h"
 #include "BitonicSort.h"
 
+#include "GlobalData.h"
+
 #include "CompiledShaders/ParticleSpritePS.h"
 #include "CompiledShaders/ParticleSpriteVS.h"
 #include "CompiledShaders/ParticleSortKeyCS.h"
@@ -121,6 +123,7 @@ namespace
 
 	// 텍스처를 고르지 않았을 때 쓰는 기본 원형 (예전 PS 의 falloff 를 텍스처로 구운 것)
 	Texture       s_SoftCircle;
+	TextureRef		  s_TempNoise;
 
 	// 기본 텍스처 생성
 	void CreateSoftCircle()
@@ -142,6 +145,11 @@ namespace
 		s_SoftCircle.Create2D(kSize * sizeof(uint32_t), kSize, kSize, DXGI_FORMAT_R8G8B8A8_UNORM, texels.data());
 	}
 
+	void LoadTempNoise()
+	{
+		s_TempNoise = TextureManager::LoadDDSFromFile(L"Assets/Textures/T_Fire_Tiled.dds", Graphics::kWhiteOpaque2D, false);
+	}
+
 	uint32_t	RoundUp4(uint32_t v) { return (v + 3u) & ~3u; } // 4단위로 끊는다.
 	float3		ToFloat3(const Math::Vector3& v) { return { float(v.GetX()), float(v.GetY()), float(v.GetZ()) }; }
 
@@ -150,21 +158,18 @@ namespace
 		if (s_PipelineReady)
 			return;
 
-		s_RootSig.Reset(kNumRootParams, 1);
+		s_RootSig.Reset(kNumRootParams, 2);
 		s_RootSig[kRootCBV].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
 		s_RootSig[kRootSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, kNumSRVs, D3D12_SHADER_VISIBILITY_VERTEX);
 		
 		// 텍스처 및 샘플러 설정
-		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 2, D3D12_SHADER_VISIBILITY_PIXEL);
 
-		// SubUV 아틀라스: 높은 밉에서 이웃 프레임이 섞이므로 밉 4 까지만 사용
-		SamplerDesc particleSampler = SamplerLinearClampDesc;   // 공용 설정은 건드리지 않고 복사본
-		particleSampler.MaxLOD = 1.f;
-		s_RootSig.InitStaticSampler(0, particleSampler, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig.InitStaticSampler(0, SamplerLinearClampDesc, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig.InitStaticSampler(1, SamplerLinearWrapDesc, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		// Blendmode 상수버퍼 설정
-		s_RootSig[kRootPSConstants].InitAsConstants(1, 2, D3D12_SHADER_VISIBILITY_PIXEL);
-		
+		s_RootSig[kRootPSConstants].InitAsConstants(1, 3, D3D12_SHADER_VISIBILITY_PIXEL);		
 		
 		s_RootSig.Finalize(L"Particle Sprite RootSig");
 
@@ -193,6 +198,7 @@ namespace
 		s_SortKeyPSO.Finalize();
 
 		CreateSoftCircle();
+		LoadTempNoise();
 
 		s_PipelineReady = true;
 	}
@@ -551,8 +557,11 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 
 	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), sortedIndices.GetSRV() };
 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
-	gfx.SetDynamicDescriptor(kRootTexture, 0, TextureSRV());
-	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend), static_cast<uint32_t>(m_Settings.textureAlpha));
+
+	const D3D12_CPU_DESCRIPTOR_HANDLE texs[2] = { TextureSRV(), s_TempNoise.GetSRV() };
+	gfx.SetDynamicDescriptors(kRootTexture, 0, 2, texs);
+
+	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend), static_cast<uint32_t>(m_Settings.textureAlpha), sGlobal.exeTime);
 }
 
 void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camera& camera, const EmitterInstance& emitter)

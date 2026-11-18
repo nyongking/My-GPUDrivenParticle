@@ -65,6 +65,7 @@
     <ClInclude Include="EmitterInstance.h" />
     <ClInclude Include="EmitterRuntime.h" />
     <ClInclude Include="EmitterTestScene.h" />
+    <ClInclude Include="GlobalData.h" />
     <ClInclude Include="ModuleStackPanel.h" />
     <ClInclude Include="EmitterAsset.h" />
     <ClInclude Include="Json.h" />
@@ -77,6 +78,7 @@
     <ClInclude Include="CurlNoise.h" />
     <ClInclude Include="OwnerTransform.h" />
     <ClInclude Include="ParticleEmitter.h" />
+    <ClInclude Include="ParticleMaterial.h" />
     <ClInclude Include="ParticleNamespace.h" />
     <ClInclude Include="ParticlePool.h" />
     <ClInclude Include="ParticleSettings.h" />
@@ -105,6 +107,7 @@
     <ClCompile Include="EmitterInstance.cpp" />
     <ClCompile Include="EmitterRuntime.cpp" />
     <ClCompile Include="EmitterTestScene.cpp" />
+    <ClCompile Include="GlobalData.cpp" />
     <ClCompile Include="ModuleStackPanel.cpp" />
     <ClCompile Include="EmitterAsset.cpp" />
     <ClCompile Include="Json.cpp" />
@@ -116,6 +119,7 @@
     <ClCompile Include="CurveLibrary.cpp" />
     <ClCompile Include="OwnerTransform.cpp" />
     <ClCompile Include="ParticleEmitter.cpp" />
+    <ClCompile Include="ParticleMaterial.cpp" />
     <ClCompile Include="ParticlePool.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="ParticleSettings.cpp" />

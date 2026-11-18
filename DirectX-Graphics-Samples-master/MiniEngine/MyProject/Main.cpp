@@ -14,10 +14,12 @@
 #include "Renderer.h"
 #include "Camera.h"
 #include "CameraController.h"
+#include "GlobalData.h"
 #include "LightManager.h"
 #include "DebugDraw.h"
 #include "TexturedQuad.h"
 #include "ImGuiLayer.h"
+
 
 #include "ParticleSystem.h"
 #include "ParticleUtility.h"
@@ -38,6 +40,8 @@
 
 using namespace GameCore;
 using namespace Graphics;
+
+GlobalData sGlobal;
 
 class MyProject : public GameCore::IGameApp
 {
@@ -124,7 +128,7 @@ private:
     bool                        m_BenchEmitterOrder = true;
     bool                        m_BenchStageOrder = true;
 
-    // -------- 평면 설정
+    // -------- 평면 설정 --------
     TexturedQuad m_Floor;
 
     FlyingFPSCamera* m_FlyCam = nullptr;   // m_CameraController 가 소유, 여기선 참조만
@@ -147,7 +151,7 @@ void MyProject::Startup(void)
 
     // Camera Setting
     m_Camera.SetZRange(0.1f, 1000.f);
-    m_Camera.SetEyeAtUp(Vector3(0.f, 5.f, -15.f), Vector3(0.f, 0.f, 0.f), Vector3(Math::kYUnitVector));
+    m_Camera.SetEyeAtUp(Vector3(0.f, 3.f, -5.f), Vector3(0.f, 0.f, 0.f), Vector3(Math::kYUnitVector));
 
     auto NewCam = new FlyingFPSCamera(m_Camera, Vector3(Math::kYUnitVector));
     NewCam->SetMoveSpeed(10.f);
@@ -212,6 +216,11 @@ void MyProject::Update(float deltaT)
     owner.position = { m_EmitterPos.x, m_EmitterPos.y + bob, m_EmitterPos.z };
     owner.rotation = QuatFromAxisAngle(float3{ 0.f, 1.f, 0.f }, m_OwnerAngle);
 
+    if (!m_TimeStop)
+    {
+        sGlobal.exeTime += frameDt;
+    }
+
     {
         GpuEmitterInstance::BeginFrameStats();
         ComputeContext& simCtx = ComputeContext::Begin(kSimTimerName);
@@ -255,7 +264,7 @@ void MyProject::RenderScene(void)
     // Rendering something
     DebugDraw::Render(gfxContext, m_Camera.GetViewProjMatrix());
     QuadRenderer::BeginDraw(gfxContext, m_Camera.GetViewProjMatrix());
-    m_Floor.Draw(gfxContext);
+    //m_Floor.Draw(gfxContext);
 
     if (m_UseTestScene)
         m_TestScene.Render(gfxContext, m_Camera);

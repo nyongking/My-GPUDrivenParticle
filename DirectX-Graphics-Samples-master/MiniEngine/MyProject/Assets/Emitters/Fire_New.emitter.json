@@ -50,7 +50,7 @@
     {
       "module": "CurlNoiseForce",
       "params": {
-        "Strength": 0.3,
+        "Strength": 0.6,
         "Frequency": 3,
         "Offset": [0, 1, 0],
         "Pan": [0, 0, 0]
@@ -84,6 +84,43 @@
           "max": -30
         }
       }
+    },
+    {
+      "module": "ScaleColor",
+      "params": {
+        "ScaleRGB": {
+          "value": [1, 1, 1],
+          "curve": [
+            {
+              "time": 0,
+              "value": [1.281, 1.205, 1]
+            },
+            {
+              "time": 0.5,
+              "value": [0.941, 0.562, 0.39]
+            },
+            {
+              "time": 1,
+              "value": [0.25, 0.06, 0]
+            }
+          ],
+          "index": "Particles.NormalizedAge"
+        },
+        "ScaleAlpha": {
+          "value": 1,
+          "curve": [
+            {
+              "time": 0,
+              "value": 1
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ],
+          "index": "Particles.NormalizedAge"
+        }
+      }
     }
   ],
   "sprite": {
@@ -99,7 +136,6 @@
     "velocityStretch": 0,
     "blendNear": 1,
     "blendFar": 10,
-    "layers": [],
     "bindings": {
       "Position": {
         "attribute": "Particles.Position",
@@ -136,14 +172,6 @@
       "SpriteAlignment": {
         "attribute": "Particles.SpriteAlignment",
         "default": [0, 1, 0]
-      },
-      "MaterialParam0": {
-        "attribute": "",
-        "default": 0
-      },
-      "MaterialParam1": {
-        "attribute": "",
-        "default": 0
       }
     }
   }

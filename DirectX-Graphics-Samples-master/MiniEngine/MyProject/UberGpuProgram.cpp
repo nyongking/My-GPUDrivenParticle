@@ -17,7 +17,7 @@ namespace
 
 	bool s_PSOReady = false;
 	bool s_LayoutVerified = false;
-	GpuSimMode s_Mode = GpuSimMode::Generated;
+	GpuSimMode s_Mode = GpuSimMode::Uber;
 }
 
 bool UberGpuProgram::Initialize()

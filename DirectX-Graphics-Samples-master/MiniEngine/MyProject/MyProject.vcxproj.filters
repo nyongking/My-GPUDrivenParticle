@@ -45,6 +45,12 @@
     <Filter Include="Particle\Params">
       <UniqueIdentifier>{cf976fb2-627a-44a0-ab61-4ce1fcd07b22}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Particle\Material">
+      <UniqueIdentifier>{0990c748-41a9-44c3-b7d9-709df0d1da0b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Global">
+      <UniqueIdentifier>{7acf581f-8cf0-4864-9040-ce3c462e7edc}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -148,7 +154,13 @@
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
     <ClCompile Include="UberGpuProgram.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Particle</Filter>
+    </ClCompile>
+    <ClCompile Include="ParticleMaterial.cpp">
+      <Filter>Particle\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="GlobalData.cpp">
+      <Filter>Global</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -210,9 +222,6 @@
     <ClInclude Include="CurveLibrary.h">
       <Filter>Particle\Modules</Filter>
     </ClInclude>
-    <ClInclude Include="CurlNoise.h">
-      <Filter>ParticleModules</Filter>
-    </ClInclude>
     <ClInclude Include="EmitterInstance.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
@@ -261,7 +270,18 @@
     <ClInclude Include="UberEmitterData.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
-    <ClInclude Include="UberGpuProgram.h" />
+    <ClInclude Include="UberGpuProgram.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleMaterial.h">
+      <Filter>Particle\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="GlobalData.h">
+      <Filter>Global</Filter>
+    </ClInclude>
+    <ClInclude Include="CurlNoise.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="Logo.png">
