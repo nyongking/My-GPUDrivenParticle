@@ -21,9 +21,12 @@ namespace
 	const char* const kFacingNames[] = { "FaceCameraPlane", "FaceCameraPosition", "CustomFacingVector", "FaceCameraDistanceBlend" };
 	const char* const kAlignmentNames[] = { "Unaligned", "VelocityAligned", "CustomAlignment" };
 	const char* const kTextureAlphaNames[] = { "Straight", "Premultiplied", "FromLuminance" };
+	const char* const kColorSpaceNames[] = { "sRGB", "Linear" };
+	
 	static_assert(_countof(kFacingNames) == size_t(SpriteFacingMode::Count), "SpriteFacingMode 이름 표");
 	static_assert(_countof(kAlignmentNames) == size_t(SpriteAlignment::Count), "SpriteAlignment 이름 표");
 	static_assert(_countof(kTextureAlphaNames) == size_t(SpriteTextureAlpha::Count), "SpriteTextureAlpha 이름 표");
+	static_assert(_countof(kColorSpaceNames) == size_t(TextureColorSpace::Count), "TextureColorSpace 이름 표");
 
 	template<size_t N>
 	bool EnumFromName(const JsonValue* v, const char* const (&names)[N], uint32_t& out, const char* what, std::vector<std::string>& warnings)
@@ -323,6 +326,29 @@ namespace
 	}
 }
 
+EmitterAsset::EmitterAsset()
+{
+	for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
+		textures[i] = ParticleMaterial::DefaultTexture();
+}
+
+namespace
+{
+	bool ApplyTextures(EmitterRuntime& runtime, const EmitterAsset& asset, std::vector<std::string>* failed)
+	{
+		bool ok = true;
+		for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
+		{
+			if (runtime.SetMaterialTexture(i, asset.textures[i]))
+				continue;
+			ok = false;
+			if (failed)
+				failed->push_back(asset.textures[i].path);
+		}
+		return ok;
+	}
+}
+
 // ------------------------------------------------------------------ 캡처 / 적용
 
 EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::string& name)
@@ -333,16 +359,17 @@ EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::strin
 	a.backend = runtime.Backend();
 	a.modules = runtime.Modules();
 	a.sprite = runtime.SpriteBindings();
-	a.texture = runtime.SpriteTexture();
+	for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
+		a.textures[i] = runtime.Material().SlotTexture(i);
 	a.settings = runtime.GetSpriteSettings();
 	return a;
 }
 
-bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset)
+bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset, std::vector<std::string>* failedTextures)
 {
 	runtime.ReplaceDescription(asset.modules, asset.sprite, asset.capacity, asset.backend);
 	runtime.SetSpriteSettings(asset.settings);
-	return runtime.SetSpriteTexture(asset.texture);
+	return ApplyTextures(runtime, asset, failedTextures);
 }
 
 bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& asset, uint32_t capacity)
@@ -357,9 +384,12 @@ bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& ass
 
 	// 둘 다 재시작이 필요 없는 값이라 시작한 뒤에 넣는다
 	runtime.SetSpriteSettings(asset.settings);
-	if (!runtime.SetSpriteTexture(asset.texture))
-		Utility::Printf("[EmitterAsset] '%s': texture '%s' could not be loaded (drawn magenta)\n", asset.name.c_str(), asset.texture.c_str());
-	return true;
+	std::vector<std::string> failed;
+	if (!ApplyTextures(runtime, asset, &failed))
+	{
+		for (const std::string& path : failed)
+			Utility::Printf("[EmitterAsset] '%s': texture '%s' could not be loaded (drawn magenta)\n", asset.name.c_str(), path.c_str());
+	}	return true;
 }
 
 // ------------------------------------------------------------------ JSON
@@ -391,7 +421,16 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
 
 	const SpriteSettings& s = a.settings;
 	JsonValue sprite = JsonValue::MakeObject();
-	sprite.Set("texture", JsonValue(a.texture));
+	JsonValue textures = JsonValue::MakeArray();
+	for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
+	{
+		JsonValue jt = JsonValue::MakeObject();
+		jt.Set("slot", JsonValue(ParticleMaterial::SlotName(i)));     // 읽을 때는 쓰지 않음 (사람이 보기 위한 것)
+		jt.Set("path", JsonValue(a.textures[i].path));
+		jt.Set("colorSpace", JsonValue(kColorSpaceNames[(std::min)(uint32_t(a.textures[i].colorSpace), uint32_t(TextureColorSpace::Count) - 1)]));
+		textures.Push(std::move(jt));
+	}
+	sprite.Set("textures", std::move(textures));
 	sprite.Set("textureAlpha", JsonValue(kTextureAlphaNames[(std::min)(uint32_t(s.textureAlpha), uint32_t(SpriteTextureAlpha::Count) - 1)]));
 	sprite.Set("blend", JsonValue(kBlendNames[(std::min)(uint32_t(s.blend), 1u)]));
 	JsonValue grid = JsonValue::MakeArray();
@@ -513,10 +552,34 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 	{
 		SpriteSettings& s = a.settings;
 
-		if (const JsonValue* v = sprite->Find("texture"))
-			a.texture = v->AsString();
-
 		uint32_t e = 0;
+
+		if (const JsonValue* textures = sprite->Find("textures"))
+		{
+			if (textures->IsArray())
+			{
+				if (textures->Size() > ParticleMaterial::kNumTextureSlot)
+					warnings.push_back("sprite.textures: more than " + std::to_string(ParticleMaterial::kNumTextureSlot) + " slots -> extra ignored");
+				const uint32_t n = min(uint32_t(textures->Size()), uint32_t(ParticleMaterial::kNumTextureSlot));
+				for (uint32_t i = 0; i < n; ++i)
+				{
+					const JsonValue& jt = textures->At(i);
+					MaterialTexture& t = a.textures[i];
+					if (const JsonValue* v = jt.Find("path"))
+						t.path = v->AsString();
+					if (EnumFromName(jt.Find("colorSpace"), kColorSpaceNames, e, "colorSpace", warnings))
+						t.colorSpace = TextureColorSpace(e);
+				}
+			}
+			else
+				warnings.push_back("sprite.textures: expected an array -> kept default");
+		}
+		else if (const JsonValue* v = sprite->Find("texture"))
+		{
+			a.textures[ParticleMaterial::kBaseTexture].path = v->AsString();
+			a.textures[ParticleMaterial::kBaseTexture].colorSpace = TextureColorSpace::sRGB;
+		}
+
 		if (EnumFromName(sprite->Find("textureAlpha"), kTextureAlphaNames, e, "textureAlpha", warnings))
 			s.textureAlpha = SpriteTextureAlpha(e);
 		if (EnumFromName(sprite->Find("blend"), kBlendNames, e, "blend", warnings))

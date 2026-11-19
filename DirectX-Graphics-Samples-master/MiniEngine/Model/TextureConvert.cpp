@@ -22,10 +22,8 @@ using namespace DirectX;
 
 #define GetFlag(f) ((Flags & f) != 0)
 
-void CompileTextureOnDemand(const std::wstring& originalFile, uint32_t flags)
+void CompileTextureOnDemand(const std::wstring& originalFile, const std::wstring& ddsFile, uint32_t flags)
 {
-    std::wstring ddsFile = Utility::RemoveExtension(originalFile) + L".dds";
-
     struct _stat64 ddsFileStat, srcFileStat;
 
     bool srcFileMissing = _wstat64(originalFile.c_str(), &srcFileStat) == -1;
@@ -41,25 +39,32 @@ void CompileTextureOnDemand(const std::wstring& originalFile, uint32_t flags)
     if (ddsFileMissing || !srcFileMissing && ddsFileStat.st_mtime < srcFileStat.st_mtime)
     {
         Utility::Printf("DDS texture %ws missing or older than source.  Rebuilding.\n", Utility::RemoveBasePath(originalFile).c_str());
-        ConvertToDDS(originalFile, flags);
+        ConvertToDDS(originalFile, ddsFile, flags);
     }
 }
 
-bool ConvertToDDS( const std::wstring& filePath, uint32_t Flags )
+void CompileTextureOnDemand(const std::wstring& originalFile, uint32_t flags)
 {
-    bool bInterpretAsSRGB =	GetFlag(kSRGB);
-    bool bPreserveAlpha =	GetFlag(kPreserveAlpha);
+    CompileTextureOnDemand(originalFile, Utility::RemoveExtension(originalFile) + L".dds", flags);
+}
+
+
+bool ConvertToDDS(const std::wstring& filePath, const std::wstring& ddsFile, uint32_t Flags)
+{
+    bool bInterpretAsSRGB = GetFlag(kSRGB);
+    bool bPreserveAlpha = GetFlag(kPreserveAlpha);
     bool bContainsNormals = GetFlag(kNormalMap);
-    bool bBumpMap =			GetFlag(kBumpToNormal);
-    bool bBlockCompress =	GetFlag(kDefaultBC);
-    bool bUseBestBC =		GetFlag(kQualityBC);
-    bool bFlipImage =       GetFlag(kFlipVertical);
+    bool bBumpMap = GetFlag(kBumpToNormal);
+    bool bBlockCompress = GetFlag(kDefaultBC);
+    bool bUseBestBC = GetFlag(kQualityBC);
+    bool bFlipImage = GetFlag(kFlipVertical);
+    bool bIgnoreSRGB = GetFlag(kIgnoreSRGBMetaData);
 
     // Can't be both
     ASSERT(!bInterpretAsSRGB || !bContainsNormals);
     ASSERT(!bPreserveAlpha || !bContainsNormals);
 
-    Utility::Printf( "Converting file \"%ws\" to DDS.\n", filePath.c_str() );
+    Utility::Printf("Converting file \"%ws\" to DDS.\n", filePath.c_str());
 
     // Get extension as utf8 (ascii)
     std::wstring ext = Utility::ToLower(Utility::GetFileExtension(filePath));
@@ -70,40 +75,40 @@ bool ConvertToDDS( const std::wstring& filePath, uint32_t Flags )
 
     bool isDDS = false;
     bool isHDR = false;
-    if ( ext == L"dds" )
+    if (ext == L"dds")
     {
         // TODO:  It might be desired to compress or recompress existing DDS files
         //Utility::Printf("Ignoring existing DDS \"%ws\".\n", filePath.c_str());
         //return false;
 
         isDDS = true;
-        HRESULT hr = LoadFromDDSFile( filePath.c_str(), DDS_FLAGS_NONE, &info, *image );
+        HRESULT hr = LoadFromDDSFile(filePath.c_str(), DDS_FLAGS_NONE, &info, *image);
         if (FAILED(hr))
         {
-            Utility::Printf( "Could not load texture \"%ws\" (DDS: %08X).\n", filePath.c_str(), hr );
+            Utility::Printf("Could not load texture \"%ws\" (DDS: %08X).\n", filePath.c_str(), hr);
             return false;
         }
     }
-    else if ( ext == L"tga" )
+    else if (ext == L"tga")
     {
-        HRESULT hr = LoadFromTGAFile( filePath.c_str(), &info, *image );
+        HRESULT hr = LoadFromTGAFile(filePath.c_str(), &info, *image);
         if (FAILED(hr))
         {
-            Utility::Printf( "Could not load texture \"%ws\" (TGA: %08X).\n", filePath.c_str(), hr );
+            Utility::Printf("Could not load texture \"%ws\" (TGA: %08X).\n", filePath.c_str(), hr);
             return false;
         }
     }
-    else if ( ext == L"hdr" )
+    else if (ext == L"hdr")
     {
         isHDR = true;
-        HRESULT hr = LoadFromHDRFile( filePath.c_str(), &info, *image );
+        HRESULT hr = LoadFromHDRFile(filePath.c_str(), &info, *image);
         if (FAILED(hr))
         {
-            Utility::Printf( "Could not load texture \"%ws\" (HDR: %08X).\n", filePath.c_str(), hr );
+            Utility::Printf("Could not load texture \"%ws\" (HDR: %08X).\n", filePath.c_str(), hr);
             return false;
         }
     }
-    else if ( ext == L"exr" )
+    else if (ext == L"exr")
     {
 #ifdef USE_OPENEXR
         isHDR = true;
@@ -123,16 +128,18 @@ bool ConvertToDDS( const std::wstring& filePath, uint32_t Flags )
         WIC_FLAGS wicFlags = WIC_FLAGS_NONE;
         //if (g_pScene->Settings().bIgnoreSRGB)
         //    wicFlags |= WIC_FLAGS_IGNORE_SRGB;
+        if (bIgnoreSRGB)
+            wicFlags = static_cast<WIC_FLAGS>(wicFlags | WIC_FLAGS_IGNORE_SRGB);
 
-        HRESULT hr = LoadFromWICFile( filePath.c_str(), wicFlags, &info, *image );
+        HRESULT hr = LoadFromWICFile(filePath.c_str(), wicFlags, &info, *image);
         if (FAILED(hr))
         {
-            Utility::Printf( "Could not load texture \"%ws\" (WIC: %08X).\n", filePath.c_str(), hr );
+            Utility::Printf("Could not load texture \"%ws\" (WIC: %08X).\n", filePath.c_str(), hr);
             return false;
         }
     }
 
-    if ( info.width > 16384 || info.height > 16384 )
+    if (info.width > 16384 || info.height > 16384)
     {
         Utility::Printf("Texture size (%Iu,%Iu) too large for feature level 11.0 or later (16384) \"%ws\".\n",
             info.width, info.height, filePath.c_str());
@@ -143,17 +150,17 @@ bool ConvertToDDS( const std::wstring& filePath, uint32_t Flags )
     {
         std::unique_ptr<ScratchImage> timage(new ScratchImage);
 
-        HRESULT hr = FlipRotate( image->GetImages()[0], TEX_FR_FLIP_VERTICAL, *timage );
+        HRESULT hr = FlipRotate(image->GetImages()[0], TEX_FR_FLIP_VERTICAL, *timage);
 
         if (FAILED(hr))
         {
-            Utility::Printf( "Could not flip image \"%ws\" (%08X).\n", filePath.c_str(), hr );
+            Utility::Printf("Could not flip image \"%ws\" (%08X).\n", filePath.c_str(), hr);
         }
         else
         {
             image.swap(timage);
         }
-       
+
     }
 
     DXGI_FORMAT tformat;
@@ -188,7 +195,7 @@ bool ConvertToDDS( const std::wstring& filePath, uint32_t Flags )
 
         if (FAILED(hr))
         {
-            Utility::Printf( "Could not compute normal map for \"%ws\" (%08X).\n", filePath.c_str(), hr );
+            Utility::Printf("Could not compute normal map for \"%ws\" (%08X).\n", filePath.c_str(), hr);
         }
         else
         {
@@ -196,16 +203,16 @@ bool ConvertToDDS( const std::wstring& filePath, uint32_t Flags )
             info.format = tformat;
         }
     }
-    else if ( info.format != tformat )
+    else if (info.format != tformat)
     {
         std::unique_ptr<ScratchImage> timage(new ScratchImage);
 
-        HRESULT hr = Convert( image->GetImages(), image->GetImageCount(), image->GetMetadata(),
-            tformat, TEX_FILTER_DEFAULT, 0.5f, *timage );
+        HRESULT hr = Convert(image->GetImages(), image->GetImageCount(), image->GetMetadata(),
+            tformat, TEX_FILTER_DEFAULT, 0.5f, *timage);
 
         if (FAILED(hr))
         {
-            Utility::Printf( "Could not convert \"%ws\" (%08X).\n", filePath.c_str(), hr );
+            Utility::Printf("Could not convert \"%ws\" (%08X).\n", filePath.c_str(), hr);
         }
         else
         {
@@ -219,11 +226,11 @@ bool ConvertToDDS( const std::wstring& filePath, uint32_t Flags )
     {
         std::unique_ptr<ScratchImage> timage(new ScratchImage);
 
-        HRESULT hr = GenerateMipMaps( image->GetImages(), image->GetImageCount(), image->GetMetadata(), TEX_FILTER_DEFAULT, 0, *timage );
+        HRESULT hr = GenerateMipMaps(image->GetImages(), image->GetImageCount(), image->GetMetadata(), TEX_FILTER_DEFAULT, 0, *timage);
 
         if (FAILED(hr))
         {
-            Utility::Printf( "Failing generating mimaps for \"%ws\" (WIC: %08X).\n", filePath.c_str(), hr );
+            Utility::Printf("Failing generating mimaps for \"%ws\" (WIC: %08X).\n", filePath.c_str(), hr);
         }
         else
         {
@@ -236,16 +243,16 @@ bool ConvertToDDS( const std::wstring& filePath, uint32_t Flags )
     {
         if (info.width % 4 || info.height % 4)
         {
-            Utility::Printf( "Texture size (%Iux%Iu) not a multiple of 4 \"%ws\", so skipping compress\n", info.width, info.height, filePath.c_str() );
+            Utility::Printf("Texture size (%Iux%Iu) not a multiple of 4 \"%ws\", so skipping compress\n", info.width, info.height, filePath.c_str());
         }
         else
         {
             std::unique_ptr<ScratchImage> timage(new ScratchImage);
 
-            HRESULT hr = Compress( image->GetImages(), image->GetImageCount(), image->GetMetadata(), cformat, TEX_COMPRESS_DEFAULT, 0.5f, *timage );
+            HRESULT hr = Compress(image->GetImages(), image->GetImageCount(), image->GetMetadata(), cformat, TEX_COMPRESS_DEFAULT, 0.5f, *timage);
             if (FAILED(hr))
             {
-                Utility::Printf( "Failing compressing \"%ws\" (WIC: %08X).\n", filePath.c_str(), hr );
+                Utility::Printf("Failing compressing \"%ws\" (WIC: %08X).\n", filePath.c_str(), hr);
             }
             else
             {
@@ -254,16 +261,21 @@ bool ConvertToDDS( const std::wstring& filePath, uint32_t Flags )
         }
     }
 
-    // Rename file extension to DDS
-    const std::wstring wDest = Utility::RemoveExtension(filePath) + L".dds";
-    
+    // Save to the requested DDS path
+    const std::wstring& wDest = ddsFile;
+
     // Save DDS
-    HRESULT hr = SaveToDDSFile( image->GetImages(), image->GetImageCount(), image->GetMetadata(), DDS_FLAGS_NONE, wDest.c_str() );
-    if( FAILED( hr ) )
+    HRESULT hr = SaveToDDSFile(image->GetImages(), image->GetImageCount(), image->GetMetadata(), DDS_FLAGS_NONE, wDest.c_str());
+    if (FAILED(hr))
     {
-        Utility::Printf( "Could not write texture to file \"%ws\" (%08X).\n", wDest.c_str(), hr );
+        Utility::Printf("Could not write texture to file \"%ws\" (%08X).\n", wDest.c_str(), hr);
         return false;
     }
 
     return true;
+}
+
+bool ConvertToDDS(const std::wstring& filePath, uint32_t Flags)
+{
+    return ConvertToDDS(filePath, Utility::RemoveExtension(filePath) + L".dds", Flags);
 }

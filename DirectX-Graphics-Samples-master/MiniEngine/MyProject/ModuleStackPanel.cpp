@@ -115,7 +115,10 @@ namespace
 			const std::string name = fd.cFileName;
 			const std::string ext = LowerExtension(name);
 			if (ext == ".dds")
-				dds.push_back(name);
+			{
+				if (!ParticleTextures::IsCacheFile(name))
+					dds.push_back(name);
+			}
 			else if (ext == ".png" || ext == ".tga" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp")
 				sources.push_back(name);
 		} while (FindNextFileA(h, &fd));
@@ -136,23 +139,61 @@ namespace
 		return sources;
 	}
 
-	void DrawTexture(EmitterRuntime& runtime)
+
+	void DrawTextureSlot(EmitterRuntime& runtime, uint32_t slot)
 	{
-		const std::string& current = runtime.SpriteTexture();
-		const std::string preview = current.empty() ? std::string("(soft circle)") : current;
+		MaterialTexture t = runtime.Material().SlotTexture(slot);
+		const char* emptyName = (slot == ParticleMaterial::kBaseTexture) ? "(soft circle)" : "(none = white)";
+		const std::string preview = t.path.empty() ? std::string(emptyName) : t.path;
+		const std::string label = std::string(ParticleMaterial::SlotName(slot)) + " Texture";
+
+		ImGui::PushID(static_cast<int>(slot));
+		bool changed = false;
 
 		ImGui::SetNextItemWidth(300.f);
-		if (ImGui::BeginCombo("Texture", preview.c_str()))
+		if (ImGui::BeginCombo(label.c_str(), preview.c_str()))
 		{
-			if (ImGui::Selectable("(soft circle)", current.empty()))
-				runtime.SetSpriteTexture(std::string());
+			if (ImGui::Selectable(emptyName, t.path.empty()))
+			{
+				t.path.clear();
+				changed = true;
+			}
 
 			// 펼칠 때마다 다시 읽는다 (파일을 추가해도 재실행 필요 없음)
 			for (const std::string& path : ListTextureFiles())
-				if (ImGui::Selectable(path.c_str(), path == current))
-					runtime.SetSpriteTexture(path);
+			{
+				if (ImGui::Selectable(path.c_str(), path == t.path))
+				{
+					t.path = path;
+					changed = true;
+				}
+			}
 			ImGui::EndCombo();
 		}
+
+		// 색 텍스처 = sRGB, 노이즈 / 마스크처럼 값으로 쓰는 텍스처 = Linear
+		ImGui::SameLine();
+		static const char* const kColorSpaces[] = { "sRGB", "Linear" };
+		int colorSpace = static_cast<int>(t.colorSpace);
+		ImGui::SetNextItemWidth(90.f);
+		if (ImGui::Combo("##ColorSpace", &colorSpace, kColorSpaces, IM_ARRAYSIZE(kColorSpaces)))
+		{
+			t.colorSpace = static_cast<TextureColorSpace>(colorSpace);
+			changed = true;
+		}
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("sRGB: color image\nLinear: data (noise, mask) - values are read as stored");
+
+		if (changed)
+			runtime.SetMaterialTexture(slot, t);
+
+		ImGui::PopID();
+	}
+
+	void DrawTexture(EmitterRuntime& runtime)
+	{
+		for (uint32_t slot = 0; slot < ParticleMaterial::kNumTextureSlot; ++slot)
+			DrawTextureSlot(runtime, slot);
 	}
 
 	// ---- SubUV / 블렌드 ----
@@ -517,9 +558,13 @@ namespace
 			return;
 		}
 
-		const bool textureOk = ApplyEmitterAsset(runtime, asset);
-		if (!textureOk)
-			st.warnings.push_back("texture '" + asset.texture + "' could not be loaded (drawn magenta)");
+		std::vector<std::string> failedTextures;
+		if (!ApplyEmitterAsset(runtime, asset, &failedTextures))
+		{
+			for (const std::string& path : failedTextures)
+				st.warnings.push_back("texture '" + path + "' could not be loaded (drawn magenta)");
+		}
+		// [AI step-01] MOD END
 		strncpy_s(st.name, sizeof(st.name), name.c_str(), _TRUNCATE);
 		SetAssetStatus("Loaded " + path + " (restarting emitter)", false);
 	}

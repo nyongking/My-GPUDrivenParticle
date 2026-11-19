@@ -14,6 +14,7 @@ class GraphicsContext;
 class EmitterInstance;
 class GpuEmitterInstance;
 class Block;
+class ParticleMaterial;
 namespace Math { class Camera; }
 
 enum class SpriteBlendMode : uint32_t
@@ -108,8 +109,7 @@ public:
     void SetSortMode(SortMode mode) { m_SortMode = mode; }
     SortMode GetSortMode() const { return m_SortMode; }
 
-    bool SetTexture(const std::wstring& path);
-    void ReleaseTextures();
+    void SetMaterial(const ParticleMaterial* material) { m_Material = material; }
 
     void SetSettings(const SpriteSettings& settings);
     const SpriteSettings& Settings() const { return m_Settings; }
@@ -135,10 +135,9 @@ private:
 
     static const uint32_t kNoAttribute = 0xFFFFFFFFu;   // 셰이더의 NO_ATTRIBUTE 와 같음
 
-    D3D12_CPU_DESCRIPTOR_HANDLE TextureSRV() const;
+    D3D12_CPU_DESCRIPTOR_HANDLE TextureSRV(uint32_t slot) const;
 
-    std::map<std::wstring, TextureRef> m_Textures;
-    const TextureRef* m_Texture = nullptr;       // nullptr = 기본 원형
+    const ParticleMaterial* m_Material = nullptr;
     
 
     ByteAddressBuffer   m_ParticleBuffer;

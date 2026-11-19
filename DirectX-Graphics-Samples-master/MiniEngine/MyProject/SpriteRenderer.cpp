@@ -4,6 +4,7 @@
 #include "EmitterInstance.h"
 #include "GpuEmitterInstance.h"
 #include "ParticleRenderList.h"
+#include "ParticleMaterial.h"
 
 #include "GraphicsCore.h"
 #include "GraphicsCommon.h"
@@ -12,8 +13,6 @@
 #include "RootSignature.h"
 #include "PipelineState.h"
 #include "Camera.h"
-#include "TextureManager.h"
-#include "TextureConvert.h"
 
 #include "TagLibrary.h"
 #include "BitonicSort.h"
@@ -123,7 +122,6 @@ namespace
 
 	// 텍스처를 고르지 않았을 때 쓰는 기본 원형 (예전 PS 의 falloff 를 텍스처로 구운 것)
 	Texture       s_SoftCircle;
-	TextureRef		  s_TempNoise;
 
 	// 기본 텍스처 생성
 	void CreateSoftCircle()
@@ -144,12 +142,7 @@ namespace
 		}
 		s_SoftCircle.Create2D(kSize * sizeof(uint32_t), kSize, kSize, DXGI_FORMAT_R8G8B8A8_UNORM, texels.data());
 	}
-
-	void LoadTempNoise()
-	{
-		s_TempNoise = TextureManager::LoadDDSFromFile(L"Assets/Textures/T_Fire_Tiled.dds", Graphics::kWhiteOpaque2D, false);
-	}
-
+		
 	uint32_t	RoundUp4(uint32_t v) { return (v + 3u) & ~3u; } // 4단위로 끊는다.
 	float3		ToFloat3(const Math::Vector3& v) { return { float(v.GetX()), float(v.GetY()), float(v.GetZ()) }; }
 
@@ -198,7 +191,6 @@ namespace
 		s_SortKeyPSO.Finalize();
 
 		CreateSoftCircle();
-		LoadTempNoise();
 
 		s_PipelineReady = true;
 	}
@@ -498,7 +490,7 @@ ParticleRenderList::Source SpriteRenderer::MakeListSource() const
 	src.subUVBlend = m_Settings.subUVBlend;
 	src.blendMode = static_cast<uint32_t>(m_Settings.blend);
 	src.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
-	src.texture = TextureSRV();
+	src.texture = TextureSRV(ParticleMaterial::kBaseTexture);
 
 	return src;
 }
@@ -558,8 +550,11 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), sortedIndices.GetSRV() };
 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
 
-	const D3D12_CPU_DESCRIPTOR_HANDLE texs[2] = { TextureSRV(), s_TempNoise.GetSRV() };
-	gfx.SetDynamicDescriptors(kRootTexture, 0, 2, texs);
+	D3D12_CPU_DESCRIPTOR_HANDLE texs[ParticleMaterial::kNumTextureSlot];
+	for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
+		texs[i] = TextureSRV(i);
+
+	gfx.SetDynamicDescriptors(kRootTexture, 0, ParticleMaterial::kNumTextureSlot, texs);
 
 	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend), static_cast<uint32_t>(m_Settings.textureAlpha), sGlobal.exeTime);
 }
@@ -581,39 +576,6 @@ void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camer
 	gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
 }
 
-bool SpriteRenderer::SetTexture(const std::wstring& path)
-{
-	m_Texture = nullptr;
-	if (path.empty())
-		return true;    // 기본 원형
-
-	auto it = m_Textures.find(path);
-	if (it == m_Textures.end())
-	{
-		// PNG 등은 처음 한 번 옆에 DDS 로 변환해 둔다 (원본이 더 새로우면 다시 변환)
-		// 색 텍스처라 sRGB, 파티클은 알파가 중요하므로 4채널 유지
-		CompileTextureOnDemand(path, TextureOptions(true, true));
-		const std::wstring ddsPath = Utility::RemoveExtension(path) + L".dds";
-
-		// 실패해도 magenta 로 그려져서 바로 눈에 띈다
-		it = m_Textures.emplace(path, TextureManager::LoadDDSFromFile(ddsPath, Graphics::kMagenta2D, true)).first;
-	}
-
-	m_Texture = &it->second;
-	if (!m_Texture->IsValid())
-	{
-		Utility::Printf(L"[SpriteRenderer] Texture load failed : %ws\n", path.c_str());
-		return false;
-	}
-	return true;
-}
-
-void SpriteRenderer::ReleaseTextures()
-{
-	// 프레임이 아직 쓰고 있을 수 있으므로 GPU idle 뒤에만 부른다
-	m_Texture = nullptr;
-	m_Textures.clear();
-}
 
 void SpriteRenderer::SetSettings(const SpriteSettings& settings)
 {
@@ -623,7 +585,12 @@ void SpriteRenderer::SetSettings(const SpriteSettings& settings)
 	m_Settings.subImageRows = max(m_Settings.subImageRows, 1u);
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE SpriteRenderer::TextureSRV() const
+D3D12_CPU_DESCRIPTOR_HANDLE SpriteRenderer::TextureSRV(uint32_t slot) const
 {
-	return m_Texture ? m_Texture->GetSRV() : s_SoftCircle.GetSRV();
+	const D3D12_CPU_DESCRIPTOR_HANDLE srv = m_Material ? m_Material->TextureSRV(slot) : D3D12_CPU_DESCRIPTOR_HANDLE{ 0 };
+	if (srv.ptr != 0)
+		return srv;
+	
+	return (slot == ParticleMaterial::kBaseTexture) ?
+		s_SoftCircle.GetSRV() : Graphics::GetDefaultTexture(Graphics::kWhiteOpaque2D);
 }

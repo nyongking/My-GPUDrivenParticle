@@ -29,14 +29,15 @@
 #include "ModuleLibrary.h"
 #include "CurveLibrary.h"
 #include "EmitterRuntime.h"
+#include "ParticleMaterial.h"
 
 #include "EmitterTestScene.h"
 #include "UberGpuProgram.h"
 
-#include <algorithm>
-#include <cmath>
 #include "ModuleStackPanel.h"
 #include "EmitterAsset.h"
+#include <algorithm>
+#include <cmath>
 
 using namespace GameCore;
 using namespace Graphics;
@@ -180,6 +181,7 @@ void MyProject::Cleanup(void)
     m_TestScene.Shutdown();
     m_Runtime.Shutdown();
     CurveLibrary::Shutdown();       // 이미터가 다 내려간 뒤 (Shutdown 이 GPU 를 기다린다)
+    ParticleTextures::Shutdown();
 
     m_Floor.Release();
 

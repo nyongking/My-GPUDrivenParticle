@@ -25,6 +25,7 @@ enum TexConversionFlags
     kDefaultBC = 16,    // Apply standard block compression (BC1-5)
     kQualityBC = 32,    // Apply quality block compression (BC6H/7)
     kFlipVertical = 64,
+    kIgnoreSRGBMetaData = 128, // sRGB Tag ¹«½Ã
 };
 
 inline uint8_t TextureOptions(bool sRGB, bool hasAlpha=false, bool invertY=false)
@@ -35,10 +36,19 @@ inline uint8_t TextureOptions(bool sRGB, bool hasAlpha=false, bool invertY=false
 // If the DDS version of the texture specified does not exist or is older than the source texture, reconvert it.
 void CompileTextureOnDemand(const std::wstring& originalFile, uint32_t flags);
 
+void CompileTextureOnDemand(const std::wstring& originalFile, const std::wstring& ddsFile, uint32_t flags);
+
+
 // Loads a non-DDS texture such as TGA, PNG, or JPG, then converts it to a more optimal
 // DDS format with a full mip chain.  Resultant file has the same path with the file extension
 // changed to "DDS".
 bool ConvertToDDS(
     const std::wstring& filePath,	// UTF8-encoded path to source file
     uint32_t Flags                  // flags ORed together
+);
+
+bool ConvertToDDS(
+    const std::wstring& filePath,
+    const std::wstring& ddsFile,
+    uint32_t Flags
 );

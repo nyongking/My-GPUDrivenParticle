@@ -7,6 +7,7 @@
 #include "ShaderCompiler.h"
 #include "SpriteRenderer.h"
 #include "UberEmitterData.h"
+#include "ParticleMaterial.h"
 
 #include <memory>
 #include <string>
@@ -60,10 +61,9 @@ public:
 	// 이 칸에 연결할 수 있는 속성 목록 (적용된 모듈이 쓰는 같은 타입의 Particles 속성 + Previous / Initial)
 	std::vector<std::string> BindableAttributes(const TypeInfo* type) const;
 
-	// -------- 스프라이트 텍스처 -------
-	// 빈 문자열 = 기본 원형. 재컴파일 / 재시작 없이 바로 반영. 실패하면 magenta 로 그려지고 false
-	bool SetSpriteTexture(const std::string& path);
-	const std::string& SpriteTexture() const { return m_SpriteTexture; }
+	// -------- Material 설정 -------
+	bool SetMaterialTexture(uint32_t slot, const MaterialTexture& texture);
+	const ParticleMaterial& Material() const { return m_Material; }
 
 	void SetSpriteSettings(const SpriteSettings& settings);
 	const SpriteSettings& GetSpriteSettings() const { return m_CpuRenderer.Settings(); }
@@ -114,7 +114,7 @@ private:
 	RendererDesc            m_AppliedSpriteDesc = SpriteRenderer::Desc();
 	CompiledEmitter         m_Compiled;         // m_AppliedModules 의 컴파일 결과
 	UberEmitterData			m_Uber;
-	std::string             m_SpriteTexture;    // 렌더러가 재시작해도 유지 (렌더러 쪽 캐시)
+	ParticleMaterial        m_Material;         // Material
 
 	EmitterBackend          m_Backend = EmitterBackend::Gpu;        // 요청된 백엔드
 	EmitterBackend          m_ActiveBackend = EmitterBackend::Gpu;  // 실제로 실행 중인 백엔드
