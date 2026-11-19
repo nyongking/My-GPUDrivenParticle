@@ -368,6 +368,7 @@ namespace
 		ImGui::SeparatorText(desc.name.c_str());
 
 		DrawTexture(runtime);
+		DrawMaterialParams(runtime);
 		DrawSpriteSettings(runtime);
 
 		for (size_t i = 0; i < desc.bindings.size(); ++i)

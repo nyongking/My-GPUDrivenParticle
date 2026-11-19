@@ -14,7 +14,7 @@ enum class TextureColorSpace : uint32_t
 
 const char* TextureColorSpaceName(TextureColorSpace colorSpace);
 
-// 슬롯 하나의 설정 (에셋에 저장하는 값)
+// 슬롯 하나의 설정
 struct MaterialTexture
 {
 	std::string         path; // 빈 문자열 = 비어 있음, 기본 텍스처 설정
@@ -30,7 +30,10 @@ public:
 	enum TextureSlot : uint32_t
 	{
 		kBaseTexture,
-		kLayerTexture,
+		kTexture0,
+		kTexture1,
+		kTexture2,
+		kTexture3,
 		kNumTextureSlot,
 	};
 
@@ -40,7 +43,7 @@ public:
 		kParamLayerScroll,
 		kNumNamedParams
 	};
-
+	static const uint32_t kNumEffectTextures = kNumTextureSlot - kBaseTexture;
 	static const uint32_t kMaxParams = 16;
 
 	static const char*		SlotName(uint32_t slot);

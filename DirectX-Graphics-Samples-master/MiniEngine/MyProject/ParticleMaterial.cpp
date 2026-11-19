@@ -24,7 +24,10 @@ const char* ParticleMaterial::SlotName(uint32_t slot)
 	switch (slot)
 	{
 	case kBaseTexture: return "Base";
-	case kLayerTexture: return "Layer";
+	case kTexture0: return "Tex0";
+	case kTexture1: return "Tex1";
+	case kTexture2: return "Tex2";
+	case kTexture3: return "Tex3";
 	default:			return "?";
 	}
 }
@@ -40,8 +43,8 @@ const char* ParticleMaterial::ParamName(uint32_t k)
 {
 	switch (k)
 	{
-	case kParamLayerUV: return "Layer Tiling(xy), Offset(zw)";
-	case kParamLayerScroll: return "Layer Scroll(xy)";
+	case kParamLayerUV: return "Tex Tiling(xy), Offset(zw)";
+	case kParamLayerScroll: return "Tex Scroll(xy)";
 	default: return "?";
 	}
 }
@@ -60,6 +63,7 @@ ParticleMaterial::ParticleMaterial()
 {
 	for (uint32_t i = 0; i < kNumTextureSlot; ++i)
 		m_Textures[i] = DefaultTexture();
+	ResetParams();
 }
 
 ParticleMaterial::~ParticleMaterial()

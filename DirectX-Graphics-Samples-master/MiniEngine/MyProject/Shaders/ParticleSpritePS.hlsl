@@ -1,7 +1,10 @@
 #include "SpriteAlpha.hlsli"
 
+#define MAX_MATERIAL_TEXTURES 4
+#define MAX_MATERIAL_PARAMS 16
+
 Texture2D<float4> SpriteTexture : register(t2); // t0, t1 은 VS (파티클 / 정렬 인덱스)
-Texture2D<float4> LayerTexture : register(t3); // Temp: Layer을 둔다.
+Texture2D<float4> MaterialTextures[MAX_MATERIAL_TEXTURES] : register(t3);
 
 SamplerState LinearClamp : register(s0);
 SamplerState LinearWrap : register(s1);
@@ -13,7 +16,6 @@ cbuffer SpritePSConstants : register(b1)
     float Time; // Global Time
 };
 
-#define MAX_MATERIAL_PARAMS 16
 cbuffer MaterialParamsCB : register(b2)
 {
     float4 MaterialParams[MAX_MATERIAL_PARAMS];
@@ -22,6 +24,11 @@ cbuffer MaterialParamsCB : register(b2)
 float4 Param(uint k)
 {
     return MaterialParams[k];
+}
+
+float4 SampleTex(uint slot, float2 uv)
+{
+    return MaterialTextures[slot].Sample(LinearWrap, uv);
 }
 
 
@@ -46,7 +53,7 @@ float4 main(PSInput input) : SV_TARGET
         discard;
     // 0.xy = Tiling, 0.zw = Offset, 1.xy = Scroll
     const float2 layerUV = input.quadUV * Param(0).xy + Param(0).zw + Param(1).xy * Time;
-    const float noise = LayerTexture.Sample(LinearWrap, layerUV).r;
+    const float noise = SampleTex(0, layerUV).r; // temp
     
     result.rgb *= noise;
 
