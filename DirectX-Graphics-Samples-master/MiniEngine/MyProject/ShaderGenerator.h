@@ -22,6 +22,8 @@ struct GeneratedShader
 // [2] 모듈 입력값 상수 버퍼 : 모듈 전체의 Parameter를 ConstBuffer로
 // 예시) cbuffer ModuleParams : register(b1)
 // { float M0_SpawnRate_Rate; ...}
+//   RandomRange 는 <이름>_Min / <이름>_Max, Curve 는 uint <이름>_Curve (전역 커브 버퍼의 칸 번호)
+//   모듈 조각의 PARAM(n) 은 종류에 맞는 식으로 펼쳐진다 (상수 / Min + (Max - Min) * 랜덤 / SampleCurve)
 //
 // [3] 구조체 : 실제 파티클 구조체 & 이미터 구조체 선언
 // [4] 읽기/저장 : Update에서 파티클 데이터를 읽고 쓰는 내용

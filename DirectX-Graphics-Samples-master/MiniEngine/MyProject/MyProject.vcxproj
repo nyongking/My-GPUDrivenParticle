@@ -64,17 +64,25 @@
     <ClInclude Include="EmitterGpuProgram.h" />
     <ClInclude Include="EmitterInstance.h" />
     <ClInclude Include="EmitterRuntime.h" />
+    <ClInclude Include="EmitterTestScene.h" />
+    <ClInclude Include="GlobalData.h" />
     <ClInclude Include="ModuleStackPanel.h" />
+    <ClInclude Include="EmitterAsset.h" />
+    <ClInclude Include="Json.h" />
     <ClInclude Include="GpuEmitterInstance.h" />
     <ClInclude Include="LayoutBuilder.h" />
     <ClInclude Include="ModuleContext.h" />
     <ClInclude Include="ModuleDesc.h" />
     <ClInclude Include="ModuleLibrary.h" />
+    <ClInclude Include="CurveLibrary.h" />
+    <ClInclude Include="CurlNoise.h" />
     <ClInclude Include="OwnerTransform.h" />
     <ClInclude Include="ParticleEmitter.h" />
+    <ClInclude Include="ParticleMaterial.h" />
     <ClInclude Include="ParticleNamespace.h" />
     <ClInclude Include="ParticlePool.h" />
     <ClInclude Include="ParticleSettings.h" />
+    <ClInclude Include="ParticleRenderList.h" />
     <ClInclude Include="ParticleSorter.h" />
     <ClInclude Include="ParticleSystem.h" />
     <ClInclude Include="ParticleTypes.h" />
@@ -86,6 +94,8 @@
     <ClInclude Include="SpriteRenderer.h" />
     <ClInclude Include="TagLibrary.h" />
     <ClInclude Include="TexturedQuad.h" />
+    <ClInclude Include="UberEmitterData.h" />
+    <ClInclude Include="UberGpuProgram.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AttributeKey.cpp" />
@@ -96,17 +106,24 @@
     <ClCompile Include="EmitterGpuProgram.cpp" />
     <ClCompile Include="EmitterInstance.cpp" />
     <ClCompile Include="EmitterRuntime.cpp" />
+    <ClCompile Include="EmitterTestScene.cpp" />
+    <ClCompile Include="GlobalData.cpp" />
     <ClCompile Include="ModuleStackPanel.cpp" />
+    <ClCompile Include="EmitterAsset.cpp" />
+    <ClCompile Include="Json.cpp" />
     <ClCompile Include="GpuEmitterInstance.cpp" />
     <ClCompile Include="LayoutBuilder.cpp" />
     <ClCompile Include="ModuleContext.cpp" />
     <ClCompile Include="ModuleDesc.cpp" />
     <ClCompile Include="ModuleLibrary.cpp" />
+    <ClCompile Include="CurveLibrary.cpp" />
     <ClCompile Include="OwnerTransform.cpp" />
     <ClCompile Include="ParticleEmitter.cpp" />
+    <ClCompile Include="ParticleMaterial.cpp" />
     <ClCompile Include="ParticlePool.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="ParticleSettings.cpp" />
+    <ClCompile Include="ParticleRenderList.cpp" />
     <ClCompile Include="ParticleSorter.cpp" />
     <ClCompile Include="ParticleSystem.cpp" />
     <ClCompile Include="ParticleUtility.cpp" />
@@ -118,6 +135,8 @@
     <ClCompile Include="ShaderGenerator.cpp" />
     <ClCompile Include="SpriteRenderer.cpp" />
     <ClCompile Include="TexturedQuad.cpp" />
+    <ClCompile Include="UberEmitterData.cpp" />
+    <ClCompile Include="UberGpuProgram.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Core/Core.vcxproj">
@@ -143,6 +162,10 @@
     <None Include="Shaders\ParticleCommon.hlsli" />
     <None Include="Shaders\ParticleComputeCommon.hlsli" />
     <None Include="Shaders\ParticleDrawCommon.hlsli" />
+    <None Include="Shaders\ParticleListCommon.hlsli" />
+    <None Include="Shaders\SpriteAlpha.hlsli" />
+    <None Include="Shaders\SpriteFacing.hlsli" />
+    <None Include="Shaders\ParticleUber.hlsli" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\DebugLinePS.hlsl">
@@ -154,6 +177,38 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleSortKeyCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleGatherCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleListVS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Vertex</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleListPS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Pixel</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
     </FxCompile>
     <FxCompile Include="Shaders\EmitterFinalizeCS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
@@ -214,6 +269,30 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleUberEmitterUpdateCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleUberParticleSpawnCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleUberParticleUpdateCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
     </FxCompile>
     <FxCompile Include="Shaders\TexturedQuadPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>

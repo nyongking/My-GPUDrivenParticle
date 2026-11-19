@@ -6,8 +6,23 @@
 #include "CommandListManager.h"
 #include "GraphicsCore.h"
 
+#include "UberGpuProgram.h"
+
 #include <algorithm>
+#include <unordered_map>
 #include <utility>
+
+namespace
+{
+	std::unordered_map<std::string, std::weak_ptr<EmitterGpuProgram>> s_ProgramCache;
+	bool		s_ProgramCacheEnabled = true;
+	uint32_t	s_ProgramCacheHits = 0;
+}
+
+void EmitterRuntime::SetProgramCacheEnabled(bool enabled) { s_ProgramCacheEnabled = enabled; }
+bool EmitterRuntime::ProgramCacheEnabled() { return s_ProgramCacheEnabled; }
+uint32_t EmitterRuntime::ProgramCacheHits() { return s_ProgramCacheHits; }
+
 
 namespace
 {
@@ -55,6 +70,7 @@ bool EmitterRuntime::Initialize(const std::vector<ModuleDesc>& modules, uint32_t
 	m_Modules = modules;
 	m_AppliedModules = modules;
 	m_Capacity = capacity;
+	m_AppliedCapacity = capacity;
 	m_Backend = backend;
 	m_ActiveBackend = backend;
 	m_Ready = false;
@@ -62,6 +78,16 @@ bool EmitterRuntime::Initialize(const std::vector<ModuleDesc>& modules, uint32_t
 	m_Pending = Pending::Restart;
 	ApplyPending();
 	return m_Ready;
+}
+
+bool EmitterRuntime::Initialize(const std::vector<ModuleDesc>& modules, const RendererDesc& sprite, uint32_t capacity, EmitterBackend backend)
+{
+	if (sprite.bindings.size() == m_SpriteDesc.bindings.size())
+	{
+		m_SpriteDesc = sprite;
+		m_AppliedSpriteDesc = sprite;
+	}
+	return Initialize(modules, capacity, backend);
 }
 
 void EmitterRuntime::Shutdown()
@@ -74,7 +100,7 @@ void EmitterRuntime::Shutdown()
 	m_Ready = false;
 }
 
-void EmitterRuntime::Tick(float deltaTime, const OwnerTransform& owner)
+void EmitterRuntime::Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& owner)
 {
 	if (!m_Ready)
 		return;
@@ -82,14 +108,14 @@ void EmitterRuntime::Tick(float deltaTime, const OwnerTransform& owner)
 	if (m_ActiveBackend == EmitterBackend::Cpu)
 		m_Cpu.Tick(deltaTime, owner);
 	else
-		m_Gpu.Tick(deltaTime, owner);
+		m_Gpu.Tick(ctx, deltaTime, owner);
 }
 
-void EmitterRuntime::Tick(float deltaTime, const float3& ownerPosition)
+void EmitterRuntime::Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition)
 {
 	OwnerTransform owner;
 	owner.position = ownerPosition;
-	Tick(deltaTime, owner);
+	Tick(ctx, deltaTime, owner);
 }
 
 void EmitterRuntime::Render(GraphicsContext& gfx, const Math::Camera& camera)
@@ -101,6 +127,23 @@ void EmitterRuntime::Render(GraphicsContext& gfx, const Math::Camera& camera)
 		m_CpuRenderer.Render(gfx, camera, m_Cpu);
 	else
 		m_GpuRenderer.RenderGpu(gfx, camera, m_Gpu);
+}
+
+void EmitterRuntime::SubmitTo(GraphicsContext& gfx, ParticleRenderList& list)
+{
+	if (!m_Ready)
+		return;
+
+	if (m_ActiveBackend == EmitterBackend::Cpu)
+		m_CpuRenderer.SubmitToList(gfx, list, m_Cpu);
+	else
+		m_GpuRenderer.SubmitToListGpu(gfx, list, m_Gpu);
+}
+
+void EmitterRuntime::OnSubmitted(uint64_t fence)
+{
+	if (m_Ready && m_ActiveBackend == EmitterBackend::Gpu)
+		m_Gpu.OnSubmitted(fence);
 }
 
 void EmitterRuntime::ShutdownActive()
@@ -137,11 +180,29 @@ void EmitterRuntime::SetParamKind(size_t moduleIndex, size_t paramIndex, ParamKi
 		p.value.resize(size);       // Min 을 상수로 유지
 		p.perComponent = false;
 	}
+	else if (kind == ParamKind::Curve)
+	{
+		p.value.resize(size);       // 상수 값은 남겨 둔다 (상수로 되돌릴 때 사용)
+		p.perComponent = false;
+		if (!p.curve)
+		{
+			// 처음 커브로 바꿀 때: 현재 상수 값을 양 끝 키로 (바꾼 직후에는 결과가 그대로)
+			CurveKey key;
+			key.value = float4{ 0.f, 0.f, 0.f, 0.f };
+			std::memcpy(&key.value, p.value.data(), (std::min)(size, sizeof(float4)));
+			key.time = 0.f;
+			std::vector<CurveKey> keys = { key };
+			key.time = 1.f;
+			keys.push_back(key);
+			p.curve = std::make_shared<CurveAsset>(keys);
+		}
+	}
 	else
 	{
 		p.value.resize(size * 2);   // 현재 값을 Min, Max 양쪽에 복사
 		std::memcpy(p.value.data() + size, p.value.data(), size);
 	}
+	// Curve 는 가로축 속성(NormalizedAge) 읽기가 늘어 레이아웃이 바뀔 수 있다 -> RebuildPreserve 가 재시작으로 넘긴다
 	Request(Pending::Preserve);
 }
 
@@ -176,6 +237,33 @@ void EmitterRuntime::MoveModule(size_t moduleIndex, int direction)
 		return;
 
 	std::swap(m_Modules[moduleIndex], m_Modules[neighbor]);
+	Request(Pending::Restart);
+}
+
+void EmitterRuntime::AddModule(const ModuleDesc& module)
+{
+	m_Modules.push_back(module);
+	DetachCurves(m_Modules.back());     // 모듈 목록의 원본과 커브를 같이 쓰지 않게
+	Request(Pending::Restart);
+}
+
+void EmitterRuntime::RemoveModule(size_t moduleIndex)
+{
+	if (moduleIndex >= m_Modules.size())
+		return;
+	m_Modules.erase(m_Modules.begin() + moduleIndex);
+	Request(Pending::Restart);
+}
+
+void EmitterRuntime::ReplaceDescription(const std::vector<ModuleDesc>& modules, const RendererDesc& sprite, uint32_t capacity, EmitterBackend backend)
+{
+	m_Modules = modules;
+	// 바인딩 칸은 SpriteRenderer::Desc() 순서로 고정 (렌더러가 번호로 읽는다). 모양이 다르면 지금 것을 유지
+	if (sprite.bindings.size() == m_SpriteDesc.bindings.size())
+		m_SpriteDesc = sprite;
+	if (capacity > 0)
+		m_Capacity = capacity;
+	m_Backend = backend;
 	Request(Pending::Restart);
 }
 
@@ -265,6 +353,8 @@ std::vector<std::string> EmitterRuntime::BindableAttributes(const TypeInfo* type
 
 void EmitterRuntime::ApplyPending()
 {
+	SyncProgramWithMode();
+
 	const Pending pending = m_Pending;
 	m_Pending = Pending::None;
 
@@ -274,6 +364,7 @@ void EmitterRuntime::ApplyPending()
 	if (pending == Pending::Values)
 	{
 		FillModuleParamData(m_Modules, m_Compiled);
+		FillUberParams(m_Modules, m_Uber.params, nullptr);
 		m_AppliedModules = m_Modules;
 
 		if (m_Ready)
@@ -281,7 +372,10 @@ void EmitterRuntime::ApplyPending()
 			if (m_ActiveBackend == EmitterBackend::Cpu)
 				m_Cpu.SetModuleParamData(m_Compiled.moduleParamData);
 			else
+			{
 				m_Gpu.SetModuleParamData(m_Compiled.moduleParamData);
+				m_Gpu.SetUberData(m_Uber);
+			}
 		}
 		return;
 	}
@@ -291,6 +385,7 @@ void EmitterRuntime::ApplyPending()
 	{
 		m_AppliedModules = m_Modules;
 		m_AppliedSpriteDesc = m_SpriteDesc;
+		m_AppliedCapacity = m_Capacity;
 		m_LastError.clear();
 	}
 	else
@@ -300,26 +395,55 @@ void EmitterRuntime::ApplyPending()
 		Utility::Print(m_LastError.c_str());
 		m_Modules = m_AppliedModules;
 		m_SpriteDesc = m_AppliedSpriteDesc;
+		m_Capacity = m_AppliedCapacity;
 		m_Backend = m_ActiveBackend;
 	}
 }
 
 
-bool EmitterRuntime::BuildProgram(const CompiledEmitter& compiled, std::unique_ptr<EmitterGpuProgram>& out)
+bool EmitterRuntime::BuildProgram(const CompiledEmitter& compiled, std::shared_ptr<EmitterGpuProgram>& out)
 {
+	std::string cacheKey;
+	if (s_ProgramCacheEnabled)
+	{
+		const GeneratedShader generated = GenerateEmitterShader(compiled, "Main.generated.hlsl");
+		if (generated.Ok())
+		{
+			cacheKey = generated.source;
+			auto it = s_ProgramCache.find(cacheKey);
+			if (it != s_ProgramCache.end())
+			{
+				if (std::shared_ptr<EmitterGpuProgram> cached = it->second.lock())
+				{
+					++s_ProgramCacheHits;
+					out = std::move(cached);
+					return true;
+				}
+			}
+		}
+	}
+
 	if (!m_ShaderCompiler.Ready() && !m_ShaderCompiler.Initialize(ShaderCompiler::FindIncludeDir(L"ModuleCommon.hlsli")))
 	{
 		m_LastError = "ShaderCompiler initialize failed\n" + m_ShaderCompiler.Log();
 		return false;
 	}
 
-	std::unique_ptr<EmitterGpuProgram> program = std::make_unique<EmitterGpuProgram>();
+
+	std::shared_ptr<EmitterGpuProgram> program = std::make_shared<EmitterGpuProgram>();
 	const bool built = program->Build(compiled, m_ShaderCompiler, "Main");
 	Utility::Print(program->Log().c_str());
 	if (!built)
 	{
 		m_LastError = program->Log();
 		return false;
+	}
+
+	if (!cacheKey.empty())
+	{
+		for (auto it = s_ProgramCache.begin(); it != s_ProgramCache.end(); )
+			it = it->second.expired() ? s_ProgramCache.erase(it) : std::next(it);
+		s_ProgramCache[cacheKey] = program;
 	}
 
 	out = std::move(program);
@@ -344,16 +468,18 @@ bool EmitterRuntime::RebuildPreserve()
 	}
 	else
 	{
-		std::unique_ptr<EmitterGpuProgram> program;
-		if (!BuildProgram(next, program))
+		EnsureUberProgram();
+		std::shared_ptr<EmitterGpuProgram> program;
+		if (NeedGeneratedProgram(BuildUberEmitterData(m_Modules, next)) && !BuildProgram(next, program))
 			return false;
 
 		Graphics::g_CommandManager.IdleGPU();
-		m_Gpu.Rebind(next, *program);
-		m_GpuProgram = std::move(program);      // 이전 프로그램은 Rebind 뒤에 해제
+		m_Gpu.Rebind(next, program.get());
+		m_GpuProgram = std::move(program);
 	}
 
 	m_Compiled = std::move(next);
+	RebuildUberData();
 	return true;
 }
 
@@ -366,9 +492,13 @@ bool EmitterRuntime::RebuildRestart()
 		return false;
 	}
 
-	std::unique_ptr<EmitterGpuProgram> program;
-	if (m_Backend == EmitterBackend::Gpu && !BuildProgram(next, program))
-		return false;
+	std::shared_ptr<EmitterGpuProgram> program;
+	if (m_Backend == EmitterBackend::Gpu)
+	{
+		EnsureUberProgram();
+		if (NeedGeneratedProgram(BuildUberEmitterData(m_Modules, next)) && !BuildProgram(next, program))
+			return false;
+	}
 
 	// 여기까지 성공해야 실행 중인 이미터를 내린다
 	Graphics::g_CommandManager.IdleGPU();
@@ -382,16 +512,69 @@ bool EmitterRuntime::RebuildRestart()
 	else
 	{
 		m_GpuProgram = std::move(program);
-		m_Ready = m_Gpu.Initialize(next, *m_GpuProgram, m_Capacity)
+		m_Ready = m_Gpu.Initialize(next, m_GpuProgram.get(), m_Capacity)
 			&& m_GpuRenderer.InitializeGpu(m_Gpu, m_SpriteDesc);
 	}
 
 	m_ActiveBackend = m_Backend;
 	m_Compiled = std::move(next);
+	RebuildUberData();
 
 	if (!m_Ready)
 		m_LastError = "Emitter resources could not be created (see Output window)\n";
 	return m_Ready;
+}
+
+void EmitterRuntime::RebuildUberData()
+{
+	m_Uber = BuildUberEmitterData(m_Modules, m_Compiled);
+	if (!m_Uber.warnings.empty() || !m_Uber.errors.empty())
+		Utility::Print(DescribeUber(m_Uber).c_str());
+
+	if (m_ActiveBackend == EmitterBackend::Gpu)
+		m_Gpu.SetUberData(m_Uber);
+}
+
+bool EmitterRuntime::NeedGeneratedProgram(const UberEmitterData& uber) const
+{
+	return UberGpuProgram::Mode() == GpuSimMode::Generated || !UberGpuProgram::Ready() || !uber.Ok();
+}
+
+void EmitterRuntime::EnsureUberProgram()
+{
+	static bool s_Done = false;
+	if (s_Done)
+		return;
+
+	// 배치 검사에 DXC 반사가 필요하다. 실패하면 Uber 는 준비 안 됨 -> 생성 방식으로 실행 (BuildProgram 이 오류를 남김)
+	if (!m_ShaderCompiler.Ready() && !m_ShaderCompiler.Initialize(ShaderCompiler::FindIncludeDir(L"ModuleCommon.hlsli")))
+		return;
+
+	std::string log;
+	UberGpuProgram::SetLayoutVerified(CheckUberShaderLayout(m_ShaderCompiler, log));
+	UberGpuProgram::Initialize();
+	Utility::Print(log.c_str());
+	s_Done = true;
+}
+
+void EmitterRuntime::SyncProgramWithMode()
+{
+	if (!m_Ready || m_ActiveBackend != EmitterBackend::Gpu || m_Pending >= Pending::Preserve)
+		return;     // 재빌드가 예정돼 있으면 그쪽에서 맞춘다
+
+	const bool need = NeedGeneratedProgram(m_Uber);
+	if (need && !m_GpuProgram)
+	{
+		// Uber -> Generated: 생성 방식 셰이더를 만든다 (레이아웃이 같으므로 파티클은 유지)
+		Request(Pending::Preserve);
+	}
+	else if (!need && m_GpuProgram)
+	{
+		// Generated -> Uber: 생성 방식 PSO 를 내린다. 지난 프레임이 쓰던 PSO 이므로 GPU 를 기다린 뒤에
+		Graphics::g_CommandManager.IdleGPU();
+		m_Gpu.Rebind(m_Compiled, nullptr);
+		m_GpuProgram.reset();
+	}
 }
 
 

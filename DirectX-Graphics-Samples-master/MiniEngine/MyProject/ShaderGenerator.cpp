@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "ShaderGenerator.h"
 
+#include <algorithm>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -101,9 +102,17 @@ namespace
 	}
 
 	// PARAM(n) 이 펼쳐질 식. Random01 은 (index, salt) 에 대해 결정적이라 여러 번 써도 같은 값
+	//   Curve: SampleCurve(칸 번호, 가로축 속성) 에서 타입의 성분 수만큼. 모듈 조각이 실행되는 시점의 속성 값을 읽는다
 	std::string ParamExpression(const std::string& scope, const CompiledParam& p)
 	{
 		const std::vector<std::string> slots = ParamSlotNames(p.name, p.kind);
+		if (p.kind == ParamKind::Curve)
+		{
+			static const char* const kSwizzle[] = { ".x", ".xy", ".xyz", "" };
+			const uint32_t n = (std::min)((std::max)(p.type->size / 4u, 1u), 4u);
+			return "(SampleCurve(" + scope + "_" + slots[0] + ", p." + ShaderNames::Field(AttributeKey::Parse(p.curveIndex)) + ")" + kSwizzle[n - 1] + ")";
+		}
+
 		const std::string minVar = scope + "_" + slots[0];
 		const std::string maxVar = scope + "_" + slots[1];
 		const uint32_t count = p.type->size / 4;
@@ -277,6 +286,7 @@ namespace
 			{ "OwnerVelocity",       "Engine.Owner.Velocity" },
 			{ "OwnerLocalToWorld",   "Engine.Owner.LocalToWorld" },
 			{ "EmitterNumParticles", "Engine.Emitter.NumParticles" },
+			{ "EmitterAge",          "Engine.Emitter.Age" },
 		};
 		for (const auto& n : kEngineNames)
 		{

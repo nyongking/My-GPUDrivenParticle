@@ -6,12 +6,14 @@
 #include "GpuEmitterInstance.h"
 #include "ShaderCompiler.h"
 #include "SpriteRenderer.h"
+#include "UberEmitterData.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 
 class GraphicsContext;
+class ComputeContext;
 namespace Math { class Camera; }
 
 enum class EmitterBackend { Cpu, Gpu };
@@ -22,17 +24,30 @@ class EmitterRuntime
 {
 public:
 	bool Initialize(const std::vector<ModuleDesc>& modules, uint32_t capacity, EmitterBackend backend);
+	// 렌더러 바인딩까지 정해서 시작 (에셋에서 만들 때). 바인딩 모양이 다르면 지금 것을 유지
+	bool Initialize(const std::vector<ModuleDesc>& modules, const RendererDesc& sprite, uint32_t capacity, EmitterBackend backend);
 	void Shutdown();
 
-	void Tick(float deltaTime, const OwnerTransform& owner);
-	void Tick(float deltaTime, const float3& ownerPosition);
+	void Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& owner);
+	void Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition);
 	void Render(GraphicsContext& gfx, const Math::Camera& camera);
+	// 공용 렌더 목록에 넣기 (그리기는 list.Render). 여러 이미터를 섞어서 정렬할 때 Render 대신 쓴다
+	void SubmitTo(GraphicsContext& gfx, ParticleRenderList& list);
+
+	GpuEmitterInstance* StagedGpu() { return (m_Ready && m_ActiveBackend == EmitterBackend::Gpu) ? &m_Gpu : nullptr; }
+	
+	void OnSubmitted(uint64_t fence);
 	void ApplyPending();
 
 	// ---------- 편집 ----------
 	std::vector<ModuleDesc>& EditModules() { return m_Modules; }
+	const std::vector<ModuleDesc>& Modules() const { return m_Modules; }
 
-	void NotifyValuesChanged();     // ParamDesc::value 만 바뀜 (재컴파일 없음)
+	// 모듈 스택 + 렌더러 바인딩 + capacity + 백엔드를 통째로 바꾼다 (에셋 불러오기). 재시작
+	//   capacity == 0 이면 지금 값 유지. 적용에 실패하면 다른 편집과 같이 이전 구성으로 돌아간다
+	void ReplaceDescription(const std::vector<ModuleDesc>& modules, const RendererDesc& sprite, uint32_t capacity, EmitterBackend backend);
+
+	void NotifyValuesChanged();     // ParamDesc::value 만 바뀜 (재컴파일 없음). 커브 키 편집은 CurveAsset::Bake 만으로 반영된다
 	void SetParamKind(size_t moduleIndex, size_t paramIndex, ParamKind kind);       // 파티클 유지
 	void SetPerComponent(size_t moduleIndex, size_t paramIndex, bool perComponent); // 파티클 유지
 
@@ -56,6 +71,9 @@ public:
 	bool CanMoveModule(size_t moduleIndex, int direction) const;    // 같은 Stage 안에서만 이동
 	void MoveModule(size_t moduleIndex, int direction);             // 재시작
 
+	void AddModule(const ModuleDesc& module);
+	void RemoveModule(size_t moduleIndex);
+
 	void SetBackend(EmitterBackend backend);                        // 재시작
 	void Restart();
 
@@ -66,6 +84,12 @@ public:
 	uint32_t        AliveCount() const;
 	const std::string& LastError() const { return m_LastError; }
 	const std::vector<std::string>& Warnings() const { return m_Compiled.warnings; }
+	const UberEmitterData& Uber() const { return m_Uber; }
+	bool			HasGeneratedProgram() const { return m_GpuProgram != nullptr; }
+
+	static void     SetProgramCacheEnabled(bool enabled);
+	static bool     ProgramCacheEnabled();
+	static uint32_t ProgramCacheHits();
 
 private:
 	enum class Pending { None, Values, Preserve, Restart };     // 큰 값이 작은 값을 포함한다
@@ -75,19 +99,27 @@ private:
 
 	bool RebuildPreserve();
 	bool RebuildRestart();
-	bool BuildProgram(const CompiledEmitter& compiled, std::unique_ptr<EmitterGpuProgram>& out);
+	bool BuildProgram(const CompiledEmitter& compiled, std::shared_ptr<EmitterGpuProgram>& out);
 	void ShutdownActive();
+	void RebuildUberData();
+
+	bool NeedGeneratedProgram(const UberEmitterData& uber) const;
+	void EnsureUberProgram();
+	void SyncProgramWithMode();
+
 
 	std::vector<ModuleDesc> m_Modules;          // 원본. UI 가 직접 편집
 	std::vector<ModuleDesc> m_AppliedModules;   // 마지막으로 적용에 성공한 스택 (실패 시 복구)
 	RendererDesc            m_SpriteDesc = SpriteRenderer::Desc();   // 렌더러 바인딩 (UI 가 편집)
 	RendererDesc            m_AppliedSpriteDesc = SpriteRenderer::Desc();
 	CompiledEmitter         m_Compiled;         // m_AppliedModules 의 컴파일 결과
+	UberEmitterData			m_Uber;
 	std::string             m_SpriteTexture;    // 렌더러가 재시작해도 유지 (렌더러 쪽 캐시)
 
 	EmitterBackend          m_Backend = EmitterBackend::Gpu;        // 요청된 백엔드
 	EmitterBackend          m_ActiveBackend = EmitterBackend::Gpu;  // 실제로 실행 중인 백엔드
 	uint32_t                m_Capacity = 0;
+	uint32_t                m_AppliedCapacity = 0;  // 마지막으로 적용에 성공한 capacity (실패 시 복구)
 	Pending                 m_Pending = Pending::None;
 	bool                    m_Ready = false;
 	std::string             m_LastError;
@@ -96,7 +128,7 @@ private:
 	SpriteRenderer          m_CpuRenderer;
 
 	ShaderCompiler                      m_ShaderCompiler;
-	std::unique_ptr<EmitterGpuProgram>  m_GpuProgram;
+	std::shared_ptr<EmitterGpuProgram>  m_GpuProgram;
 	GpuEmitterInstance                  m_Gpu;
 	SpriteRenderer                      m_GpuRenderer;
 };

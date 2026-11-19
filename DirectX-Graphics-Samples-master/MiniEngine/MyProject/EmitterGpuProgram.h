@@ -14,10 +14,23 @@ class EmitterGpuProgram
 public:
 	// 각 단계의 main 번호
 	enum Kernel { kEmitterUpdate, kParticleUpdate, kParticleSpawn, kNumKernels };
-	enum RootParam {kRootEngineCB, kRootModuleCB, kRootUAVs, kNumRootParams };
+	// kRootModuleData = t0 루트 SRV (공유 셰이더의 모듈 인스턴스 + 입력값). 생성 방식 셰이더는 쓰지 않는다
+	// kRootCurveData  = t1 루트 SRV (전역 커브 버퍼, CurveLibrary). 두 방식이 같이 쓴다
+	enum RootParam { kRootEngineCB, kRootModuleCB, kRootUAVs, kRootLayoutCB, kRootModuleData, kRootCurveData, kNumRootParams };
 	static const uint32_t kNumUAVs = 5;
 
+	struct Stats
+	{
+		uint32_t livePrograms = 0;
+		uint32_t builds = 0;
+		double buildMs = 0.0;
+		uint32_t lifetimeBuilds = 0;
+	};
+	static const Stats& GetStats();
+	static void ResetBuildStats();
+
 	EmitterGpuProgram() = default;
+	~EmitterGpuProgram() { Shutdown(); }
 	EmitterGpuProgram(const EmitterGpuProgram&) = delete;
 	EmitterGpuProgram& operator=(const EmitterGpuProgram&) = delete;
 	

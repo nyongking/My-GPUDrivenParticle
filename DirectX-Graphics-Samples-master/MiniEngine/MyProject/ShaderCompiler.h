@@ -48,6 +48,9 @@ public:
 	bool ReflectConstantBuffer(const ShaderCompileResult& result, const std::string& cbufferName,
 		ConstantBufferInfo& out) const;
 
+	bool ReflectConstantBuffer(const void* bytecode, size_t size, const std::string& cbufferName,
+		ConstantBufferInfo& out) const;
+
 	static std::wstring FindIncludeDir(const std::wstring& fileToFind);
 
 private:

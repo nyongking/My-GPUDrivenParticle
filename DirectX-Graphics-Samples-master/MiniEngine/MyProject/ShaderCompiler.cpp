@@ -215,6 +215,39 @@ bool ShaderCompiler::ReflectConstantBuffer(const ShaderCompileResult& result,
 	return true;
 }
 
+bool ShaderCompiler::ReflectConstantBuffer(const void* bytecode, size_t size, const std::string& cbufferName, ConstantBufferInfo& out) const
+{
+	out = ConstantBufferInfo();
+	if (!Ready() || bytecode == nullptr || size == 0)
+		return false;
+
+	DxcBuffer buf;
+	buf.Ptr = bytecode;
+	buf.Size = size;
+	buf.Encoding = 0;
+
+	ComPtr<ID3D12ShaderReflection> refl;
+	if (FAILED(m_Utils->CreateReflection(&buf, IID_PPV_ARGS(&refl))))
+		return false;
+
+	ID3D12ShaderReflectionConstantBuffer* cb = refl->GetConstantBufferByName(cbufferName.c_str());
+	D3D12_SHADER_BUFFER_DESC cbDesc;
+	if (!cb || FAILED(cb->GetDesc(&cbDesc)))
+		return false;
+
+	out.size = cbDesc.Size;
+	for (UINT i = 0; i < cbDesc.Variables; ++i)
+	{
+		D3D12_SHADER_VARIABLE_DESC v;
+		if (FAILED(cb->GetVariableByIndex(i)->GetDesc(&v)))
+			continue;
+		out.variables.push_back({ v.Name ? v.Name : "", v.StartOffset, v.Size });
+	}
+	return true;
+
+
+}
+
 std::wstring ShaderCompiler::FindIncludeDir(const std::wstring& fileToFind)
 {
 #if defined(_WIN32)

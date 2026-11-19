@@ -1,15 +1,53 @@
 ﻿#include "pch.h"
 #include "ModuleStackPanel.h"
 
+#include "EmitterAsset.h"
 #include "EmitterRuntime.h"
+#include "ModuleLibrary.h"
+#include "UberGpuProgram.h"
 #include "imgui.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cctype>
+#include <cstring>
 
 namespace
 {
+	const std::vector<ModuleDesc>& ModuleCatalog()
+	{
+		// 기본값은 MakeDefaultModule 한 곳에서 관리한다 (에셋 불러오기와 같은 값)
+		static const std::vector<ModuleDesc> s_Catalog = []()
+			{
+				std::vector<ModuleDesc> catalog;
+				for (uint32_t i = 0; i < uint32_t(ModuleId::Count); ++i)
+					catalog.push_back(MakeDefaultModule(ModuleId(i)));
+				return catalog;
+			}();
+		return s_Catalog;
+	}
+
+	// Uber / 생성 방식 상태 한 줄 + 공유 셰이더 데이터 문제 (ImGui 는 한글이 깨지므로 영어, 자세한 내용은 출력 창)
+	void DrawSimStatus(const EmitterRuntime& runtime)
+	{
+		if (runtime.Backend() != EmitterBackend::Gpu)
+			return;
+
+		const UberEmitterData& uber = runtime.Uber();
+		ImGui::Text("Sim: %s | generated shader: %s | shader compiles (total): %u",
+			UberGpuProgram::ModeName(UberGpuProgram::Mode()),
+			runtime.HasGeneratedProgram() ? "yes" : "no",
+			EmitterGpuProgram::GetStats().lifetimeBuilds);
+
+		if (!uber.errors.empty())
+			ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f),
+				"Uber: %u error(s) - this stack runs with the generated shader (see Output window)", uint32_t(uber.errors.size()));
+		if (!uber.warnings.empty())
+			ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f),
+				"Uber: %u warning(s) - e.g. fixed execution order (see Output window)", uint32_t(uber.warnings.size()));
+	}
+
 	bool DrawFloats(const char* label, float* v, uint32_t count, const ParamDesc& p)
 	{
 		const float speed = (std::max)(std::fabs(v[0]) * 0.01f, 0.01f);
@@ -49,7 +87,7 @@ namespace
 		return DrawFloats(label, reinterpret_cast<float*>(data), p.type->size / sizeof(float), p);
 	}
 
-	// ---- 스프라이트 텍스처 (T1) ----
+	// ---- 스프라이트 텍스처 ----
 	const char* const kTextureDir = "Assets/Textures/";
 
 	std::string LowerExtension(const std::string& name)
@@ -117,7 +155,7 @@ namespace
 		}
 	}
 
-	// ---- SubUV / 블렌드 (T2) ----
+	// ---- SubUV / 블렌드 ----
 	void DrawSpriteSettings(EmitterRuntime& runtime)
 	{
 		SpriteSettings s = runtime.GetSpriteSettings();
@@ -141,6 +179,101 @@ namespace
 		{
 			s.blend = static_cast<SpriteBlendMode>(blend);
 			changed = true;
+		}
+
+		// --- Texture의 ALpha 해석 방식 ---
+		static const char* const kAlphaModes[] = { "Straight", "Premultiplied", "From Luminance" };
+		int alphaMode = static_cast<int>(s.textureAlpha);
+		ImGui::SetNextItemWidth(160.f);
+		if (ImGui::Combo("Texture Alpha", &alphaMode, kAlphaModes, IM_ARRAYSIZE(kAlphaModes)))
+		{
+			s.textureAlpha = static_cast<SpriteTextureAlpha>(alphaMode);
+			changed = true;
+		}
+
+		// ---- 빌보드 ----
+		ImGui::SeparatorText("Billboard");
+
+		auto enumCombo = [](const char* label, uint32_t& value, uint32_t count, const char* (*name)(uint32_t))
+			{
+				bool c = false;
+				ImGui::SetNextItemWidth(220.f);
+				if (ImGui::BeginCombo(label, name(value)))
+				{
+					for (uint32_t i = 0; i < count; ++i)
+						if (ImGui::Selectable(name(i), i == value)) { value = i; c = true; }
+					ImGui::EndCombo();
+				}
+				return c;
+			};
+
+		uint32_t facing = static_cast<uint32_t>(s.facing);
+		if (enumCombo("Facing", facing, uint32_t(SpriteFacingMode::Count),
+			[](uint32_t i) { return SpriteFacingName(SpriteFacingMode(i)); }))
+		{
+			s.facing = SpriteFacingMode(facing);
+			changed = true;
+		}
+		uint32_t alignment = static_cast<uint32_t>(s.alignment);
+		if (enumCombo("Alignment", alignment, uint32_t(SpriteAlignment::Count),
+			[](uint32_t i) { return SpriteAlignmentName(SpriteAlignment(i)); }))
+		{
+			s.alignment = SpriteAlignment(alignment);
+			changed = true;
+		}
+
+		// 자주 쓰는 조합 (Unity 의 Horizontal / Vertical Billboard)
+		if (ImGui::SmallButton("Preset: Camera"))
+		{
+			s.facing = SpriteFacingMode::FaceCameraPlane; s.alignment = SpriteAlignment::Unaligned; changed = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Preset: Horizontal"))
+		{
+			s.facing = SpriteFacingMode::CustomFacingVector; s.alignment = SpriteAlignment::Unaligned; changed = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Preset: Vertical"))
+		{
+			s.facing = SpriteFacingMode::FaceCameraPosition; s.alignment = SpriteAlignment::CustomAlignment; changed = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Preset: Streak"))
+		{
+			s.facing = SpriteFacingMode::FaceCameraPosition; s.alignment = SpriteAlignment::VelocityAligned; changed = true;
+		}
+		if (s.facing == SpriteFacingMode::CustomFacingVector)
+			ImGui::TextDisabled("Facing vector = 'SpriteFacing' binding (default (0,1,0) = lying flat)");
+		if (s.alignment == SpriteAlignment::CustomAlignment)
+			ImGui::TextDisabled("Up axis = 'SpriteAlignment' binding (default (0,1,0) = standing upright)");
+		if (s.alignment == SpriteAlignment::VelocityAligned)
+			ImGui::TextDisabled("Up axis = 'Velocity' binding (needs a module that writes Particles.Velocity)");
+
+		float pivot[2] = { s.pivot.x, s.pivot.y };
+		ImGui::SetNextItemWidth(160.f);
+		if (ImGui::SliderFloat2("Pivot (uv)", pivot, 0.f, 1.f))
+		{
+			s.pivot = { pivot[0], pivot[1] };
+			changed = true;
+		}
+		ImGui::SetNextItemWidth(160.f);
+		changed |= ImGui::DragFloat("Camera Offset (m)", &s.cameraOffset, 0.01f, -10.f, 10.f);
+
+		if (s.alignment == SpriteAlignment::VelocityAligned)
+		{
+			ImGui::SetNextItemWidth(160.f);
+			changed |= ImGui::DragFloat("Velocity Stretch (s)", &s.velocityStretch, 0.001f, 0.f, 1.f);
+		}
+		if (s.facing == SpriteFacingMode::FaceCameraDistanceBlend)
+		{
+			float range[2] = { s.blendNear, s.blendFar };
+			ImGui::SetNextItemWidth(160.f);
+			if (ImGui::DragFloat2("Blend Near/Far (m)", range, 0.1f, 0.f, 1000.f))
+			{
+				s.blendNear = (std::max)(range[0], 0.f);
+				s.blendFar = (std::max)(range[1], s.blendNear);
+				changed = true;
+			}
 		}
 
 		if (changed)
@@ -196,6 +329,90 @@ namespace
 		}
 	}
 
+	// 커브 편집: 키 표 (시간 + 값) + 구운 결과 미리보기
+	//   바뀌면 그 커브만 다시 굽는다. 전역 커브 버퍼의 칸은 그대로라 재컴파일 / 이미터 재시작이 없다
+	void DrawCurve(ParamDesc& p)
+	{
+		CurveAsset& curve = *p.curve;
+		std::vector<CurveKey>& keys = curve.Keys();
+		const uint32_t count = (std::min)(uint32_t(p.type->size / sizeof(float)), 4u);
+
+		bool changed = false;
+		int removeKey = -1;
+
+		ImGui::Indent();
+		ImGui::TextDisabled("x = %s (0..1), linear between keys", p.curveIndex.c_str());
+
+		for (size_t k = 0; k < keys.size(); ++k)
+		{
+			ImGui::PushID(static_cast<int>(k));
+
+			ImGui::SetNextItemWidth(80.f);
+			if (ImGui::DragFloat("##time", &keys[k].time, 0.005f, 0.f, 1.f, "t %.3f"))
+			{
+				keys[k].time = (std::min)((std::max)(keys[k].time, 0.f), 1.f);
+				changed = true;
+			}
+
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(220.f);
+			if (p.uiColor && count == 4)
+				changed |= ImGui::ColorEdit4("##value", &keys[k].value.x, ImGuiColorEditFlags_Float);
+			else
+				changed |= DrawFloats("##value", &keys[k].value.x, count, p);
+
+			ImGui::SameLine();
+			ImGui::BeginDisabled(keys.size() <= 1);
+			if (ImGui::SmallButton("-"))
+				removeKey = static_cast<int>(k);
+			ImGui::EndDisabled();
+
+			ImGui::PopID();
+		}
+
+		if (removeKey >= 0)
+		{
+			keys.erase(keys.begin() + removeKey);
+			changed = true;
+		}
+
+		if (ImGui::SmallButton("+ key"))
+		{
+			// 가운데에 지금 커브 값으로 추가 (추가한 직후에는 결과가 그대로)
+			CurveKey key;
+			key.time = 0.5f;
+			key.value = curve.Evaluate(0.5f);
+			keys.push_back(key);
+			changed = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Sort keys"))
+			curve.SortKeys();
+
+		if (changed)
+			curve.Bake();
+
+		// 미리보기: 셰이더가 실제로 읽는 표 (성분마다 한 줄)
+		static const char* const kComponent[] = { "x", "y", "z", "w" };
+		const float4* lut = CurveLibrary::Samples(curve.Slot());
+		for (uint32_t c = 0; c < count; ++c)
+		{
+			float samples[CurveLibrary::kSamples];
+			for (uint32_t i = 0; i < CurveLibrary::kSamples; ++i)
+				samples[i] = (&lut[i].x)[c];
+
+			ImGui::PushID(static_cast<int>(c));
+			ImGui::PlotLines("##plot", samples, static_cast<int>(CurveLibrary::kSamples), 0,
+				count > 1 ? kComponent[c] : nullptr, FLT_MAX, FLT_MAX, ImVec2(300.f, 36.f));
+			ImGui::PopID();
+		}
+
+		if (curve.Slot() == CurveLibrary::kIdentitySlot)
+			ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "No free curve slot - this curve is fixed to 1");
+
+		ImGui::Unindent();
+	}
+
 	void DrawParam(EmitterRuntime& runtime, size_t moduleIndex, size_t paramIndex)
 	{
 		ModuleDesc& module = runtime.EditModules()[moduleIndex];
@@ -204,21 +421,30 @@ namespace
 		ImGui::PushID(static_cast<int>(paramIndex));
 		ImGui::TextUnformatted(p.name.c_str());
 
-		if (module.stage == Stage::ParticleSpawn && IsFloatFamily(p.type))
+		// 단계마다 고를 수 있는 종류가 다르다: Spawn = 파티클별 랜덤 / Update = 수명에 따른 커브
+		const bool canRandom = module.stage == Stage::ParticleSpawn && IsFloatFamily(p.type);
+		const bool canCurve = module.stage == Stage::ParticleUpdate && IsFloatFamily(p.type);
+		if (canRandom || canCurve)
 		{
-			static const char* const kKinds[] = { "Constant", "Random Range" };
-			int kind = static_cast<int>(p.kind);
+			const ParamKind other = canRandom ? ParamKind::RandomRange : ParamKind::Curve;
+			const char* const kinds[] = { "Constant", canRandom ? "Random Range" : "Curve" };
+			int kind = (p.kind == ParamKind::Constant) ? 0 : 1;
 
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(130.f);
-			if (ImGui::Combo("##kind", &kind, kKinds, IM_ARRAYSIZE(kKinds)))
-				runtime.SetParamKind(moduleIndex, paramIndex, static_cast<ParamKind>(kind));
+			if (ImGui::Combo("##kind", &kind, kinds, IM_ARRAYSIZE(kinds)))
+				runtime.SetParamKind(moduleIndex, paramIndex, kind == 0 ? ParamKind::Constant : other);
 		}
 
 		bool changed = false;
 		if (p.kind == ParamKind::Constant)
 		{
 			changed = DrawValue("##value", p, p.value.data());
+		}
+		else if (p.kind == ParamKind::Curve)
+		{
+			if (p.curve)
+				DrawCurve(p);   // 다시 굽는 것으로 끝 (NotifyValuesChanged 필요 없음)
 		}
 		else
 		{
@@ -237,10 +463,132 @@ namespace
 			runtime.NotifyValuesChanged();
 		ImGui::PopID();
 	}
+
+	// ---- 에셋 저장 / 불러오기 (Assets/Emitters/*.emitter.json) ----
+	//   ImGui 는 한글이 깨지므로 문구는 영어. 자세한 내용은 출력 창에도 남긴다
+	struct AssetPanelState
+	{
+		char                     name[65] = "NewEmitter";
+		std::string              status;
+		bool                     statusIsError = false;
+		std::vector<std::string> warnings;
+	};
+
+	AssetPanelState& AssetState()
+	{
+		static AssetPanelState s_State;
+		return s_State;
+	}
+
+	void SetAssetStatus(const std::string& status, bool isError)
+	{
+		AssetPanelState& st = AssetState();
+		st.status = status;
+		st.statusIsError = isError;
+		Utility::Printf("[EmitterAsset] %s\n", status.c_str());
+		for (const std::string& w : st.warnings)
+			Utility::Printf("[EmitterAsset]   warning: %s\n", w.c_str());
+	}
+
+	void SaveAsset(EmitterRuntime& runtime, const std::string& name)
+	{
+		AssetPanelState& st = AssetState();
+		st.warnings.clear();
+
+		const std::string path = EmitterAssetPath(name);
+		std::string error;
+		if (SaveEmitterAsset(path, CaptureEmitterAsset(runtime, name), error))
+			SetAssetStatus("Saved " + path, false);
+		else
+			SetAssetStatus("Save failed: " + error, true);
+	}
+
+	void LoadAsset(EmitterRuntime& runtime, const std::string& name)
+	{
+		AssetPanelState& st = AssetState();
+		st.warnings.clear();
+
+		const std::string path = EmitterAssetPath(name);
+		EmitterAsset asset;
+		std::string error;
+		if (!LoadEmitterAsset(path, asset, error, st.warnings))
+		{
+			SetAssetStatus("Load failed: " + error, true);   // 지금 이미터는 그대로
+			return;
+		}
+
+		const bool textureOk = ApplyEmitterAsset(runtime, asset);
+		if (!textureOk)
+			st.warnings.push_back("texture '" + asset.texture + "' could not be loaded (drawn magenta)");
+		strncpy_s(st.name, sizeof(st.name), name.c_str(), _TRUNCATE);
+		SetAssetStatus("Loaded " + path + " (restarting emitter)", false);
+	}
+
+	void DrawAssetPanel(EmitterRuntime& runtime)
+	{
+		AssetPanelState& st = AssetState();
+		ImGui::SeparatorText("Emitter Asset");
+
+		ImGui::SetNextItemWidth(200.f);
+		ImGui::InputText("##assetName", st.name, sizeof(st.name));
+		const std::string name = st.name;
+
+		ImGui::SameLine();
+		if (ImGui::Button("Save"))
+		{
+			if (!IsValidEmitterAssetName(name))
+			{
+				st.warnings.clear();
+				SetAssetStatus("Invalid name (use A-Z a-z 0-9 _ - .)", true);
+			}
+			else if (GetFileAttributesA(EmitterAssetPath(name).c_str()) != INVALID_FILE_ATTRIBUTES)
+				ImGui::OpenPopup("Overwrite asset?");
+			else
+				SaveAsset(runtime, name);
+		}
+
+		if (ImGui::BeginPopupModal("Overwrite asset?", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::Text("%s already exists. Overwrite?", EmitterAssetPath(name).c_str());
+			if (ImGui::Button("Overwrite"))
+			{
+				SaveAsset(runtime, name);
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel"))
+				ImGui::CloseCurrentPopup();
+			ImGui::EndPopup();
+		}
+
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(200.f);
+		if (ImGui::BeginCombo("Load", "Select..."))
+		{
+			// 펼칠 때마다 다시 읽는다 (파일을 추가해도 재실행 필요 없음)
+			const std::vector<std::string> assets = ListEmitterAssets();
+			if (assets.empty())
+				ImGui::TextDisabled("(no files in %s)", EmitterAssetDirectory());
+			for (const std::string& asset : assets)
+				if (ImGui::Selectable(asset.c_str()))
+					LoadAsset(runtime, asset);
+			ImGui::EndCombo();
+		}
+
+		if (!st.status.empty())
+		{
+			const ImVec4 color = st.statusIsError ? ImVec4(1.f, 0.3f, 0.3f, 1.f) : ImVec4(0.5f, 1.f, 0.5f, 1.f);
+			ImGui::TextColored(color, "%s", st.status.c_str());
+		}
+		for (const std::string& w : st.warnings)
+			ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f), "%s", w.c_str());
+	}
 }
 
 void DrawModuleStackPanel(EmitterRuntime& runtime)
 {
+	DrawAssetPanel(runtime);
+
 	ImGui::SeparatorText("Backend");
 
 	const EmitterBackend backend = runtime.Backend();
@@ -263,9 +611,12 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 	for (const std::string& warning : runtime.Warnings())
 		ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f), "%s", warning.c_str());
 
+	DrawSimStatus(runtime);
+
 	// 순서 변경은 목록을 다 그린 뒤 적용한다
 	int moveIndex = -1;
 	int moveDirection = 0;
+	int removeIndex = -1;
 
 	static const Stage kStages[] = { Stage::EmitterUpdate, Stage::ParticleSpawn, Stage::ParticleUpdate };
 	for (Stage stage : kStages)
@@ -298,6 +649,10 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 			ImGui::EndDisabled();
 
 			ImGui::SameLine();
+			if (ImGui::SmallButton("X"))
+				removeIndex = static_cast<int>(i);
+
+			ImGui::SameLine();
 			if (ImGui::TreeNodeEx(modules[i].name.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
 			{
 				for (size_t p = 0; p < modules[i].params.size(); ++p)
@@ -311,6 +666,21 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 
 	if (moveIndex >= 0)
 		runtime.MoveModule(static_cast<size_t>(moveIndex), moveDirection);
+
+	if (removeIndex >= 0)
+		runtime.RemoveModule(static_cast<size_t>(removeIndex));
+
+	ImGui::Spacing();
+	if (ImGui::BeginCombo("Add module", "Select..."))
+	{
+		const std::vector<ModuleDesc>& catalog = ModuleCatalog();
+		for (size_t c = 0; c < catalog.size(); ++c)
+		{
+			if (ImGui::Selectable(catalog[c].name.c_str()))
+				runtime.AddModule(catalog[c]);
+		}
+		ImGui::EndCombo();
+	}
 
 	DrawBindings(runtime);
 }

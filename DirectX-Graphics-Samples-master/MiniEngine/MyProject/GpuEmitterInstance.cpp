@@ -9,6 +9,8 @@
 #include "GraphicsCore.h"
 
 #include "CompiledShaders/EmitterFinalizeCS.h"
+#include "UberGpuProgram.h"
+#include "CurveLibrary.h"
 
 #include <algorithm>
 #include <cmath>
@@ -37,7 +39,8 @@ namespace
 		float    deltaTime;           // 12
 		uint32_t capacity;            // 16
 		uint32_t randomSeed;          // 20
-		uint32_t _pad[2];             // 24
+		float    emitterAge;          // 24  Engine.Emitter.Age
+		uint32_t _pad;               // 28
 		float3   ownerVelocity;       // 32
 		float    _pad2;					// 44
 		float4x4 ownerLocalToWorld;   // 48 (HLSL 은 row_major)
@@ -68,10 +71,36 @@ namespace
 		s_FinalizePSO.Finalize();
 		s_FinalizeReady = true;
 	}
+
+	GpuSimFrameStats		s_FrameStats;
+	const ID3D12PipelineState* s_LastPSO = nullptr;
+
+	void SetPSO(ComputeContext& ctx, const ComputePSO& pso)
+	{
+		const ID3D12PipelineState* p = pso.GetPipelineStateObject();
+		if (p != s_LastPSO)
+		{
+			++s_FrameStats.psoChanges;
+			s_LastPSO = p;
+		}
+		ctx.SetPipelineState(pso);
+
+	}
+}
+
+void GpuEmitterInstance::BeginFrameStats()
+{
+	s_FrameStats = GpuSimFrameStats();
+	s_LastPSO = nullptr;
+}
+
+const GpuSimFrameStats& GpuEmitterInstance::FrameStats()
+{
+	return s_FrameStats;
 }
 
 
-bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const EmitterGpuProgram& program, uint32_t capacity)
+bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const EmitterGpuProgram* program, uint32_t capacity)
 {
 	Shutdown();
 
@@ -79,7 +108,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	m_Log.clear();
 #endif
 
-	if (!compiled.Ok() || !program.Ready() || capacity == 0)
+	if (!compiled.Ok() || (program != nullptr && !program->Ready()) || capacity == 0)
 	{
 #ifndef RELEASE
 		m_Log = "[GpuEmitterInstance] CompiledEmitter 에러 / EmitterGpuProgram 미준비 / capacity 0 중 하나\n";
@@ -88,7 +117,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	}
 
 	m_Compiled = compiled;
-	m_Program = &program;
+	m_Program = program;
 	m_Capacity = capacity;
 
 	alignas(16) const uint32_t zeros[8] = {};
@@ -120,6 +149,7 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	InitializeFinalizePSO();
 
 	m_Frame = 0;
+	m_Age = 0.f;
 	m_HasPrevOwner = false;
 	m_ReadbackAlive = m_ReadbackRequest = 0;
 	m_Ready = true;
@@ -140,19 +170,58 @@ void GpuEmitterInstance::Shutdown()
 
 	m_ModuleParams.clear();
 	m_Program = nullptr;
+	m_WaitingSubmit = false;
+	m_UberParams.clear();
+	m_UberLayout = EmitterLayoutCB();
+	m_UberOk = false;
 	m_Ready = false;
 }
 
-void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
+
+void GpuEmitterInstance::Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& t)
 {
-	if (!m_Ready)
+	if (!BeginTick(deltaTime, t))
 		return;
+
+	for (uint32_t s = 0; s < uint32_t(GpuSimStage::End); ++s)
+	{
+		StageBarriers(ctx, GpuSimStage(s));
+		StageWork(ctx, GpuSimStage(s));
+	}
+
+	EndTick();
+}
+
+void GpuEmitterInstance::Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition)
+{
+	OwnerTransform t;
+	t.position = ownerPosition;
+	Tick(ctx, deltaTime, t);
+}
+
+void GpuEmitterInstance::OnSubmitted(uint64_t fence)
+{
+	if (!m_WaitingSubmit)
+		return;
+	m_ReadbackFence[m_SubmitSlot] = fence;
+	m_WaitingSubmit = false;
+}
+
+bool GpuEmitterInstance::BeginTick(float deltaTime, const OwnerTransform& t)
+{
+	m_TickActive = false;
+	if (!m_Ready)
+		return false;
+
+	ASSERT(!m_WaitingSubmit, "이전 Tick 이후 OnSubmitted 호출되지 않음");
 
 	ReadCountersIfReady();
 
 	EngineConstants ec = {};
 	ec.ownerPosition = t.position;
 	ec.deltaTime = min(max(deltaTime, 0.f), float(kMaxDeltaTime));
+	m_Age += ec.deltaTime;   // time stop (dt = 0) also stops Emitter.Age
+	ec.emitterAge = m_Age;
 	ec.capacity = m_Capacity;
 	ec.randomSeed = HashFrame(m_Frame + 1);
 	ec.ownerVelocity = ComputeOwnerVelocity(t.position, m_HasPrevOwner ? &m_PrevOwnerPosition : nullptr, deltaTime);
@@ -160,76 +229,120 @@ void GpuEmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 	m_PrevOwnerPosition = t.position;
 	m_HasPrevOwner = true;
 
-	ComputeContext& ctx = ComputeContext::Begin(L"Gpu Emitter");
+	std::memcpy(m_TickEngineCB, &ec, sizeof(ec));
 
-	ctx.SetRootSignature(EmitterGpuProgram::RootSig());
-	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootEngineCB, sizeof(ec), &ec);
-	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootModuleCB, m_ModuleParams.size() * sizeof(Chunk16), m_ModuleParams.data());
+	const bool wantUber = UberGpuProgram::Mode() == GpuSimMode::Uber;
+	const bool uberPossible = UberGpuProgram::Ready() && m_UberOk;
+	m_TickUber = uberPossible && (wantUber || m_Program == nullptr);
+	if (!m_TickUber && m_Program == nullptr)
+		return false;
+	if (m_TickUber)
+		++s_FrameStats.uberEmitters;
+	else if (wantUber)
+		++s_FrameStats.uberFallbacks;
+
+	m_TickActive = true;
+	return true;
+}
+
+void GpuEmitterInstance::StageBarriers(ComputeContext& ctx, GpuSimStage stage)
+{
+	if (!m_TickActive)
+		return;
 
 	ByteAddressBuffer& particlesIn = m_Particles[m_Current];
 	ByteAddressBuffer& particlesOut = m_Particles[1 - m_Current];
 
-	ctx.TransitionResource(particlesIn, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	ctx.TransitionResource(particlesOut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	ctx.TransitionResource(m_Counters, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	ctx.TransitionResource(m_EmitterData, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	ctx.TransitionResource(m_SpawnArgs, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-	D3D12_CPU_DESCRIPTOR_HANDLE uavs[EmitterGpuProgram::kNumUAVs] =
+	switch (stage)
 	{
-		particlesIn.GetUAV(),
-		particlesOut.GetUAV(),
-		m_Counters.GetUAV(),
-		m_EmitterData.GetUAV(),
-		m_SpawnArgs.GetUAV()
-	};
-	ctx.SetDynamicDescriptors(EmitterGpuProgram::kRootUAVs, 0, EmitterGpuProgram::kNumUAVs, uavs);
+	case GpuSimStage::Prepare:
+		ctx.TransitionResource(particlesIn, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		ctx.TransitionResource(particlesOut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		ctx.TransitionResource(m_Counters, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		ctx.TransitionResource(m_EmitterData, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		ctx.TransitionResource(m_SpawnArgs, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		
+		break;
+	case GpuSimStage::EmitterUpdate:
+		break;
+	case GpuSimStage::ParticleUpdate:
+		ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+		break;
+	case GpuSimStage::ParticleSpawn:
+		ctx.TransitionResource(m_SpawnArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+		ctx.InsertUAVBarrier(m_Counters);
+		ctx.InsertUAVBarrier(m_EmitterData);
+		ctx.InsertUAVBarrier(particlesOut);
+		break;
+	case GpuSimStage::Finalize:
+		ctx.InsertUAVBarrier(m_Counters);
+		ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		break;
+	case GpuSimStage::Readback:
+		ctx.TransitionResource(m_Counters, D3D12_RESOURCE_STATE_COPY_SOURCE);
+		break;
 
-	// --------- 1. Emitter Update ---------
-	ctx.SetPipelineState(m_Program->PSO(EmitterGpuProgram::kEmitterUpdate));
-	ctx.Dispatch(1, 1, 1);
+	case GpuSimStage::Present:
+		ctx.TransitionResource(particlesOut, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, true);
+		break;
+	}
 
-	// --------- 2. Particle Update: In[0..ALIVE_IN) -> 살아남은 것만 Out[cursor++] ---------
-//   그룹 수 = 지난 프레임 Finalize 가 m_FrameArgs[16..] 에 써 둔 값
-	ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-	ctx.SetPipelineState(m_Program->PSO(EmitterGpuProgram::kParticleUpdate));
-	ctx.DispatchIndirect(m_FrameArgs, kFrameArgsUpdate);
-
-	// --------- 3. Particle Spawn ---------
-	ctx.TransitionResource(m_SpawnArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-	ctx.InsertUAVBarrier(m_Counters);
-	ctx.InsertUAVBarrier(m_EmitterData);
-	ctx.InsertUAVBarrier(particlesOut);     // Update 가 Out 에 다 쓴 뒤에 (같은 버퍼에 이어 쓰므로)
-	ctx.SetPipelineState(m_Program->PSO(EmitterGpuProgram::kParticleSpawn));
-	ctx.DispatchIndirect(m_SpawnArgs);
-
-	// --------- 3. Finalize (스레드 1개) ---------
-	ctx.InsertUAVBarrier(m_Counters);
-	ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	uavs[4] = m_FrameArgs.GetUAV(); // uav 4번에 드로우 인자로 교체
-	ctx.SetDynamicDescriptors(EmitterGpuProgram::kRootUAVs, 0, EmitterGpuProgram::kNumUAVs, uavs);
-	ctx.SetPipelineState(s_FinalizePSO);
-	ctx.Dispatch(1, 1, 1);
-
-	// ---------- 4. 개수 Readback ----------
-	const uint32_t slot = m_Frame % kReadbackSlots;
-	ctx.TransitionResource(m_Counters, D3D12_RESOURCE_STATE_COPY_SOURCE);
-	ctx.CopyBufferRegion(m_Readback[slot], 0, m_Counters, 0, kCounterBytes);
-
-	// ---------- 5. 그리기 준비 + 교체 ----------
-	ctx.TransitionResource(particlesOut, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, true);
-
-	m_Current = 1 - m_Current;
-	m_ReadbackFence[slot] = ctx.Finish();
-	++m_Frame;
+	ctx.FlushResourceBarriers();
 }
 
-void GpuEmitterInstance::Tick(float deltaTime, const float3& ownerPosition)
+void GpuEmitterInstance::StageWork(ComputeContext& ctx, GpuSimStage stage)
 {
-	OwnerTransform t;
-	t.position = ownerPosition;
-	Tick(deltaTime, t);
+	if (!m_TickActive)
+		return;
+
+	switch (stage)
+	{
+	case GpuSimStage::EmitterUpdate:
+		BindRoot(ctx, false);
+		SetPSO(ctx, KernelPSO(EmitterGpuProgram::kEmitterUpdate));
+		ctx.Dispatch(1, 1, 1);
+		break;
+	case GpuSimStage::ParticleUpdate:
+		BindRoot(ctx, false);
+		SetPSO(ctx, KernelPSO(EmitterGpuProgram::kParticleUpdate));
+		ctx.DispatchIndirect(m_FrameArgs, kFrameArgsUpdate);
+		break;
+	case GpuSimStage::ParticleSpawn:
+		BindRoot(ctx, false);
+		SetPSO(ctx, KernelPSO(EmitterGpuProgram::kParticleSpawn));
+		ctx.DispatchIndirect(m_SpawnArgs);
+		break;
+	case GpuSimStage::Finalize:
+		BindRoot(ctx, true);
+		SetPSO(ctx, s_FinalizePSO);
+		ctx.Dispatch(1, 1, 1);
+		s_FrameStats.dispatches += 4;
+		s_FrameStats.emitters += 1;
+		break;
+	case GpuSimStage::Readback:
+	{
+		const uint32_t slot = m_Frame % kReadbackSlots;
+		m_ReadbackFence[slot] = 0;
+		m_SubmitSlot = slot;
+		m_WaitingSubmit = true;
+		ctx.CopyBufferRegion(m_Readback[slot], 0, m_Counters, 0, kCounterBytes);
+	}
+		break;				
+	case GpuSimStage::Present:
+		break;
+	default:
+		break;
+	}
+}
+
+void GpuEmitterInstance::EndTick()
+{
+	if (!m_TickActive)
+		return;
+	m_TickActive = false;
+	m_Current = 1 - m_Current;
+	++m_Frame;
 }
 
 void GpuEmitterInstance::LoadModuleParams()
@@ -243,17 +356,60 @@ void GpuEmitterInstance::LoadModuleParams()
 			std::min<size_t>(m_Compiled.moduleParamData.size(), cbBytes));
 }
 
+void GpuEmitterInstance::BindRoot(ComputeContext& ctx, bool finalizeStage)
+{
+	ctx.SetRootSignature(EmitterGpuProgram::RootSig());
+	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootEngineCB, sizeof(m_TickEngineCB), m_TickEngineCB);
+	// Uber 는 t0 루트 SRV, 생성 방식은 b1. 각자 안 쓰는 쪽은 묶지 않는다 (셰이더가 읽지 않으면 괜찮다)
+	if (m_TickUber)
+		ctx.SetDynamicSRV(EmitterGpuProgram::kRootModuleData, m_UberParams.size() * sizeof(Chunk16), m_UberParams.data());
+	else
+		ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootModuleCB, m_ModuleParams.size() * sizeof(Chunk16), m_ModuleParams.data());
+	ctx.SetDynamicConstantBufferView(EmitterGpuProgram::kRootLayoutCB, sizeof(m_UberLayout), &m_UberLayout);
+	// 전역 커브 버퍼 (t1). 내용은 CurveLibrary::Flush 가 시뮬레이션 시작 전에 올려 둔다
+	ctx.SetBufferSRV(EmitterGpuProgram::kRootCurveData, CurveLibrary::Buffer());
+
+	ByteAddressBuffer& particlesIn = m_Particles[m_Current];
+	ByteAddressBuffer& particlesOut = m_Particles[1 - m_Current];
+	D3D12_CPU_DESCRIPTOR_HANDLE uavs[EmitterGpuProgram::kNumUAVs] =
+	{
+		particlesIn.GetUAV(),
+		particlesOut.GetUAV(),
+		m_Counters.GetUAV(),
+		m_EmitterData.GetUAV(),
+		finalizeStage ? m_FrameArgs.GetUAV() : m_SpawnArgs.GetUAV()
+	};
+	ctx.SetDynamicDescriptors(EmitterGpuProgram::kRootUAVs, 0, EmitterGpuProgram::kNumUAVs, uavs);
+}
+
+const ComputePSO& GpuEmitterInstance::KernelPSO(EmitterGpuProgram::Kernel k) const
+{
+	return m_TickUber ? UberGpuProgram::PSO(k) : m_Program->PSO(k);
+}
+
 void GpuEmitterInstance::SetModuleParamData(const std::vector<uint8_t>& data)
 {
 	m_Compiled.moduleParamData = data;
 	LoadModuleParams();
 }
 
-void GpuEmitterInstance::Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram& program)
+void GpuEmitterInstance::Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram* program)
 {
 	m_Compiled = compiled;
-	m_Program = &program;
+	m_Program = program;
 	LoadModuleParams();
+}
+
+void GpuEmitterInstance::SetUberData(const UberEmitterData& data)
+{
+	m_UberLayout = data.layout;
+	m_UberOk = data.Ok() && !data.params.empty();
+
+	const size_t bytes = (data.params.size() + 15) & ~size_t(15);
+	m_UberParams.assign((std::max)(bytes, size_t(16)) / 16, Chunk16());
+	std::memset(m_UberParams.data(), 0, m_UberParams.size() * sizeof(Chunk16));
+	if (!data.params.empty())
+		std::memcpy(m_UberParams.data(), data.params.data(), data.params.size());
 }
 
 void GpuEmitterInstance::ReadCountersIfReady()

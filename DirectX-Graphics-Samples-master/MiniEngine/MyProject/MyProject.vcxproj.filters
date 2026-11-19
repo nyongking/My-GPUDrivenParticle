@@ -45,6 +45,12 @@
     <Filter Include="Particle\Params">
       <UniqueIdentifier>{cf976fb2-627a-44a0-ab61-4ce1fcd07b22}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Particle\Material">
+      <UniqueIdentifier>{0990c748-41a9-44c3-b7d9-709df0d1da0b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Global">
+      <UniqueIdentifier>{7acf581f-8cf0-4864-9040-ce3c462e7edc}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -99,6 +105,9 @@
     <ClCompile Include="ModuleLibrary.cpp">
       <Filter>Particle\Modules</Filter>
     </ClCompile>
+    <ClCompile Include="CurveLibrary.cpp">
+      <Filter>Particle\Modules</Filter>
+    </ClCompile>
     <ClCompile Include="EmitterInstance.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
@@ -108,7 +117,16 @@
     <ClCompile Include="ModuleStackPanel.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
+    <ClCompile Include="EmitterAsset.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="Json.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
     <ClCompile Include="SpriteRenderer.cpp">
+      <Filter>Particle\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="ParticleRenderList.cpp">
       <Filter>Particle\Renderer</Filter>
     </ClCompile>
     <ClCompile Include="ParticleSorter.cpp">
@@ -128,6 +146,21 @@
     </ClCompile>
     <ClCompile Include="OwnerTransform.cpp">
       <Filter>Particle\Params</Filter>
+    </ClCompile>
+    <ClCompile Include="EmitterTestScene.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="UberEmitterData.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="UberGpuProgram.cpp">
+      <Filter>Particle</Filter>
+    </ClCompile>
+    <ClCompile Include="ParticleMaterial.cpp">
+      <Filter>Particle\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="GlobalData.cpp">
+      <Filter>Global</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -186,6 +219,9 @@
     <ClInclude Include="ModuleLibrary.h">
       <Filter>Particle\Modules</Filter>
     </ClInclude>
+    <ClInclude Include="CurveLibrary.h">
+      <Filter>Particle\Modules</Filter>
+    </ClInclude>
     <ClInclude Include="EmitterInstance.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
@@ -195,7 +231,16 @@
     <ClInclude Include="ModuleStackPanel.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
+    <ClInclude Include="EmitterAsset.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="Json.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
     <ClInclude Include="SpriteRenderer.h">
+      <Filter>Particle\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleRenderList.h">
       <Filter>Particle\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="ParticleSorter.h">
@@ -218,6 +263,24 @@
     </ClInclude>
     <ClInclude Include="OwnerTransform.h">
       <Filter>Particle\Params</Filter>
+    </ClInclude>
+    <ClInclude Include="EmitterTestScene.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="UberEmitterData.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="UberGpuProgram.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleMaterial.h">
+      <Filter>Particle\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="GlobalData.h">
+      <Filter>Global</Filter>
+    </ClInclude>
+    <ClInclude Include="CurlNoise.h">
+      <Filter>Particle\Modules</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -252,6 +315,18 @@
       <Filter>Shaders\Particle</Filter>
     </None>
     <None Include="Shaders\ModuleCommon.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\ParticleListCommon.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\SpriteFacing.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\ParticleUber.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\SpriteAlpha.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
   </ItemGroup>
@@ -289,10 +364,31 @@
     <FxCompile Include="Shaders\ParticleSpriteVS.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\ParticleSortKeyCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleGatherCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleListVS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleListPS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
     <FxCompile Include="Shaders\EmitterFinalizeCS.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\ParticleSpritePS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleUberEmitterUpdateCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleUberParticleSpawnCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ParticleUberParticleUpdateCS.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
   </ItemGroup>

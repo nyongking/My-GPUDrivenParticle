@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "ModuleLibrary.h"
+#include "CurlNoise.h"
 #include "ModuleContext.h"
 
 #include "AttributeType.h"
@@ -11,6 +12,7 @@ ModuleDesc SpawnRate(float rate)
 	ModuleDesc m;
 
 	m.name = "Spawn Rate";
+	m.id = ModuleId::SpawnRate;
 	m.stage = Stage::EmitterUpdate;
 	m.params =
 	{
@@ -53,6 +55,7 @@ ModuleDesc InitializeParticle(Input<float> size, Input<float> mass, Input<float>
 	ModuleDesc m;
 
 	m.name = "Initialize Particle";
+	m.id = ModuleId::InitializeParticle;
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{
@@ -133,6 +136,7 @@ ModuleDesc SphereLocation(Input<float> radius, bool surfaceOnly)
 {
 	ModuleDesc m;
 	m.name = "Sphere Location";
+	m.id = ModuleId::SphereLocation;
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{
@@ -189,6 +193,8 @@ ModuleDesc AddVelocityInCone(Input<float> speed, float coneAngleDeg, float3 cone
 {
 	ModuleDesc m;
 	m.name = "Add Velocity In Cone";
+	m.id = ModuleId::AddVelocityInCone;
+
 	m.stage = Stage::ParticleSpawn;
 	m.params =
 	{
@@ -288,6 +294,7 @@ ModuleDesc ParticleState(bool killOnLifeTime)
 {
 	ModuleDesc m;
 	m.name = "Particle State";
+	m.id = ModuleId::ParticleState;
 	m.stage = Stage::ParticleUpdate;
 	m.params =
 	{
@@ -347,6 +354,8 @@ ModuleDesc SolveForceAndVelocity(Input<float> speedLimit, Input<float> accelLimi
 {
 	ModuleDesc m;
 	m.name = "Solve Force and Velocity";
+	m.id = ModuleId::SolveForceAndVelocity;
+
 	m.stage = Stage::ParticleUpdate;
 	m.params =
 	{
@@ -386,8 +395,9 @@ p.Acceleration = float3(0.f, 0.f, 0.f);
 	m.execute = [](ModuleContext& ctx)
 		{
 			const float dt = ctx.DeltaTime();
-			const float aMax = ctx.Param<float>("AccelLimit")(0);
-			const float sMax = ctx.Param<float>("SpeedLimit")(0);
+			// 입력값은 파티클마다 평가한다 (Curve 면 파티클의 NormalizedAge 에 따라 달라진다)
+			const auto accelParam = ctx.Param<float>("AccelLimit");
+			const auto speedParam = ctx.Param<float>("SpeedLimit");
 
 			auto pos = ctx.Particles<float3>(Particles::Position);
 			auto vel = ctx.Particles<float3>(Particles::Velocity);
@@ -396,6 +406,9 @@ p.Acceleration = float3(0.f, 0.f, 0.f);
 
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
+				const float aMax = accelParam(i);
+				const float sMax = speedParam(i);
+
 				float3 a = acc[i];
 				const float aLen = std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
 				if (aMax > 0.f && aLen > aMax)
@@ -438,6 +451,8 @@ ModuleDesc GravityForce(float3 gravity)
 	ModuleDesc m;
 
 	m.name = "Gravity Force";
+	m.id = ModuleId::GravityForce;
+
 	m.stage = Stage::ParticleUpdate;
 	m.params = { MakeParam<float3>("Gravity", gravity) };
 	m.reads =
@@ -453,11 +468,12 @@ p.Acceleration += PARAM(Gravity) / p.Mass;
 
 	m.execute = [](ModuleContext& ctx)
 		{
-			const float3 g = ctx.Param<float3>("Gravity")(0);
+			const auto gravityParam = ctx.Param<float3>("Gravity");
 			auto acc = ctx.Particles<float3>(Particles::Acceleration);
 			auto mass = ctx.Particles<float>(Particles::Mass);
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
+				const float3 g = gravityParam(i);
 				acc[i].x += g.x / mass[i];
 				acc[i].y += g.y / mass[i];
 				acc[i].z += g.z / mass[i];
@@ -474,6 +490,8 @@ ModuleDesc SubUVAnimation(float startFrame, float endFrame, bool loop, float fra
 	ModuleDesc m;
 
 	m.name = "SubUV Animation";
+	m.id = ModuleId::SubUVAnimation;
+
 	m.stage = Stage::ParticleUpdate;
 	m.params =
 	{
@@ -503,11 +521,10 @@ p.SubImageIndex = PARAM(StartFrame) + t;
 
 	m.execute = [](ModuleContext& ctx)
 		{
-			const float start = ctx.Param<float>("StartFrame")(0);
-			const float end = ctx.Param<float>("EndFrame")(0);
+			const auto startParam = ctx.Param<float>("StartFrame");
+			const auto endParam = ctx.Param<float>("EndFrame");
 			const bool loop = static_cast<bool>(ctx.Param<NBool>("Loop")(0));
-			const float fps = ctx.Param<float>("FramesPerSecond")(0);
-			const float count = std::fmax(end - start + 1.f, 1.f);
+			const auto fpsParam = ctx.Param<float>("FramesPerSecond");
 
 			auto age = ctx.Particles<float>(Particles::Age);
 			auto nage = ctx.Particles<float>(Particles::NormalizedAge);
@@ -515,6 +532,11 @@ p.SubImageIndex = PARAM(StartFrame) + t;
 
 			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
 			{
+				const float start = startParam(i);
+				const float end = endParam(i);
+				const float fps = fpsParam(i);
+				const float count = std::fmax(end - start + 1.f, 1.f);
+
 				float t;
 				if (loop)
 				{
@@ -533,3 +555,277 @@ p.SubImageIndex = PARAM(StartFrame) + t;
 }
 
 
+ModuleDesc InitializeSprite(Input<float2> spriteSize, Input<float> spriteRotation)
+{
+	ModuleDesc m;
+
+	m.name = "Initialize Sprite";
+	m.id = ModuleId::InitializeSprite;
+	m.stage = Stage::ParticleSpawn;
+	m.params =
+	{
+		MakeParam<float2>("SpriteSize", spriteSize).WithMin(0.f),
+		MakeParam<float>("SpriteRotation", spriteRotation)
+	};
+	m.writes =
+	{
+		{Particles::SpriteSize, &Types::Float2},
+		{Particles::SpriteRotation, &Types::Float}
+	};
+	m.hlsl = R"(
+p.SpriteSize = PARAM(SpriteSize);
+p.SpriteRotation = PARAM(SpriteRotation);
+)";
+
+	m.execute = [](ModuleContext& ctx)
+		{
+			const auto sizeParam = ctx.Param<float2>("SpriteSize");
+			const auto rotParam = ctx.Param<float>("SpriteRotation");
+
+			const bool hasSize = ctx.HasParticle(Particles::SpriteSize);
+			const bool hasRot = ctx.HasParticle(Particles::SpriteRotation);
+			StridedView<float2> sizes = {};
+			StridedView<float> rots = {};
+			if (hasSize) sizes = ctx.Particles<float2>(Particles::SpriteSize);
+			if (hasRot)  rots = ctx.Particles<float>(Particles::SpriteRotation);
+
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+			{
+				if (hasSize) sizes[i] = sizeParam(i);
+				if (hasRot)  rots[i] = rotParam(i);
+			}
+		};
+
+	return m;
+}
+
+ModuleDesc SpriteRotationRate(float degreesPerSecond)
+{
+	ModuleDesc m;
+
+	m.name = "Sprite Rotation Rate";
+	m.id = ModuleId::SpriteRotationRate;
+	m.stage = Stage::ParticleUpdate;
+	m.params =
+	{
+		MakeParam<float>("RotationRate", degreesPerSecond)
+	};
+	m.reads =
+	{
+		{Engine::DeltaTime, &Types::Float},
+		{Particles::SpriteRotation, &Types::Float}
+	};
+	m.writes =
+	{
+		{Particles::SpriteRotation, &Types::Float}
+	};
+	// 360 으로 감아서 오래 살아도 float 정밀도가 떨어지지 않게
+	m.hlsl = R"(
+p.SpriteRotation = fmod(p.SpriteRotation + PARAM(RotationRate) * DeltaTime, 360.f);
+)";
+
+	m.execute = [](ModuleContext& ctx)
+		{
+			const auto rateParam = ctx.Param<float>("RotationRate");
+			const float dt = ctx.DeltaTime();
+			auto rot = ctx.Particles<float>(Particles::SpriteRotation);
+
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+				rot[i] = std::fmod(rot[i] + rateParam(i) * dt, 360.f);
+		};
+
+	return m;
+}
+
+// Color = (Spawn 이 끝났을 때의 색) x 배율. Niagara 의 Scale Color 에 해당
+//   현재 색에 곱하면 프레임마다 누적되므로 Particles.Initial.Color 에 곱한다
+//   배율을 Curve 로 두면 수명에 따라 색 / 투명도가 변한다 (예: ScaleAlpha = 1 -> 0 으로 사라지기)
+ModuleDesc ScaleColor(Input<float3> scaleRGB, Input<float> scaleAlpha)
+{
+	ModuleDesc m;
+
+	m.name = "Scale Color";
+	m.id = ModuleId::ScaleColor;
+	m.stage = Stage::ParticleUpdate;
+	m.params =
+	{
+		MakeParam<float3>("ScaleRGB", scaleRGB),
+		MakeParam<float>("ScaleAlpha", scaleAlpha)
+	};
+	m.reads =
+	{
+		{Particles::InitialColor, &Types::Float4}
+	};
+	m.writes =
+	{
+		{Particles::Color, &Types::Float4}
+	};
+	m.hlsl = R"(
+p.Color = p.Initial_Color * float4(PARAM(ScaleRGB), PARAM(ScaleAlpha));
+)";
+
+	m.execute = [](ModuleContext& ctx)
+		{
+			const auto rgbParam = ctx.Param<float3>("ScaleRGB");
+			const auto alphaParam = ctx.Param<float>("ScaleAlpha");
+
+			if (!ctx.HasParticle(Particles::Color) || !ctx.HasParticle(Particles::InitialColor))
+				return;
+			auto color = ctx.Particles<float4>(Particles::Color);
+			auto initial = ctx.Particles<float4>(Particles::InitialColor);
+
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+			{
+				const float3 rgb = rgbParam(i);
+				const float alpha = alphaParam(i);
+				const float4 base = initial[i];
+				color[i] = float4{ base.x * rgb.x, base.y * rgb.y, base.z * rgb.z, base.w * alpha };
+			}
+		};
+
+	return m;
+}
+
+
+// 컬 노이즈 필드로 힘을 더한다. Niagara 의 Curl Noise Force 에 해당 (Physics.Force 에 더하기 = 여기서는 Acceleration += F / Mass)
+//   힘 = CurlNoise(Position * Frequency + Offset + Pan * Emitter.Age) * Strength
+//   curl 이라 발산이 없어 파티클이 모이거나 흩어지지 않고 소용돌이친다. Solve Force and Velocity 앞에 둔다
+//   Niagara 의 기본(구운 타일링 LUT) 대신 그래디언트 노이즈의 도함수로 직접 계산한다 (Niagara 의 고품질 옵션 쪽)
+//   Pan 은 필드를 시간에 따라 흘린다 (Emitter.Age = 이미터 시작 후 시뮬레이션 시간. 타임 스톱 중엔 멈춤). Offset 은 시드처럼 필드를 옮긴다
+ModuleDesc CurlNoiseForce(Input<float> strength, Input<float> frequency, Input<float3> offset, Input<float3> pan)
+{
+	ModuleDesc m;
+
+	m.name = "Curl Noise Force";
+	m.id = ModuleId::CurlNoiseForce;
+	m.stage = Stage::ParticleUpdate;
+	m.params =
+	{
+		MakeParam<float>("Strength", strength),
+		MakeParam<float>("Frequency", frequency),
+		MakeParam<float3>("Offset", offset),
+		MakeParam<float3>("Pan", pan)
+	};
+	m.reads =
+	{
+		{Particles::Position, &Types::Float3},
+		{Particles::Acceleration, &Types::Float3},
+		{Particles::Mass, &Types::Float},
+		{Engine::EmitterAge, &Types::Float}
+	};
+	m.writes = { {Particles::Acceleration, &Types::Float3} };
+
+	m.hlsl = R"(
+p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset) + PARAM(Pan) * EmitterAge) * (PARAM(Strength) / p.Mass);
+)";
+
+	m.execute = [](ModuleContext& ctx)
+		{
+			const auto strengthParam = ctx.Param<float>("Strength");
+			const auto frequencyParam = ctx.Param<float>("Frequency");
+			const auto offsetParam = ctx.Param<float3>("Offset");
+			const auto panParam = ctx.Param<float3>("Pan");
+			const float age = ctx.EmitterAge();
+			auto pos = ctx.Particles<float3>(Particles::Position);
+			auto acc = ctx.Particles<float3>(Particles::Acceleration);
+			auto mass = ctx.Particles<float>(Particles::Mass);
+
+			for (uint32_t i = ctx.Begin(); i < ctx.End(); ++i)
+			{
+				const float freq = frequencyParam(i);
+				const float3 o = offsetParam(i);
+				const float3 pan = panParam(i);
+				const float3 x = float3{ pos[i].x * freq + o.x + pan.x * age, pos[i].y * freq + o.y + pan.y * age, pos[i].z * freq + o.z + pan.z * age };
+				const float3 c = CurlNoise(x);
+				const float s = strengthParam(i) / mass[i];
+				acc[i].x += c.x * s;
+				acc[i].y += c.y * s;
+				acc[i].z += c.z * s;
+			}
+		};
+
+	return m;
+}
+
+const char* ModuleIdName(ModuleId id)
+{
+	switch (id)
+	{
+	case ModuleId::SpawnRate:             
+		return "SpawnRate";
+	case ModuleId::InitializeParticle:    
+		return "InitializeParticle";
+	case ModuleId::SphereLocation:        
+		return "SphereLocation";
+	case ModuleId::AddVelocityInCone:     
+		return "AddVelocityInCone";
+	case ModuleId::ParticleState:         
+		return "ParticleState";
+	case ModuleId::GravityForce:         
+		return "GravityForce";
+	case ModuleId::SolveForceAndVelocity: 
+		return "SolveForceAndVelocity";
+	case ModuleId::SubUVAnimation:       
+		return "SubUVAnimation";
+	case ModuleId::InitializeSprite:      
+		return "InitializeSprite";
+	case ModuleId::SpriteRotationRate:    
+		return "SpriteRotationRate";
+	case ModuleId::ScaleColor:            
+		return "ScaleColor";
+	case ModuleId::CurlNoiseForce:        
+		return "CurlNoiseForce";
+	default:                              
+		return "Unknown";
+	}
+}
+
+ModuleId ModuleIdFromName(const std::string& name)
+{
+	for (uint32_t i = 0; i < uint32_t(ModuleId::Count); ++i)
+	{
+		if (name == ModuleIdName(ModuleId(i)))
+			return ModuleId(i);
+	}
+
+	return ModuleId::Unknown;
+}
+
+ModuleDesc MakeDefaultModule(ModuleId id)
+{
+	switch (id)
+	{
+	case ModuleId::SpawnRate:
+		return SpawnRate(50.f);
+	case ModuleId::InitializeParticle:    
+		return InitializeParticle(0.1f, 1.f, 1.f, float3{ 0.f, 0.f, 0.f }, float4{ 1.f, 1.f, 1.f, 1.f });
+	case ModuleId::SphereLocation:
+		return SphereLocation(0.5f, false);
+	case ModuleId::AddVelocityInCone:
+		return AddVelocityInCone(3.f, 30.f, float3{ 0.f, 1.f, 0.f });
+	case ModuleId::ParticleState:
+		return ParticleState(true);
+	case ModuleId::GravityForce:
+		return GravityForce(float3{ 0.f, -9.8f, 0.f });
+	case ModuleId::SolveForceAndVelocity:
+		return SolveForceAndVelocity(0.f, 0.f);      // 0 = 제한 없음
+	case ModuleId::SubUVAnimation:
+		return SubUVAnimation(0.f, 63.f);
+	case ModuleId::InitializeSprite:
+		return InitializeSprite(float2{ 0.2f, 0.2f }, RandomRange<float>(0.f, 360.f));
+	case ModuleId::SpriteRotationRate:
+		return SpriteRotationRate(90.f);
+	case ModuleId::ScaleColor:
+		return ScaleColor(float3{ 1.f, 1.f, 1.f }, Curve<float>({ { 0.f, 1.f }, { 1.f, 0.f } }));   // fade out over lifetime
+	case ModuleId::CurlNoiseForce:
+		return CurlNoiseForce(5.f, 0.5f, float3{ 0.f, 0.f, 0.f }, float3{ 0.f, 0.f, 0.f });
+	default:
+	{
+		ModuleDesc unknown;
+		unknown.stage = Stage::ParticleUpdate;
+		unknown.id = ModuleId::Unknown;
+
+		return unknown;
+	}
+	}
+}

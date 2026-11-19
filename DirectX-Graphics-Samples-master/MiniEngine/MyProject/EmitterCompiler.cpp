@@ -91,7 +91,17 @@ namespace
                 const ParamDesc& p = m.params[pi];
                 cm.params.push_back(p.name);
                 cm.paramInfos.push_back({ p.name, p.type, p.kind, p.perComponent,
-                    kSaltBase + uint32_t(mi) * kSaltPerModule + uint32_t(pi) * kSaltPerParam });
+                    kSaltBase + uint32_t(mi) * kSaltPerModule + uint32_t(pi) * kSaltPerParam, p.curveIndex });
+
+                // 커브 입력값은 가로축 속성을 읽는다 (조각에는 안 보이지만 PARAM(n) 이 펼쳐지면서 읽음)
+                if (p.kind == ParamKind::Curve)
+                {
+                    bool declared = false;
+                    for (const Usage& u : cm.reads)
+                        declared |= (u.attr == p.curveIndex);
+                    if (!declared)
+                        cm.reads.push_back({ p.curveIndex, &Types::Float });
+                }
             }
             out.modules.push_back(cm);
 
@@ -109,6 +119,15 @@ namespace
                     if (!IsFloatFamily(p.type)) { out.errors.push_back(who + ": RandomRange 는 float 계열 타입만 지원"); continue; }
                     if (m.stage != Stage::ParticleSpawn) { out.errors.push_back(who + ": RandomRange 는 ParticleSpawn 단계에서만 사용 가능 (" + StageName(m.stage) + ")"); continue; }
                 }
+                if (p.kind == ParamKind::Curve)
+                {
+                    if (!IsFloatFamily(p.type)) { out.errors.push_back(who + ": Curve 는 float 계열 타입만 지원"); continue; }
+                    if (m.stage != Stage::ParticleUpdate) { out.errors.push_back(who + ": Curve 는 ParticleUpdate 단계에서만 사용 가능 (" + StageName(m.stage) + ")"); continue; }
+                    if (!p.curve) { out.errors.push_back(who + ": Curve 인데 커브 데이터가 없음"); continue; }
+
+                    const AttributeKey index = AttributeKey::Parse(p.curveIndex);
+                    if (index.ns != Namespace::Particles || index.name.empty()) { out.errors.push_back(who + ": 커브 인덱스 '" + p.curveIndex + "' 는 Particles 속성이어야 함"); continue; }
+                }
 
                 std::string why;
                 if (!Types::IsGpuCompatible(*p.type, &why)) { out.errors.push_back(who + ": GPU 상수 버퍼에 못 넣는 타입 (" + why + ")"); continue; }
@@ -120,7 +139,7 @@ namespace
                 if (dup) { out.errors.push_back(who + ": 같은 모듈 안에 같은 이름이 또 있음"); continue; }
 
                 for (const std::string& slotName : slotNames)
-                    out.moduleParams.Add(AttributeKey::Parse("Module." + scope + "." + slotName), p.type);
+                    out.moduleParams.Add(AttributeKey::Parse("Module." + scope + "." + slotName), ParamSlotType(p.type, p.kind));
             }
         }
 
@@ -136,6 +155,15 @@ void FillModuleParamData(const std::vector<ModuleDesc>& modules, CompiledEmitter
         for (const ParamDesc& p : modules[mi].params)
         {
             const std::vector<std::string> slotNames = ParamSlotNames(p.name, p.kind);
+            if (p.kind == ParamKind::Curve)
+            {
+                // 값 대신 커브 칸 번호. 키를 고쳐도 칸은 그대로라 이 바이트는 바뀌지 않는다
+                const uint32_t curveSlot = p.curve ? p.curve->Slot() : CurveLibrary::kIdentitySlot;
+                if (const Slot* s = compiled.moduleParams.Find("Module." + compiled.moduleScopes[mi] + "." + slotNames[0]))
+                    if (s->type == &Types::UInt32)
+                        std::memcpy(compiled.moduleParamData.data() + s->offset, &curveSlot, sizeof(curveSlot));
+                continue;
+            }
             for (size_t si = 0; si < slotNames.size(); ++si)
                 if (const Slot* s = compiled.moduleParams.Find("Module." + compiled.moduleScopes[mi] + "." + slotNames[si]))
                     if (p.value.size() == size_t(s->type->size) * slotNames.size())
@@ -205,6 +233,11 @@ CompiledEmitter EmitterCompiler::Compile() const
         const int lv = StageLevel(m.stage);
         for (const Usage& u : m.writes) collect(u, m.name, lv, m.stage, false, false);
         for (const Usage& u : m.reads)  collect(u, m.name, lv, m.stage, true, false);
+
+        // 커브 입력값의 가로축 속성도 이 모듈이 읽는 것으로 친다 (Trim 되지 않게, 타입 검사도 같이)
+        for (const ParamDesc& p : m.params)
+            if (p.kind == ParamKind::Curve)
+                collect(Usage{ p.curveIndex, &Types::Float }, m.name, lv, m.stage, true, false);
     }
     for (const RendererDesc& r : m_Renderers)
     {
@@ -259,6 +292,21 @@ CompiledEmitter EmitterCompiler::Compile() const
                 written.push_back(AttributeKey::Parse(u.attr).Full());
         }
     }
+
+    // 커브의 가로축 속성은 누군가 써야 한다 (아무도 안 쓰면 항상 0 이라 커브의 첫 값만 나온다)
+    for (const ModuleDesc& m : m_Modules)
+        for (const ParamDesc& p : m.params)
+        {
+            if (p.kind != ParamKind::Curve)
+                continue;
+            const AttributeKey index = AttributeKey::Parse(p.curveIndex);
+            if (index.mod != Modifier::None)
+                continue;   // Previous / Initial 은 아래 [3] 에서 원본을 확인한다
+            auto it = table.find(index.Full());
+            if (it != table.end() && !it->second.written)
+                out.errors.push_back(m.name + " 입력값 '" + p.name + "': 커브 인덱스 '" + index.Full()
+                    + "' 를 쓰는 모듈이 없음 (NormalizedAge 는 Particle State 모듈이 쓴다)");
+        }
 
     // ---------- [3] Previous/Initial: 원본이 있어야 하고, 원본은 복사 때문에 "읽힘" ----------
     for (auto& kv : table)
