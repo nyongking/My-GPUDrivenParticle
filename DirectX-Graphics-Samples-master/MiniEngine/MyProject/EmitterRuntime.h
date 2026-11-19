@@ -64,6 +64,7 @@ public:
 	// -------- Material 설정 -------
 	bool SetMaterialTexture(uint32_t slot, const MaterialTexture& texture);
 	const ParticleMaterial& Material() const { return m_Material; }
+	void SetMaterialParam(uint32_t k, const float4& value);
 
 	void SetSpriteSettings(const SpriteSettings& settings);
 	const SpriteSettings& GetSpriteSettings() const { return m_CpuRenderer.Settings(); }

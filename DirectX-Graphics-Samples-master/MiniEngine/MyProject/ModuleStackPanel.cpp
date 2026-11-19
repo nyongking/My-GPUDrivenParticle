@@ -321,6 +321,46 @@ namespace
 			runtime.SetSpriteSettings(s);
 	}
 
+	bool DrawMaterialParam(EmitterRuntime& runtime, uint32_t k)
+	{
+		float4 v = runtime.Material().Param(k);
+		const char* name = ParticleMaterial::ParamName(k);
+		char label[64];
+		if (name)
+			snprintf(label, sizeof(label), "[%u] %s", k, name);
+		else
+			snprintf(label, sizeof(label), "[%u] Param", k);
+
+		ImGui::SetNextItemWidth(300.f);
+		if (!ImGui::DragFloat4(label, &v.x, 0.01f))
+			return false;
+		runtime.SetMaterialParam(k, v);
+		return true;
+	}
+
+	void DrawMaterialParams(EmitterRuntime& runtime)
+	{
+		if (!ImGui::TreeNode("Material Params"))
+			return;
+
+		for (uint32_t k = 0; k < ParticleMaterial::kNumNamedParams; ++k)
+			DrawMaterialParam(runtime, k);
+
+		if (ImGui::TreeNode("Unused", "Unused [%u ~ %u]", uint32_t(ParticleMaterial::kNumNamedParams), ParticleMaterial::kMaxParams - 1))
+		{
+			for (uint32_t k = ParticleMaterial::kNumNamedParams; k < ParticleMaterial::kMaxParams; ++k)
+				DrawMaterialParam(runtime, k);
+			ImGui::TreePop();
+		}
+
+		if (ImGui::SmallButton("Reset Params"))
+		{
+			for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
+				runtime.SetMaterialParam(k, ParticleMaterial::DefaultParam(k));
+		}
+		ImGui::TreePop();
+	}
+
 	// 렌더러 바인딩 (R1): 칸마다 [연결할 속성 콤보] + [기본값]
 	void DrawBindings(EmitterRuntime& runtime)
 	{
@@ -561,10 +601,9 @@ namespace
 		std::vector<std::string> failedTextures;
 		if (!ApplyEmitterAsset(runtime, asset, &failedTextures))
 		{
-			for (const std::string& path : failedTextures)
-				st.warnings.push_back("texture '" + path + "' could not be loaded (drawn magenta)");
+			for (const std::string& p : failedTextures)
+				st.warnings.push_back("texture '" + p + "' could not be loaded (drawn magenta)");
 		}
-		// [AI step-01] MOD END
 		strncpy_s(st.name, sizeof(st.name), name.c_str(), _TRUNCATE);
 		SetAssetStatus("Loaded " + path + " (restarting emitter)", false);
 	}

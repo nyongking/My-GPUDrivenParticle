@@ -26,6 +26,7 @@ struct EmitterAsset
 	RendererDesc            sprite = SpriteRenderer::Desc(); // 바인딩 (칸 순서 = Desc())
 	
 	MaterialTexture			textures[ParticleMaterial::kNumTextureSlot];
+	float4					materialParams[ParticleMaterial::kMaxParams];	// PS Param(k). 파일에 없으면 DefaultParam
 	SpriteSettings          settings;
 
 	EmitterAsset();

@@ -13,6 +13,17 @@ cbuffer SpritePSConstants : register(b1)
     float Time; // Global Time
 };
 
+#define MAX_MATERIAL_PARAMS 16
+cbuffer MaterialParamsCB : register(b2)
+{
+    float4 MaterialParams[MAX_MATERIAL_PARAMS];
+};
+
+float4 Param(uint k)
+{
+    return MaterialParams[k];
+}
+
 
 struct PSInput
 {
@@ -33,7 +44,8 @@ float4 main(PSInput input) : SV_TARGET
 
     if (result.a < 0.01f)
         discard;
-    const float2 layerUV = input.quadUV * float2(1.f, 1.f) + float2(0.3f, 0.3f) * Time;
+    // 0.xy = Tiling, 0.zw = Offset, 1.xy = Scroll
+    const float2 layerUV = input.quadUV * Param(0).xy + Param(0).zw + Param(1).xy * Time;
     const float noise = LayerTexture.Sample(LinearWrap, layerUV).r;
     
     result.rgb *= noise;

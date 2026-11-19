@@ -22,7 +22,7 @@ namespace
 	const char* const kAlignmentNames[] = { "Unaligned", "VelocityAligned", "CustomAlignment" };
 	const char* const kTextureAlphaNames[] = { "Straight", "Premultiplied", "FromLuminance" };
 	const char* const kColorSpaceNames[] = { "sRGB", "Linear" };
-	
+
 	static_assert(_countof(kFacingNames) == size_t(SpriteFacingMode::Count), "SpriteFacingMode 이름 표");
 	static_assert(_countof(kAlignmentNames) == size_t(SpriteAlignment::Count), "SpriteAlignment 이름 표");
 	static_assert(_countof(kTextureAlphaNames) == size_t(SpriteTextureAlpha::Count), "SpriteTextureAlpha 이름 표");
@@ -330,6 +330,8 @@ EmitterAsset::EmitterAsset()
 {
 	for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
 		textures[i] = ParticleMaterial::DefaultTexture();
+	for (uint32_t i = 0; i < ParticleMaterial::kMaxParams; ++i)
+		materialParams[i] = ParticleMaterial::DefaultParam(i);
 }
 
 namespace
@@ -347,6 +349,12 @@ namespace
 		}
 		return ok;
 	}
+	
+	void ApplyMaterialParams(EmitterRuntime& runtime, const EmitterAsset& asset)
+	{
+		for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
+			runtime.SetMaterialParam(k, asset.materialParams[k]);
+	}
 }
 
 // ------------------------------------------------------------------ 캡처 / 적용
@@ -359,8 +367,12 @@ EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::strin
 	a.backend = runtime.Backend();
 	a.modules = runtime.Modules();
 	a.sprite = runtime.SpriteBindings();
+
 	for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
 		a.textures[i] = runtime.Material().SlotTexture(i);
+	for (uint32_t i = 0; i < ParticleMaterial::kMaxParams; ++i)
+		a.materialParams[i] = runtime.Material().Param(i);
+
 	a.settings = runtime.GetSpriteSettings();
 	return a;
 }
@@ -369,6 +381,7 @@ bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset, std::
 {
 	runtime.ReplaceDescription(asset.modules, asset.sprite, asset.capacity, asset.backend);
 	runtime.SetSpriteSettings(asset.settings);
+	ApplyMaterialParams(runtime, asset);
 	return ApplyTextures(runtime, asset, failedTextures);
 }
 
@@ -384,6 +397,8 @@ bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& ass
 
 	// 둘 다 재시작이 필요 없는 값이라 시작한 뒤에 넣는다
 	runtime.SetSpriteSettings(asset.settings);
+	ApplyMaterialParams(runtime, asset);
+
 	std::vector<std::string> failed;
 	if (!ApplyTextures(runtime, asset, &failed))
 	{
@@ -431,6 +446,10 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
 		textures.Push(std::move(jt));
 	}
 	sprite.Set("textures", std::move(textures));
+	JsonValue params = JsonValue::MakeArray();
+	for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
+		params.Push(EncodeValue(&Types::Float4, reinterpret_cast<const uint8_t*>(&a.materialParams[k])));
+	sprite.Set("materialParams", std::move(params));
 	sprite.Set("textureAlpha", JsonValue(kTextureAlphaNames[(std::min)(uint32_t(s.textureAlpha), uint32_t(SpriteTextureAlpha::Count) - 1)]));
 	sprite.Set("blend", JsonValue(kBlendNames[(std::min)(uint32_t(s.blend), 1u)]));
 	JsonValue grid = JsonValue::MakeArray();
@@ -578,6 +597,23 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 		{
 			a.textures[ParticleMaterial::kBaseTexture].path = v->AsString();
 			a.textures[ParticleMaterial::kBaseTexture].colorSpace = TextureColorSpace::sRGB;
+		}
+
+		if (const JsonValue* params = sprite->Find("materialParams"))
+		{
+			if (params->IsArray())
+			{
+				if (params->Size() > ParticleMaterial::kMaxParams)
+					warnings.push_back("sprite.materialParams: more than " + std::to_string(ParticleMaterial::kMaxParams) + " -> extra ignored");
+				const uint32_t n = (std::min)(uint32_t(params->Size()), uint32_t(ParticleMaterial::kMaxParams));
+				for (uint32_t k = 0; k < n; ++k)
+				{
+					if (!DecodeValue(params->At(k), &Types::Float4, reinterpret_cast<uint8_t*>(&a.materialParams[k])))
+						warnings.push_back("sprite.materialParams[" + std::to_string(k) + "]: expected [x, y, z, w] -> kept default");
+				}
+			}
+			else
+				warnings.push_back("sprite.materialParams: expected an array -> kept default");
 		}
 
 		if (EnumFromName(sprite->Find("textureAlpha"), kTextureAlphaNames, e, "textureAlpha", warnings))

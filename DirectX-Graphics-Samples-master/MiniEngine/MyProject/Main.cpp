@@ -195,7 +195,7 @@ void MyProject::Cleanup(void)
 void MyProject::Update(float deltaT)
 {
     ScopedTimer _prof(L"Update State");
-
+    ParticleTextures::CollectRetired();
 
     // Update something
     m_CameraController->Update(deltaT);

@@ -33,9 +33,23 @@ public:
 		kLayerTexture,
 		kNumTextureSlot,
 	};
+
+	enum ParamSlot : uint32_t
+	{
+		kParamLayerUV,
+		kParamLayerScroll,
+		kNumNamedParams
+	};
+
+	static const uint32_t kMaxParams = 16;
+
 	static const char*		SlotName(uint32_t slot);
 	static MaterialTexture	DefaultTexture();
 	
+	static const char*	ParamName(uint32_t k);
+	static float4		DefaultParam(uint32_t k);
+
+
 public:
 	ParticleMaterial();
 	~ParticleMaterial();
@@ -43,6 +57,7 @@ public:
 	ParticleMaterial(const ParticleMaterial&) = delete;
 	ParticleMaterial& operator=(const ParticleMaterial&) = delete;
 
+	// ---------- Texture ----------
 	bool SetTexture(uint32_t slot, const MaterialTexture& texture);
 	const MaterialTexture& SlotTexture(uint32_t slot) const;
 
@@ -50,10 +65,17 @@ public:
 
 	void ReleaseTextures();
 
+	// ---------- Parameters ----------
+	void			SetParam(uint32_t k, const float4& value);
+	const float4&	Param(uint32_t k) const;
+	const float4*	Params() const { return m_Params; }
+	void			ResetParams();
+
+
 private:
 	MaterialTexture		m_Textures[kNumTextureSlot];
 	TextureRef			m_Refs[kNumTextureSlot];
-
+	alignas(16) float4				m_Params[kMaxParams];
 };
 
 namespace ParticleTextures

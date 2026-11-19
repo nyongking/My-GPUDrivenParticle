@@ -107,8 +107,7 @@ namespace
 	const uint32_t kSortKeyGroupSize = 256;            // ParticleSortKeyCS 의 numthreads
 	const uint32_t kDrawArgsInstanceCountOffset = 4;   // D3D12_DRAW_ARGUMENTS::InstanceCount (= alive)
 
-
-	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kNumRootParams };
+	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kRootMaterialCB, kNumRootParams };
 	static const uint32_t kNumSRVs = 2;
 
 	// 루트 시그니처 / PSO 는 모든 SpriteRenderer 가 같이 쓴다 (한 번만 만든다)
@@ -164,6 +163,10 @@ namespace
 		// Blendmode 상수버퍼 설정
 		s_RootSig[kRootPSConstants].InitAsConstants(1, 3, D3D12_SHADER_VISIBILITY_PIXEL);		
 		
+		// Material Cbuffer 설정
+		s_RootSig[kRootMaterialCB].InitAsConstantBuffer(2, D3D12_SHADER_VISIBILITY_PIXEL);
+
+
 		s_RootSig.Finalize(L"Particle Sprite RootSig");
 
 		s_PSO.SetRootSignature(s_RootSig);
@@ -557,6 +560,19 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	gfx.SetDynamicDescriptors(kRootTexture, 0, ParticleMaterial::kNumTextureSlot, texs);
 
 	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend), static_cast<uint32_t>(m_Settings.textureAlpha), sGlobal.exeTime);
+
+	if (m_Material)
+	{
+		gfx.SetDynamicConstantBufferView(kRootMaterialCB, sizeof(float4) * ParticleMaterial::kMaxParams, m_Material->Params());
+	}
+	else
+	{
+		float4 defaults[ParticleMaterial::kMaxParams];
+		for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
+			defaults[k] = ParticleMaterial::DefaultParam(k);
+		gfx.SetDynamicConstantBufferView(kRootMaterialCB, sizeof(defaults), defaults);
+	}
+
 }
 
 void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camera& camera, const EmitterInstance& emitter)

@@ -36,6 +36,26 @@ MaterialTexture ParticleMaterial::DefaultTexture()
 	return t;
 }
 
+const char* ParticleMaterial::ParamName(uint32_t k)
+{
+	switch (k)
+	{
+	case kParamLayerUV: return "Layer Tiling(xy), Offset(zw)";
+	case kParamLayerScroll: return "Layer Scroll(xy)";
+	default: return "?";
+	}
+}
+
+float4 ParticleMaterial::DefaultParam(uint32_t k)
+{
+	switch (k)
+	{
+	case kParamLayerUV: return float4{ 1.f, 1.f, 0.f, 0.f };
+	case kParamLayerScroll: return float4{ 0.f, 0.f, 0.f, 0.f };
+	default: return float4{ 0.f, 0.f, 0.f, 0.f };
+	}
+}
+
 ParticleMaterial::ParticleMaterial()
 {
 	for (uint32_t i = 0; i < kNumTextureSlot; ++i)
@@ -87,6 +107,26 @@ void ParticleMaterial::ReleaseTextures()
 		m_Textures[i] = DefaultTexture();
 	}
 }
+
+void ParticleMaterial::SetParam(uint32_t k, const float4& value)
+{
+	if (k < kMaxParams)
+		m_Params[k] = value;
+}
+
+const float4& ParticleMaterial::Param(uint32_t k) const
+{
+	ASSERT(k < kMaxParams);
+	return m_Params[k];
+}
+
+void ParticleMaterial::ResetParams()
+{
+	for (uint32_t i = 0; i < kMaxParams; ++i)
+		m_Params[i] = DefaultParam(i);
+}
+
+
 
 // ----------------- Particle Textures Namespace -----------------
 
@@ -168,7 +208,7 @@ namespace ParticleTextures
 	bool IsCacheFile(const std::string& fileName)
 	{
 		std::wstring lower = Utility::ToLower(Utility::UTF8ToWideString(fileName));
-		return EndsWith(lower, L"linear.dds");
+		return EndsWith(lower, L".linear.dds");
 	}
 
 	void Retire(TextureRef& ref)

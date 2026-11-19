@@ -316,6 +316,11 @@ bool EmitterRuntime::SetMaterialTexture(uint32_t slot, const MaterialTexture& te
 	return m_Material.SetTexture(slot, texture);
 }
 
+void EmitterRuntime::SetMaterialParam(uint32_t k, const float4& value)
+{
+	return m_Material.SetParam(k, value);
+}
+
 
 void EmitterRuntime::SetSpriteSettings(const SpriteSettings& settings)
 {
