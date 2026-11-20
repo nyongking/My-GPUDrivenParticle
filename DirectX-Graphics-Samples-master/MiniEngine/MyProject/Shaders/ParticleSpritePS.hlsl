@@ -1,4 +1,5 @@
 #include "SpriteAlpha.hlsli"
+#include "MaterialVMDefs.hlsli"
 
 #define MAX_MATERIAL_TEXTURES 4
 #define MAX_MATERIAL_PARAMS 16
@@ -30,6 +31,15 @@ cbuffer MaterialParamsCB : register(b2)
     float4 MaterialParams[MAX_MATERIAL_PARAMS];
 };
 
+cbuffer MaterialProgramCB : register(b3)
+{
+    uint UseVM; // 0 false, 1 true -> Op 실행
+    uint InstrCount; 
+    uint OutputReg; // 결과가 든 register
+    uint _ProgramPad;
+    uint4 InstrWords[MAX_INSTRS * 2]; // 명령이 들어있는 내용
+}
+
 struct PSInput
 {
     float4 position : SV_Position;
@@ -40,14 +50,49 @@ struct PSInput
     nointerpolation float2 params : TEXCOORD3;
 };
 
-float4 Param(uint k)
+struct MaterialInput
+{
+    float2 quadUV;
+    float4 baseColor;
+    float  coverage;
+    float2 particleParams;
+    float4 subUV;
+    float  blend;
+    float4 vertexColor;
+};
+
+float4 Param(MaterialInput i, uint k)
 {
     return MaterialParams[k];
 }
 
-float4 SampleTex(uint slot, float2 uv)
+float4 SampleTex(MaterialInput i, uint slot, float2 uv)
 {
     return MaterialTextures[slot].Sample(LinearWrap, uv);
+}
+
+float4 SampleBaseUV(float4 subUV, float2 quadUV, float blend, float2 quadOffset)
+{
+    const float2 offset = quadOffset * CellSize;
+    const float2 origin0 = subUV.xy - quadUV * CellSize;
+    const float2 origin1 = subUV.zw - quadUV * CellSize;
+    const float2 uv0 = clamp(subUV.xy + offset, origin0, origin0 + CellSize);
+    const float2 uv1 = clamp(subUV.zw + offset, origin1, origin1 + CellSize);
+    const float4 tex0 = SpriteTexture.Sample(LinearClamp, uv0);
+    const float4 tex1 = SpriteTexture.Sample(LinearClamp, uv1);
+    return lerp(tex0, tex1, blend);
+}
+
+float4 SampleBaseOffset(MaterialInput i, float2 quadOffset)
+{
+    const float4 tex = SampleBaseUV(i.subUV, i.quadUV, i.blend, quadOffset);
+    return ResolveSpriteColor(i.vertexColor, tex, TextureAlpha, BlendMode);
+}
+
+void LoadInstr(MaterialInput i, uint k, out uint4 w0, out uint4 w1)
+{
+    w0 = InstrWords[k * 2];
+    w1 = InstrWords[k * 2 + 1];
 }
 
 float2 UVTransform(float2 uv, uint k)
@@ -57,14 +102,7 @@ float2 UVTransform(float2 uv, uint k)
 
 float4 SampleBase(PSInput input, float2 quadOffset)
 {
-    const float2 offset = quadOffset * CellSize;
-    const float2 origin0 = input.uv.xy - input.quadUV * CellSize;
-    const float2 origin1 = input.uv.zw - input.quadUV * CellSize;
-    const float2 uv0 = clamp(input.uv.xy + offset, origin0, origin0 + CellSize);
-    const float2 uv1 = clamp(input.uv.zw + offset, origin1, origin1 + CellSize);
-    const float4 tex0 = SpriteTexture.Sample(LinearClamp, uv0);
-    const float4 tex1 = SpriteTexture.Sample(LinearClamp, uv1);
-    return lerp(tex0, tex1, input.blend);
+    return SampleBaseUV(input.uv, input.quadUV, input.blend, quadOffset);
 }
 
 float BaseCoverage(float4 color, float4 tex)
@@ -72,6 +110,9 @@ float BaseCoverage(float4 color, float4 tex)
     const float texAlpha = (TextureAlpha == ALPHA_FROM_LUMINANCE) ? max(tex.r, max(tex.g, tex.b)) : tex.a;
     return saturate(color.a * texAlpha);
 }
+
+
+#include "MaterialVM.hlsli"
 
 float4 main(PSInput input) : SV_TARGET
 {

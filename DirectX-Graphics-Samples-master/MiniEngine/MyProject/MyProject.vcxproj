@@ -158,6 +158,8 @@
     <Image Include="StoreLogo.png" />
     <Image Include="WideLogo.png" />
     <None Include="packages.config" />
+    <None Include="Shaders\MaterialVM.hlsli" />
+    <None Include="Shaders\MaterialVMDefs.hlsli" />
     <None Include="Shaders\ModuleCommon.hlsli" />
     <None Include="Shaders\ParticleCommon.hlsli" />
     <None Include="Shaders\ParticleComputeCommon.hlsli" />
