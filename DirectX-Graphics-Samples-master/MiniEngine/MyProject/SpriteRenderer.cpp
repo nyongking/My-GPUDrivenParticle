@@ -103,6 +103,16 @@ namespace
 	};
 	static_assert(sizeof(SortKeyConstants) == 48, "SortKeyConstants 48 B");
 
+	struct PSConstants
+	{
+		uint32_t blendMode;   
+		uint32_t textureAlpha;
+		float    time;        
+		uint32_t effectMode;  
+		float    cellSize[2]; 
+	};
+	static_assert(sizeof(PSConstants) == 24, "HLSL SpritePSConstants (6 x 4 B) 와 같아야 함");
+
 	enum SortKeyRootParams { kSortKeyCB, kSortKeySRVs, kSortKeyUAV, kNumSortKeyRootParams };
 	const uint32_t kSortKeyGroupSize = 256;            // ParticleSortKeyCS 의 numthreads
 	const uint32_t kDrawArgsInstanceCountOffset = 4;   // D3D12_DRAW_ARGUMENTS::InstanceCount (= alive)
@@ -155,14 +165,14 @@ namespace
 		s_RootSig[kRootSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, kNumSRVs, D3D12_SHADER_VISIBILITY_VERTEX);
 		
 		// 텍스처 및 샘플러 설정
-		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, ParticleMaterial::kNumEffectTextures, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, ParticleMaterial::kNumTextureSlot, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		s_RootSig.InitStaticSampler(0, SamplerLinearClampDesc, D3D12_SHADER_VISIBILITY_PIXEL);
 		s_RootSig.InitStaticSampler(1, SamplerLinearWrapDesc, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		// Blendmode 상수버퍼 설정
-		s_RootSig[kRootPSConstants].InitAsConstants(1, 3, D3D12_SHADER_VISIBILITY_PIXEL);		
-		
+		s_RootSig[kRootPSConstants].InitAsConstants(1, sizeof(PSConstants) / 4, D3D12_SHADER_VISIBILITY_PIXEL);
+
 		// Material Cbuffer 설정
 		s_RootSig[kRootMaterialCB].InitAsConstantBuffer(2, D3D12_SHADER_VISIBILITY_PIXEL);
 
@@ -559,7 +569,14 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 
 	gfx.SetDynamicDescriptors(kRootTexture, 0, ParticleMaterial::kNumTextureSlot, texs);
 
-	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend), static_cast<uint32_t>(m_Settings.textureAlpha), sGlobal.exeTime);
+	PSConstants pc = {};
+	pc.blendMode = static_cast<uint32_t>(m_Settings.blend);
+	pc.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
+	pc.time = sGlobal.exeTime;
+	pc.effectMode = m_Material ? static_cast<uint32_t>(m_Material->GetEffect()) : 0u;
+	pc.cellSize[0] = 1.f / static_cast<float>(m_Settings.subImageCols);    // SetSettings 가 1 이상으로 맞춰 둔다
+	pc.cellSize[1] = 1.f / static_cast<float>(m_Settings.subImageRows);
+	gfx.SetConstantArray(kRootPSConstants, sizeof(pc) / 4, &pc);
 
 	if (m_Material)
 	{

@@ -39,23 +39,79 @@ MaterialTexture ParticleMaterial::DefaultTexture()
 	return t;
 }
 
-const char* ParticleMaterial::ParamName(uint32_t k)
+const char* ParticleMaterial::ParamName(uint32_t k, Effect effect)
 {
-	switch (k)
+	if (k == 0) return "Tex0 Tiling(xy) Offset(zw)";
+	if (k == 1) return "Tex0 Scroll(xy)";
+
+	switch (effect)
 	{
-	case kParamLayerUV: return "Tex Tiling(xy), Offset(zw)";
-	case kParamLayerScroll: return "Tex Scroll(xy)";
-	default: return "?";
+	case Effect::Dissolve:
+		if (k == 2) return "Soft(x) EdgeWidth(y) Progress(z, temp)";
+		if (k == 3) return "Edge Color(rgb)";
+		break;
+	case Effect::Distortion:
+		if (k == 2) return "Strength(x)";
+		break;
+	case Effect::Glow:
+		if (k == 2) return "Tex1 Tiling(xy) Offset(zw)";
+		if (k == 3) return "Tex1 Scroll(xy)";
+		if (k == 4) return "Glow Color(rgb)";
+		break;
+	default:
+		break;
+	}
+	return nullptr;
+}
+
+float4 ParticleMaterial::DefaultParam(uint32_t k, Effect effect)
+{
+	if (k == 0) return float4{ 1.f, 1.f, 0.f, 0.f };
+	if (k == 1) return float4{ 0.f, 0.f, 0.f, 0.f };
+
+	switch (effect)
+	{
+	case Effect::Dissolve:
+		if (k == 2) return float4{ 0.05f, 0.05f, 0.5f, 0.f };   // 부드러움, 테두리 폭, 진행도
+		if (k == 3) return float4{ 1.f, 1.f, 1.f, 0.f };      // 테두리 색 (1 이상 가능)
+		break;
+	case Effect::Distortion:
+		if (k == 2) return float4{ 0.05f, 0.f, 0.f, 0.f };      // 사각형 UV 단위
+		break;
+	case Effect::Glow:
+		if (k == 2) return float4{ 1.f, 1.f, 0.f, 0.f };        // Tex1 타일링 / 오프셋
+		if (k == 3) return float4{ 0.f, 0.f, 0.f, 0.f };        // Tex1 스크롤
+		if (k == 4) return float4{ 1.f, 1.f, 1.f, 0.f };      // 발광 색
+		break;
+	default:
+		break;
+	}
+	return float4{ 0.f, 0.f, 0.f, 0.f };
+}
+
+const char* ParticleMaterial::EffectName(Effect effect)
+{
+	switch (effect)
+	{
+	case Effect::Pattern: return "Pattern";
+	case Effect::Tint: return "Tint";
+	case Effect::Dissolve: return "Dissolve";
+	case Effect::Distortion: return "Distortion";
+	case Effect::Glow: return "Glow";
+	default: return nullptr;
 	}
 }
 
-float4 ParticleMaterial::DefaultParam(uint32_t k)
+uint32_t ParticleMaterial::NumParams(Effect effect)
 {
-	switch (k)
+	switch (effect)
 	{
-	case kParamLayerUV: return float4{ 1.f, 1.f, 0.f, 0.f };
-	case kParamLayerScroll: return float4{ 0.f, 0.f, 0.f, 0.f };
-	default: return float4{ 0.f, 0.f, 0.f, 0.f };
+	case Effect::Pattern: return 2;
+	case Effect::Tint: return 2;
+	case Effect::Dissolve: return 4;
+	case Effect::Distortion: return 3;
+	case Effect::Glow: return 5;
+	default: return 0;
 	}
 }
 
@@ -128,6 +184,16 @@ void ParticleMaterial::ResetParams()
 {
 	for (uint32_t i = 0; i < kMaxParams; ++i)
 		m_Params[i] = DefaultParam(i);
+}
+
+void ParticleMaterial::SetEffect(Effect effect)
+{
+	if (effect == m_Effect)
+		return;
+	m_Effect = effect;
+
+	for (uint32_t k = kNumCommonParams; k < kMaxParams; ++k) 
+		m_Params[k] = DefaultParam(k, effect);
 }
 
 

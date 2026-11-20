@@ -65,16 +65,21 @@ public:
 	bool SetMaterialTexture(uint32_t slot, const MaterialTexture& texture);
 	const ParticleMaterial& Material() const { return m_Material; }
 	void SetMaterialParam(uint32_t k, const float4& value);
+	void SetMaterialEffect(ParticleMaterial::Effect effect);
 
+
+	// -------- Sprite 설정 -------
 	void SetSpriteSettings(const SpriteSettings& settings);
 	const SpriteSettings& GetSpriteSettings() const { return m_CpuRenderer.Settings(); }
 
+	// -------- Module 설정 -------
 	bool CanMoveModule(size_t moduleIndex, int direction) const;    // 같은 Stage 안에서만 이동
 	void MoveModule(size_t moduleIndex, int direction);             // 재시작
 
 	void AddModule(const ModuleDesc& module);
 	void RemoveModule(size_t moduleIndex);
 
+	// -------- GPU / CPU 변경 -------
 	void SetBackend(EmitterBackend backend);                        // 재시작
 	void Restart();
 

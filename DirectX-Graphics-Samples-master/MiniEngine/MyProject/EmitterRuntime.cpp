@@ -321,6 +321,11 @@ void EmitterRuntime::SetMaterialParam(uint32_t k, const float4& value)
 	return m_Material.SetParam(k, value);
 }
 
+void EmitterRuntime::SetMaterialEffect(ParticleMaterial::Effect effect)
+{
+	m_Material.SetEffect(effect);
+}
+
 
 void EmitterRuntime::SetSpriteSettings(const SpriteSettings& settings)
 {

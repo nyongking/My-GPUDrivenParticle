@@ -324,7 +324,7 @@ namespace
 	bool DrawMaterialParam(EmitterRuntime& runtime, uint32_t k)
 	{
 		float4 v = runtime.Material().Param(k);
-		const char* name = ParticleMaterial::ParamName(k);
+		const char* name = ParticleMaterial::ParamName(k, runtime.Material().GetEffect());
 		char label[64];
 		if (name)
 			snprintf(label, sizeof(label), "[%u] %s", k, name);
@@ -343,12 +343,28 @@ namespace
 		if (!ImGui::TreeNode("Material Params"))
 			return;
 
-		for (uint32_t k = 0; k < ParticleMaterial::kNumNamedParams; ++k)
+		// 임시
+		{
+			int effect = static_cast<int>(runtime.Material().GetEffect());
+			const char* names[uint32_t(ParticleMaterial::Effect::Count)];
+			for (uint32_t i = 0; i < uint32_t(ParticleMaterial::Effect::Count); ++i)
+				names[i] = ParticleMaterial::EffectName(ParticleMaterial::Effect(i));
+			ImGui::SetNextItemWidth(160.f);
+			if (ImGui::Combo("Effect (temp)", &effect, names, IM_ARRAYSIZE(names)))
+				runtime.SetMaterialEffect(static_cast<ParticleMaterial::Effect>(effect));
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("Pattern: color x Tex0\nDissolve: Tex0 = mask, progress = [2].z\nDistortion: Tex0 = flow noise, pushes Base (and Tex1)\nGlow: Tex0 x Tex1 -> add [4] color\n(Param slots 2+ change meaning per effect)");
+		}
+
+
+		const ParticleMaterial::Effect effectNow = runtime.Material().GetEffect();
+		const uint32_t used = ParticleMaterial::NumParams(effectNow);
+		for (uint32_t k = 0; k < used; ++k)
 			DrawMaterialParam(runtime, k);
 
-		if (ImGui::TreeNode("Unused", "Unused [%u ~ %u]", uint32_t(ParticleMaterial::kNumNamedParams), ParticleMaterial::kMaxParams - 1))
+		if (ImGui::TreeNode("Unused", "Unused [%u ~ %u]", used, ParticleMaterial::kMaxParams - 1))
 		{
-			for (uint32_t k = ParticleMaterial::kNumNamedParams; k < ParticleMaterial::kMaxParams; ++k)
+			for (uint32_t k = used; k < ParticleMaterial::kMaxParams; ++k)
 				DrawMaterialParam(runtime, k);
 			ImGui::TreePop();
 		}
@@ -356,7 +372,7 @@ namespace
 		if (ImGui::SmallButton("Reset Params"))
 		{
 			for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
-				runtime.SetMaterialParam(k, ParticleMaterial::DefaultParam(k));
+				runtime.SetMaterialParam(k, ParticleMaterial::DefaultParam(k, effectNow));
 		}
 		ImGui::TreePop();
 	}
