@@ -14,7 +14,7 @@
     {
       "module": "InitializeParticle",
       "params": {
-        "Size": 0.1,
+        "Size": 0.24,
         "Mass": 1,
         "Lifetime": 1,
         "Pos": {
@@ -28,14 +28,14 @@
     {
       "module": "SphereLocation",
       "params": {
-        "Radius": 0.1,
+        "Radius": 1,
         "SurfaceOnly": true
       }
     },
     {
       "module": "ParticleState",
       "params": {
-        "KillOnLifetime": true
+        "KillOnLifetime": false
       }
     },
     {
@@ -43,6 +43,18 @@
       "params": {
         "AccelLimit": 100,
         "SpeedLimit": 10
+      }
+    },
+    {
+      "module": "AddVelocityInCone",
+      "params": {
+        "Speed": 3,
+        "ConeAngle": 30,
+        "ConeAxis": [0, 1, 0],
+        "InnerConeAngle": 0,
+        "SpeedFalloff": 0,
+        "Distribution": 1,
+        "LocalSpace": false
       }
     }
   ],
@@ -76,10 +88,10 @@
     ],
     "materialParams": [
       [1, 1, 0, 0],
+      [0.06, 0.06, 0, 0],
+      [0.01, 0.39, 0, 0],
+      [2.77, 1.05, 0.51, 0],
       [0, 0, 0, 0],
-      [1, 1, 0, 0],
-      [0, 0.49, 0, 0],
-      [1, 0.3, 3.34, 0],
       [0, 0, 0, 0],
       [0, 0, 0, 0],
       [0, 0, 0, 0],
@@ -139,6 +151,14 @@
       "SpriteAlignment": {
         "attribute": "Particles.SpriteAlignment",
         "default": [0, 1, 0]
+      },
+      "ParticleParam0": {
+        "attribute": "Particles.NormalizedAge",
+        "default": 0
+      },
+      "ParticleParam1": {
+        "attribute": "",
+        "default": 0
       }
     }
   }

@@ -145,5 +145,7 @@ VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
     const uint frame1 = (frame0 + 1) % total;
     output.uv = float4(SubImageUV(frame0, uv), SubImageUV(frame1, uv));
     output.blend = SubUVBlend ? frac(index) : 0.f;
+    output.params = float2(ReadF1(ParticleParam0Offset, idx, DefaultParticleParams.x),
+                           ReadF1(ParticleParam1Offset, idx, DefaultParticleParams.y));
     return output;
 }
