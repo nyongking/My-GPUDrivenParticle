@@ -37,15 +37,9 @@ public:
 		kNumTextureSlot,
 	};
 
-	enum ParamSlot : uint32_t
-	{
-		kParamLayerUV,
-		kParamLayerScroll,
-		kNumNamedParams
-	};
-
 	enum class Effect : uint32_t
 	{
+		None,
 		Pattern,
 		Tint,
 		Dissolve,
@@ -98,7 +92,7 @@ private:
 	MaterialTexture		m_Textures[kNumTextureSlot];
 	TextureRef			m_Refs[kNumTextureSlot];
 	alignas(16) float4				m_Params[kMaxParams];
-	Effect				m_Effect = Effect::Pattern;
+	Effect				m_Effect = Effect::None;
 
 };
 

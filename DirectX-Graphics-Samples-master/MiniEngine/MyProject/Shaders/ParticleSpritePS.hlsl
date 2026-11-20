@@ -3,11 +3,12 @@
 #define MAX_MATERIAL_TEXTURES 4
 #define MAX_MATERIAL_PARAMS 16
 
-#define EFFECT_PATTERN 0
-#define EFFECT_TINT    1
-#define EFFECT_DISSOLVE 2
-#define EFFECT_DISTORTION 3
-#define EFFECT_GLOW 4
+#define EFFECT_NONE         0
+#define EFFECT_PATTERN      1
+#define EFFECT_TINT         2
+#define EFFECT_DISSOLVE     3
+#define EFFECT_DISTORTION   4
+#define EFFECT_GLOW         5
 
 Texture2D<float4> SpriteTexture : register(t2); // t0, t1 은 VS (파티클 / 정렬 인덱스)
 Texture2D<float4> MaterialTextures[MAX_MATERIAL_TEXTURES] : register(t3);
@@ -36,6 +37,7 @@ struct PSInput
     float4 uv : TEXCOORD0;
     float2 quadUV : TEXCOORD1;
     nointerpolation float blend : TEXCOORD2;
+    nointerpolation float2 params : TEXCOORD3;
 };
 
 float4 Param(uint k)
@@ -108,7 +110,7 @@ float4 main(PSInput input) : SV_TARGET
         const float2 n0 = input.quadUV;
         const float2 n1 = UVTransform(n0, 0);
         const float4 n2 = SampleTex(0, n1);     // mask
-        const float n3 = Param(2).z;            
+        const float n3 = input.params.x;            
         const float n4 = n3 + Param(2).x;
         const float n5 = smoothstep(n3, n4, n2.r);
         const float4 n6 = baseColor * n5;

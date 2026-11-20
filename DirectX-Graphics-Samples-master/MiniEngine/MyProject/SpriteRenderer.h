@@ -85,6 +85,8 @@ public:
         kVelocity,          // float3 VelocityAligned 용
         kSpriteFacing,      // float3 CustomFacingVector 용 (연결이 없으면 기본값이 상수 벡터)
         kSpriteAlignment,   // float3 CustomAlignment 용
+        kParticleParam0,    // float  기본 연결 = Particles.NormalizedAge
+        kParticleParam1,    // float  기본 연결 없음 (기본값). 파티클마다 다른 값을 줄 속성을 연결
         kNumSlots
     };
 
@@ -154,6 +156,7 @@ private:
     float3              m_DefaultVelocity = { 0.f, 0.f, 0.f };
     float3              m_DefaultSpriteFacing = { 0.f, 1.f, 0.f };
     float3              m_DefaultSpriteAlignment = { 0.f, 1.f, 0.f };
+    float2              m_DefaultParticleParams = { 0.f, 0.f };
 
     SpriteSettings      m_Settings;
 

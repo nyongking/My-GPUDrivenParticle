@@ -399,8 +399,6 @@ void EmitterRuntime::ApplyPending()
 	}
 	else
 	{
-		// 새 구성이 잘못됨: 실행 중인 이미터는 건드리지 않았으므로 UI 만 되돌린다
-		// (컴파일 오류 문구에 한글이 있어 ImGui 에서는 깨질 수 있으므로 출력 창에도 남긴다)
 		Utility::Print(m_LastError.c_str());
 		m_Modules = m_AppliedModules;
 		m_SpriteDesc = m_AppliedSpriteDesc;

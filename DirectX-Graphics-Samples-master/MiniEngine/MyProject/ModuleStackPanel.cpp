@@ -343,7 +343,6 @@ namespace
 		if (!ImGui::TreeNode("Material Params"))
 			return;
 
-		// 임시
 		{
 			int effect = static_cast<int>(runtime.Material().GetEffect());
 			const char* names[uint32_t(ParticleMaterial::Effect::Count)];
@@ -353,7 +352,7 @@ namespace
 			if (ImGui::Combo("Effect (temp)", &effect, names, IM_ARRAYSIZE(names)))
 				runtime.SetMaterialEffect(static_cast<ParticleMaterial::Effect>(effect));
 			if (ImGui::IsItemHovered())
-				ImGui::SetTooltip("Pattern: color x Tex0\nDissolve: Tex0 = mask, progress = [2].z\nDistortion: Tex0 = flow noise, pushes Base (and Tex1)\nGlow: Tex0 x Tex1 -> add [4] color\n(Param slots 2+ change meaning per effect)");
+				ImGui::SetTooltip("None: base only\nPattern: color x Tex0.r\nTint: color x Tex0.rgb\nDissolve: Tex0 = mask, progress = ParticleParam0 binding (NormalizedAge)\nDistortion: Tex0 = flow noise, pushes Base (and Tex1), strength = [2].xy\nGlow: Tex0 x Tex1 -> add [4] color\n(Param slots 2+ change meaning per effect)");
 		}
 
 

@@ -75,9 +75,13 @@ namespace
 		float               velocityStretch;        // 284
 		float               blendNear;              // 288
 		float               blendFar;               // 292
-		float               _pad[2];                // 296
-	};
-	static_assert(sizeof(SpriteConstants) == 304, "HLSL cbuffer SpriteConstants(304 B)와 일치해야 함");
+		
+		uint32_t			particleParam0Offset;	// 296
+		uint32_t			particleParam1Offset;	// 300
+		float2				defaultParticleParams;	// 304
+		float2				_pad;					// 312
+	}; // 320
+	static_assert(sizeof(SpriteConstants) == 320, "HLSL cbuffer SpriteConstants(320 B)와 일치해야 함");
 	static_assert(offsetof(SpriteConstants, positionOffset) == 128, "PositionOffset offset 128");
 	static_assert(offsetof(SpriteConstants, defaultColor) == 144, "DefaultColor offset 144");
 	static_assert(offsetof(SpriteConstants, sortEnabled) == 176, "SortEnabled offset 176");
@@ -88,6 +92,8 @@ namespace
 	static_assert(offsetof(SpriteConstants, defaultSpriteAlignment) == 256, "DefaultSpriteAlignment offset 256");
 	static_assert(offsetof(SpriteConstants, pivot) == 272, "Pivot offset 272");
 	static_assert(offsetof(SpriteConstants, blendFar) == 292, "BlendFar offset 292");
+	static_assert(offsetof(SpriteConstants, particleParam0Offset) == 296, "ParticleParam0Offset offset 296");
+	static_assert(offsetof(SpriteConstants, defaultParticleParams) == 304, "DefaultParticleParams offset 304");
 
 	// GPU 정렬 키 생성 (ParticleSortKeyCS.hlsl 의 cbuffer SortKeyConstants 와 같은 배치)
 	struct SortKeyConstants
@@ -225,7 +231,9 @@ RendererDesc SpriteRenderer::Desc()
 		MakeRenderBinding<float>("SpriteRotation",   Particles::SpriteRotation,  0.f),
 		MakeRenderBinding<float3>("Velocity",        Particles::Velocity,        float3{ 0.f, 0.f, 0.f }),
 		MakeRenderBinding<float3>("SpriteFacing",    Particles::SpriteFacing,    float3{ 0.f, 1.f, 0.f }),
-		MakeRenderBinding<float3>("SpriteAlignment", Particles::SpriteAlignment, float3{ 0.f, 1.f, 0.f })
+		MakeRenderBinding<float3>("SpriteAlignment", Particles::SpriteAlignment, float3{ 0.f, 1.f, 0.f }),
+		MakeRenderBinding<float>("ParticleParam0",   Particles::NormalizedAge,   0.f),
+		MakeRenderBinding<float>("ParticleParam1",   std::string(),              0.f)
 	};
 
 	return desc;
@@ -321,7 +329,8 @@ bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity, const Re
 	static const TypeInfo* kSlotTypes[kNumSlots] =
 	{
 		&Types::Float3, &Types::Float4, &Types::Float, &Types::Float,
-		&Types::Float2, &Types::Float, &Types::Float3, &Types::Float3, &Types::Float3
+		&Types::Float2, &Types::Float, &Types::Float3, &Types::Float3, &Types::Float3,
+		&Types::Float,	&Types::Float
 	};
 	if (desc.bindings.size() != kNumSlots)
 	{
@@ -385,6 +394,8 @@ void SpriteRenderer::SetDefaults(const RendererDesc& desc)
 	std::memcpy(&m_DefaultVelocity, desc.bindings[kVelocity].defaultValue.data(), sizeof(float3));
 	std::memcpy(&m_DefaultSpriteFacing, desc.bindings[kSpriteFacing].defaultValue.data(), sizeof(float3));
 	std::memcpy(&m_DefaultSpriteAlignment, desc.bindings[kSpriteAlignment].defaultValue.data(), sizeof(float3));
+	std::memcpy(&m_DefaultParticleParams.x, desc.bindings[kParticleParam0].defaultValue.data(), sizeof(float));
+	std::memcpy(&m_DefaultParticleParams.y, desc.bindings[kParticleParam1].defaultValue.data(), sizeof(float));
 }
 
 
@@ -554,6 +565,10 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	sc.velocityStretch = m_Settings.velocityStretch;
 	sc.blendNear = m_Settings.blendNear;
 	sc.blendFar = m_Settings.blendFar;
+
+	sc.particleParam0Offset = m_Offsets[kParticleParam0];
+	sc.particleParam1Offset = m_Offsets[kParticleParam1];
+	sc.defaultParticleParams = m_DefaultParticleParams;
 
 	gfx.SetRootSignature(s_RootSig);
 	gfx.SetPipelineState(s_PSO);

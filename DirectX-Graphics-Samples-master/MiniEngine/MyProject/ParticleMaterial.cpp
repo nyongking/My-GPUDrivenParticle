@@ -41,17 +41,20 @@ MaterialTexture ParticleMaterial::DefaultTexture()
 
 const char* ParticleMaterial::ParamName(uint32_t k, Effect effect)
 {
+	if (effect == Effect::None)
+		return nullptr;
+
 	if (k == 0) return "Tex0 Tiling(xy) Offset(zw)";
 	if (k == 1) return "Tex0 Scroll(xy)";
 
 	switch (effect)
 	{
 	case Effect::Dissolve:
-		if (k == 2) return "Soft(x) EdgeWidth(y) Progress(z, temp)";
+		if (k == 2) return "Soft(x) EdgeWidth(y)";
 		if (k == 3) return "Edge Color(rgb)";
 		break;
 	case Effect::Distortion:
-		if (k == 2) return "Strength(x)";
+		if (k == 2) return "Strength(xy)";
 		break;
 	case Effect::Glow:
 		if (k == 2) return "Tex1 Tiling(xy) Offset(zw)";
@@ -72,11 +75,11 @@ float4 ParticleMaterial::DefaultParam(uint32_t k, Effect effect)
 	switch (effect)
 	{
 	case Effect::Dissolve:
-		if (k == 2) return float4{ 0.05f, 0.05f, 0.5f, 0.f };   // 부드러움, 테두리 폭, 진행도
+		if (k == 2) return float4{ 0.05f, 0.05f, 0.f, 0.f };   // 부드러움, 테두리 폭, 진행도
 		if (k == 3) return float4{ 1.f, 1.f, 1.f, 0.f };      // 테두리 색 (1 이상 가능)
 		break;
 	case Effect::Distortion:
-		if (k == 2) return float4{ 0.05f, 0.f, 0.f, 0.f };      // 사각형 UV 단위
+		if (k == 2) return float4{ 0.05f, 0.05f, 0.f, 0.f };      // 사각형 UV 단위
 		break;
 	case Effect::Glow:
 		if (k == 2) return float4{ 1.f, 1.f, 0.f, 0.f };        // Tex1 타일링 / 오프셋
@@ -93,6 +96,7 @@ const char* ParticleMaterial::EffectName(Effect effect)
 {
 	switch (effect)
 	{
+	case Effect::None: return "None";
 	case Effect::Pattern: return "Pattern";
 	case Effect::Tint: return "Tint";
 	case Effect::Dissolve: return "Dissolve";
@@ -106,6 +110,7 @@ uint32_t ParticleMaterial::NumParams(Effect effect)
 {
 	switch (effect)
 	{
+	case Effect::None: return 0;
 	case Effect::Pattern: return 2;
 	case Effect::Tint: return 2;
 	case Effect::Dissolve: return 4;
@@ -183,7 +188,7 @@ const float4& ParticleMaterial::Param(uint32_t k) const
 void ParticleMaterial::ResetParams()
 {
 	for (uint32_t i = 0; i < kMaxParams; ++i)
-		m_Params[i] = DefaultParam(i);
+		m_Params[i] = DefaultParam(i, m_Effect);
 }
 
 void ParticleMaterial::SetEffect(Effect effect)
