@@ -144,6 +144,11 @@ public:
 	bool						UseVM() const { return m_UseVM; }
 	const MaterialProgram&		Program() const { return m_Program; }
 
+	enum class ProgramSource : uint32_t { HandWritten, Graph, Count };
+	void						SetProgramSource(ProgramSource source);
+	ProgramSource				GetProgramSource() const { return m_ProgramSource; }
+	const std::string&			ProgramError() const { return m_ProgramError; }
+
 private:
 	MaterialTexture		m_Textures[kNumTextureSlot];
 	TextureRef			m_Refs[kNumTextureSlot];
@@ -151,6 +156,9 @@ private:
 	Effect				m_Effect = Effect::None;
 	bool				m_UseVM = false;
 	MaterialProgram		m_Program;
+	ProgramSource		m_ProgramSource = ProgramSource::HandWritten;
+	std::string			m_ProgramError;
+	void				RebuildProgram();
 
 };
 

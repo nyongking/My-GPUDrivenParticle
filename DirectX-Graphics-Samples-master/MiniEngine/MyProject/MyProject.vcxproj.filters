@@ -159,6 +159,9 @@
     <ClCompile Include="ParticleMaterial.cpp">
       <Filter>Particle\Material</Filter>
     </ClCompile>
+    <ClCompile Include="MaterialGraph.cpp">
+      <Filter>Particle\Material</Filter>
+    </ClCompile>
     <ClCompile Include="GlobalData.cpp">
       <Filter>Global</Filter>
     </ClCompile>
@@ -274,6 +277,9 @@
       <Filter>Particle</Filter>
     </ClInclude>
     <ClInclude Include="ParticleMaterial.h">
+      <Filter>Particle\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="MaterialGraph.h">
       <Filter>Particle\Material</Filter>
     </ClInclude>
     <ClInclude Include="GlobalData.h">

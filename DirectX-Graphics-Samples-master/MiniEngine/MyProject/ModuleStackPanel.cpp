@@ -3,6 +3,7 @@
 
 #include "EmitterAsset.h"
 #include "EmitterRuntime.h"
+#include "MaterialGraph.h"
 #include "ModuleLibrary.h"
 #include "UberGpuProgram.h"
 #include "imgui.h"
@@ -360,6 +361,27 @@ namespace
 				runtime.SetMaterialUseVM(useVM);
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip("Draw the same effect with the material interpreter (MaterialVM.hlsli).\nThe image must not change when toggled.");
+
+			{
+				static const char* const kSources[] = { "Hand list", "Graph compile" };
+				int source = static_cast<int>(runtime.Material().GetProgramSource());
+				ImGui::SetNextItemWidth(160.f);
+				if (ImGui::Combo("VM Program Source", &source, kSources, IM_ARRAYSIZE(kSources)))
+					runtime.SetMaterialProgramSource(static_cast<ParticleMaterial::ProgramSource>(source));
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("Hand list: hand-written instructions\nGraph compile: built from the effect graph by CompileMaterialGraph\nThe image must not change.");
+
+				const std::string& error = runtime.Material().ProgramError();
+				if (!error.empty())
+					ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", error.c_str());
+
+				if (ImGui::TreeNode("Effect Graph"))
+				{
+					const std::string text = DumpMaterialGraph(BuildEffectGraph(runtime.Material().GetEffect()));
+					ImGui::TextUnformatted(text.c_str());
+					ImGui::TreePop();
+				}
+			}
 
 			const MaterialProgram& program = runtime.Material().Program();
 			if (ImGui::TreeNode("VM Program", "VM Program (%u instrs)", uint32_t(program.instrs.size())))

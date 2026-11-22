@@ -331,6 +331,11 @@ void EmitterRuntime::SetMaterialUseVM(bool use)
 	m_Material.SetUseVM(use);
 }
 
+void EmitterRuntime::SetMaterialProgramSource(ParticleMaterial::ProgramSource source)
+{
+	m_Material.SetProgramSource(source);
+}
+
 
 void EmitterRuntime::SetSpriteSettings(const SpriteSettings& settings)
 {

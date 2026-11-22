@@ -79,6 +79,7 @@
     <ClInclude Include="OwnerTransform.h" />
     <ClInclude Include="ParticleEmitter.h" />
     <ClInclude Include="ParticleMaterial.h" />
+    <ClInclude Include="MaterialGraph.h" />
     <ClInclude Include="ParticleNamespace.h" />
     <ClInclude Include="ParticlePool.h" />
     <ClInclude Include="ParticleSettings.h" />
@@ -120,6 +121,7 @@
     <ClCompile Include="OwnerTransform.cpp" />
     <ClCompile Include="ParticleEmitter.cpp" />
     <ClCompile Include="ParticleMaterial.cpp" />
+    <ClCompile Include="MaterialGraph.cpp" />
     <ClCompile Include="ParticlePool.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="ParticleSettings.cpp" />

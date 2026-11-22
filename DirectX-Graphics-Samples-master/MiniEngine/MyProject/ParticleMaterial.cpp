@@ -5,6 +5,7 @@
 #include "GraphicsCommon.h"
 #include "CommandListManager.h"
 #include "TextureConvert.h"
+#include "MaterialGraph.h"
 
 #include <vector>
 #include <cstdio>
@@ -126,7 +127,7 @@ ParticleMaterial::ParticleMaterial()
 	for (uint32_t i = 0; i < kNumTextureSlot; ++i)
 		m_Textures[i] = DefaultTexture();
 	ResetParams();
-	m_Program = BuildEffectProgram(m_Effect);
+	RebuildProgram();
 }
 
 ParticleMaterial::~ParticleMaterial()
@@ -202,7 +203,45 @@ void ParticleMaterial::SetEffect(Effect effect)
 	for (uint32_t k = kNumCommonParams; k < kMaxParams; ++k) 
 		m_Params[k] = DefaultParam(k, effect);
 
-	m_Program = BuildEffectProgram(effect);
+	RebuildProgram();
+}
+
+void ParticleMaterial::SetProgramSource(ProgramSource source)
+{
+	if (source == m_ProgramSource)
+		return;
+	m_ProgramSource = source;
+	RebuildProgram();
+}
+
+void ParticleMaterial::RebuildProgram()
+{
+	m_ProgramError.clear();
+
+	if (m_ProgramSource == ProgramSource::HandWritten)
+	{
+		m_Program = BuildEffectProgram(m_Effect);
+		return;
+	}
+
+	const MaterialCompileResult result = CompileMaterialGraph(BuildEffectGraph(m_Effect));
+	if (!result.ok)
+	{
+		m_ProgramError = "Graph compile failed: " + result.error;
+		return;
+	}
+	m_Program = result.program;
+
+	for (size_t k = 0; k < result.params.size(); ++k)
+	{
+		const float4 d = DefaultParam(static_cast<uint32_t>(k), m_Effect);
+		const float4& p = result.params[k];
+		if (d.x != p.x || d.y != p.y || d.z != p.z || d.w != p.w)
+		{
+			m_ProgramError = "Graph param slot " + std::to_string(k) + " differs from DefaultParam (slot layout mismatch)";
+			break;
+		}
+	}
 }
 
 const char* MaterialOpName(MaterialOp op)

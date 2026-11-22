@@ -67,6 +67,7 @@ public:
 	void SetMaterialParam(uint32_t k, const float4& value);
 	void SetMaterialEffect(ParticleMaterial::Effect effect);
 	void SetMaterialUseVM(bool use);
+	void SetMaterialProgramSource(ParticleMaterial::ProgramSource source);
 
 
 	// -------- Sprite 설정 -------
