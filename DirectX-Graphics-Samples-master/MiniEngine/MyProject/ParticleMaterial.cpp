@@ -232,7 +232,10 @@ void ParticleMaterial::RebuildProgram()
 	}
 	m_Program = result.program;
 
-	for (size_t k = 0; k < result.params.size(); ++k)
+	for (size_t k = result.graphParamCount; k < result.params.size(); ++k)
+		m_Params[k] = result.params[k];
+
+	for (size_t k = 0; k < result.graphParamCount; ++k)
 	{
 		const float4 d = DefaultParam(static_cast<uint32_t>(k), m_Effect);
 		const float4& p = result.params[k];

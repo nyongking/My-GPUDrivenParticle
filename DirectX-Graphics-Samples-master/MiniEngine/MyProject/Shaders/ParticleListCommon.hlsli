@@ -18,7 +18,18 @@ struct RenderParticle
     float3 AxisX; // 가로 반 축 (corner.x 를 곱함)
     uint EmitterIndex;
     float3 AxisY; // 세로 반 축
+    float2 Params;
 };
+
+uint PackHalf2(float2 v)
+{
+    return f32tof16(v.x) | (f32tof16(v.y) << 16);
+}
+
+float2 UnpackHalf2(uint u)
+{
+    return float2(f16tof32(u & 0xFFFF), f16tof32(u >> 16));
+}
 
 void StoreRenderParticle(RWByteAddressBuffer buf, uint slot, RenderParticle p)
 {
@@ -26,7 +37,7 @@ void StoreRenderParticle(RWByteAddressBuffer buf, uint slot, RenderParticle p)
     buf.Store4(a + 0, uint4(asuint(p.Center), asuint(p.SubImage)));
     buf.Store4(a + 16, asuint(p.Color));
     buf.Store4(a + 32, uint4(asuint(p.AxisX), p.EmitterIndex));
-    buf.Store4(a + 48, uint4(asuint(p.AxisY), 0));
+    buf.Store4(a + 48, uint4(asuint(p.AxisY), PackHalf2(p.Params)));
 }
 
 RenderParticle LoadRenderParticle(ByteAddressBuffer buf, uint slot)
@@ -35,14 +46,15 @@ RenderParticle LoadRenderParticle(ByteAddressBuffer buf, uint slot)
     const uint4 v0 = buf.Load4(a + 0);
     const uint4 v1 = buf.Load4(a + 16);
     const uint4 v2 = buf.Load4(a + 32);
-    const uint3 v3 = buf.Load3(a + 48);
+    const uint4 v3 = buf.Load4(a + 48);
     RenderParticle p;
     p.Center = asfloat(v0.xyz);
     p.SubImage = asfloat(v0.w);
     p.Color = asfloat(v1);
     p.AxisX = asfloat(v2.xyz);
     p.EmitterIndex = v2.w;
-    p.AxisY = asfloat(v3);
+    p.AxisY = asfloat(v3.xyz);
+    p.Params = UnpackHalf2(v3.w);
     return p;
 }
 
@@ -55,5 +67,10 @@ struct EmitterInfo
     uint BlendMode; // 0 = Translucent, 1 = Additive
     uint TextureIndex;
     uint TextureAlpha;
+    uint ParamBase;
+    uint InstrBase;
+    uint InstrCount;
+    uint OutputReg;
     uint2 _Pad;
+    uint4 EffectTextures;
 };

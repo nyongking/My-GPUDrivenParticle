@@ -33,6 +33,7 @@ struct MaterialLink
 {
 	int      node = -1;
 	uint32_t swizzle = MaterialSwizzle::XYZW;
+	uint32_t width = 0;
 };
 
 struct MaterialNode
@@ -55,10 +56,13 @@ struct MaterialCompileResult
 	std::string         error;
 	MaterialProgram     program;
 	std::vector<float4> params;
+	uint32_t                 graphParamCount = 0;
+	std::vector<uint32_t>    nodeWidth;
+	std::vector<std::string> notes;
 };
 
 MaterialCompileResult CompileMaterialGraph(const MaterialGraph& graph);
 
 MaterialGraph BuildEffectGraph(ParticleMaterial::Effect effect);
 
-std::string DumpMaterialGraph(const MaterialGraph& graph);
+std::string DumpMaterialGraph(const MaterialGraph& graph, const MaterialCompileResult* compiled = nullptr);

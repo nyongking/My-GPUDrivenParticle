@@ -84,17 +84,92 @@ namespace
 	constexpr int kNotYet = -1;
 	constexpr int kVisiting = -2;
 
+	const char* WidthName(uint32_t width)
+	{
+		switch (width)
+		{
+		case 1:  return "float";
+		case 2:  return "float2";
+		case 3:  return "float3";
+		default: return "float4";
+		}
+	}
+
+	bool IsSingleComponent(uint32_t swz)
+	{
+		swz &= 0xFFu;
+		return swz == (swz & 3u) * 0x55u;
+	}
+
+	uint32_t Broadcast(uint32_t swz)
+	{
+		return (swz & 3u) * 0x55u;
+	}
+
+	char PinName(uint32_t pin)
+	{
+		return static_cast<char>('a' + pin);
+	}
+
+	struct PinDefault
+	{
+		bool        quadUV = false;
+		float4      value = { 0.f, 0.f, 0.f, 0.f };
+		uint32_t    width = 1;
+		const char* text = "0";
+	};
+
+	PinDefault DefaultForPin(MaterialNodeType type, uint32_t pin)
+	{
+		PinDefault d;
+		switch (type)
+		{
+		case MaterialNodeType::UVTransform:
+		case MaterialNodeType::TextureSample:
+			d.quadUV = true; d.width = 2; d.text = "QuadUV";
+			break;
+		case MaterialNodeType::BaseSample:
+			d.width = 2; d.text = "(0, 0)";
+			break;
+		case MaterialNodeType::Multiply:
+			if (pin == 1) { d.value = { 1.f, 1.f, 1.f, 1.f }; d.text = "1"; }
+			break;
+		case MaterialNodeType::Lerp:
+			if (pin == 2) { d.value = { 0.5f, 0.5f, 0.5f, 0.5f }; d.text = "0.5"; }
+			break;
+		case MaterialNodeType::Smoothstep:
+			if (pin == 1) { d.value = { 1.f, 1.f, 1.f, 1.f }; d.text = "1"; }
+			break;
+		case MaterialNodeType::Append:
+			if (pin == 0) { d.width = 4; d.text = "(0, 0, 0, 0)"; }
+			else          { d.value = { 1.f, 1.f, 1.f, 1.f }; d.text = "1"; }
+			break;
+		default:
+			break;
+		}
+		return d;
+	}
+
+	struct InputInfo
+	{
+		uint32_t reg = 0;
+		uint32_t swz = MaterialSwizzle::XYZW;
+		uint32_t width = 4;
+		bool     autoFilled = false;
+	};
+
 	class GraphCompiler
 	{
 	public:
 		explicit GraphCompiler(const MaterialGraph& graph)
-			: m_Graph(graph), m_RegOf(graph.nodes.size(), kNotYet)
+			: m_Graph(graph), m_RegOf(graph.nodes.size(), kNotYet), m_Width(graph.nodes.size(), 0)
 		{
 		}
 
 		MaterialCompileResult Run()
 		{
 			MaterialCompileResult result;
+			result.nodeWidth.assign(m_Graph.nodes.size(), 0);
 
 			if (m_Graph.output < 0)
 			{
@@ -106,6 +181,13 @@ namespace
 			if (outputReg < 0)
 				return Failed(result);
 
+			if (m_Width[m_Graph.output] != 4)
+			{
+				Fail("출력 노드 n" + std::to_string(m_Graph.output) + " 는 float4 (색 + 알파) 여야 하는데 "
+					+ WidthName(m_Width[m_Graph.output]) + ". 색과 알파를 Append 로 합쳐 주세요");
+				return Failed(result);
+			}
+
 			std::vector<int> slotOf(m_Graph.nodes.size(), -1);
 			for (size_t id = 0; id < m_Graph.nodes.size(); ++id)
 			{
@@ -115,18 +197,32 @@ namespace
 				const uint32_t count = ParamSlotsOf(n.type);
 				if (count == 0)
 					continue;
-				if (result.params.size() + count > ParticleMaterial::kMaxParams)
-				{
-					m_Error = "값 칸이 " + std::to_string(ParticleMaterial::kMaxParams) + " 개를 넘음 (노드 n" + std::to_string(id) + ")";
+				if (!ReserveParams(result, count, "노드 n" + std::to_string(id)))
 					return Failed(result);
-				}
 				slotOf[id] = static_cast<int>(result.params.size());
 				for (uint32_t k = 0; k < count; ++k)
 					result.params.push_back(n.values[k]);
 			}
+			result.graphParamCount = static_cast<uint32_t>(result.params.size());
+
+			std::vector<int> autoSlot(m_AutoValues.size(), -1);
+			for (size_t a = 0; a < m_AutoValues.size(); ++a)
+			{
+				if (!ReserveParams(result, 1, "빈 핀 기본값"))
+					return Failed(result);
+				autoSlot[a] = static_cast<int>(result.params.size());
+				result.params.push_back(m_AutoValues[a]);
+			}
 
 			for (size_t k = 0; k < m_Instrs.size(); ++k)
 			{
+				if (m_InstrAuto[k] >= 0)
+				{
+					m_Instrs[k].param = static_cast<uint32_t>(autoSlot[m_InstrAuto[k]]);
+					continue;
+				}
+				if (m_InstrNode[k] < 0)
+					continue;
 				const MaterialNode& n = m_Graph.nodes[m_InstrNode[k]];
 				if (ParamSlotsOf(n.type) > 0)
 					m_Instrs[k].param = static_cast<uint32_t>(slotOf[m_InstrNode[k]]);
@@ -137,6 +233,9 @@ namespace
 			result.ok = true;
 			result.program.instrs = m_Instrs;
 			result.program.outputReg = static_cast<uint32_t>(outputReg);
+			result.notes = m_Notes;
+			for (size_t id = 0; id < m_Graph.nodes.size(); ++id)
+				result.nodeWidth[id] = (m_RegOf[id] >= 0) ? m_Width[id] : 0u;
 			return result;
 		}
 
@@ -154,7 +253,127 @@ namespace
 			result.error = m_Error;
 			result.program = MaterialProgram();
 			result.params.clear();
+			result.graphParamCount = 0;
+			result.notes.clear();
+			result.nodeWidth.assign(m_Graph.nodes.size(), 0);
 			return result;
+		}
+
+		bool ReserveParams(const MaterialCompileResult& result, uint32_t count, const std::string& who)
+		{
+			if (result.params.size() + count <= ParticleMaterial::kMaxParams)
+				return true;
+			Fail("값 칸이 " + std::to_string(ParticleMaterial::kMaxParams) + " 개를 넘음 (" + who + ")");
+			return false;
+		}
+
+		std::string NodeText(int id) const
+		{
+			return "n" + std::to_string(id) + " (" + MaterialNodeTypeName(m_Graph.nodes[id].type) + ")";
+		}
+
+		int Emit(MaterialInstr I, int node, int autoIndex)
+		{
+			if (m_Instrs.size() >= MaterialProgram::kMaxInstrs)
+				return Fail("명령어가 " + std::to_string(MaterialProgram::kMaxInstrs) + " 개를 넘음");
+			if (m_Instrs.size() >= MaterialProgram::kMaxRegs)
+				return Fail("칸이 " + std::to_string(MaterialProgram::kMaxRegs) + " 개를 넘음 (칸 재사용은 아직 없음)");
+			I.dst = static_cast<uint32_t>(m_Instrs.size());
+			m_Instrs.push_back(I);
+			m_InstrNode.push_back(node);
+			m_InstrAuto.push_back(autoIndex);
+			return static_cast<int>(I.dst);
+		}
+
+		bool DefaultInput(int id, uint32_t pin, InputInfo& out)
+		{
+			const PinDefault d = DefaultForPin(m_Graph.nodes[id].type, pin);
+			int reg = -1;
+			if (d.quadUV)
+			{
+				if (m_AutoQuadUV < 0)
+				{
+					MaterialInstr I = {};
+					I.op = static_cast<uint32_t>(MaterialOp::QuadUV);
+					I.swz = 0xE4E4E4u;
+					m_AutoQuadUV = Emit(I, -1, -1);
+				}
+				reg = m_AutoQuadUV;
+			}
+			else
+			{
+				MaterialInstr I = {};
+				I.op = static_cast<uint32_t>(MaterialOp::Const);
+				I.swz = 0xE4E4E4u;
+				m_AutoValues.push_back(d.value);
+				reg = Emit(I, -1, static_cast<int>(m_AutoValues.size()) - 1);
+			}
+			if (reg < 0)
+				return false;
+
+			out.reg = static_cast<uint32_t>(reg);
+			out.swz = MaterialSwizzle::XYZW;
+			out.width = d.width;
+			out.autoFilled = true;
+			m_Notes.push_back(NodeText(id) + " 입력 " + PinName(pin) + " 가 비어 있어 기본값 " + d.text + " 사용");
+			return true;
+		}
+
+		bool CheckUV(int id, uint32_t pin, const InputInfo& in)
+		{
+			if (in.width <= 2)
+				return true;
+			Fail(NodeText(id) + " 입력 " + PinName(pin) + ": UV 자리에 " + WidthName(in.width)
+				+ " 를 연결함. 앞 두 성분(xy)만 쓰려면 연결의 width 를 2 로");
+			return false;
+		}
+
+		uint32_t CheckTypes(int id, const InputInfo* in, uint32_t count)
+		{
+			const MaterialNodeType type = m_Graph.nodes[id].type;
+			switch (type)
+			{
+			case MaterialNodeType::QuadUV:        return 2;
+			case MaterialNodeType::ParticleParam: return 2;
+			case MaterialNodeType::Coverage:      return 1;
+			case MaterialNodeType::BaseColor:     return 4;
+			case MaterialNodeType::Constant:      return 4;
+			case MaterialNodeType::UVTransform:   return CheckUV(id, 0, in[0]) ? 2u : 0u;
+			case MaterialNodeType::TextureSample: return CheckUV(id, 0, in[0]) ? 4u : 0u;
+			case MaterialNodeType::BaseSample:    return CheckUV(id, 0, in[0]) ? 4u : 0u;
+			case MaterialNodeType::Append:
+				if (in[0].width == 2)
+				{
+					Fail(NodeText(id) + " 입력 a: 색(float3 / float4) 자리에 float2 를 연결함");
+					return 0;
+				}
+				if (in[1].width != 1)
+				{
+					Fail(NodeText(id) + " 입력 b: 알파 자리에는 숫자 하나(float). " + WidthName(in[1].width)
+						+ " 를 연결함. .x / .w 처럼 성분을 하나 고르세요");
+					return 0;
+				}
+				return 4;
+			default:
+			{
+				uint32_t width = 1;
+				for (uint32_t k = 0; k < count; ++k)
+				{
+					if (in[k].width == 1)
+						continue;
+					if (width > 1 && in[k].width != width)
+					{
+						std::string list;
+						for (uint32_t j = 0; j < count; ++j)
+							list += std::string(j ? ", " : "") + PinName(j) + " = " + WidthName(in[j].width);
+						Fail(NodeText(id) + ": 입력 타입이 다름 (" + list + "). 숫자 하나가 아니면 너비가 같아야 합니다");
+						return 0;
+					}
+					width = in[k].width;
+				}
+				return width;
+			}
+			}
 		}
 
 		int Compile(int id)
@@ -172,45 +391,86 @@ namespace
 
 			const MaterialNode& n = m_Graph.nodes[id];
 			const uint32_t need = MaterialNodeInputCount(n.type);
-			if (n.inputs.size() != need)
-				return Fail("노드 n" + std::to_string(id) + " (" + MaterialNodeTypeName(n.type) + "): 입력 " + std::to_string(need)
-					+ " 개가 필요한데 " + std::to_string(n.inputs.size()) + " 개");
+			if (n.inputs.size() > need)
+				return Fail(NodeText(id) + ": 입력은 " + std::to_string(need) + " 개까지인데 " + std::to_string(n.inputs.size()) + " 개");
 			if (n.type == MaterialNodeType::TextureSample && n.textureSlot >= ParticleMaterial::kNumEffectTextures)
 				return Fail("노드 n" + std::to_string(id) + ": 텍스처 슬롯 " + std::to_string(n.textureSlot) + " 는 없음 (0 ~ 3)");
 
-			MaterialInstr I = {};
-			I.op = static_cast<uint32_t>(OpOf(n.type));
-			I.swz = MaterialSwizzle::XYZW | (MaterialSwizzle::XYZW << 8) | (MaterialSwizzle::XYZW << 16);
-
-			uint32_t src[3] = {};
-			for (size_t k = 0; k < n.inputs.size(); ++k)
+			InputInfo in[3];
+			for (uint32_t k = 0; k < need; ++k)
 			{
-				const int reg = Compile(n.inputs[k].node);
+				const MaterialLink link = (k < n.inputs.size()) ? n.inputs[k] : MaterialLink();
+				if (link.node < 0)
+				{
+					if (!DefaultInput(id, k, in[k]))
+						return -1;
+					continue;
+				}
+
+				const int reg = Compile(link.node);
 				if (reg < 0)
 					return -1;
-				src[k] = static_cast<uint32_t>(reg);
-				const uint32_t shift = static_cast<uint32_t>(8 * k);
-				I.swz = (I.swz & ~(0xFFu << shift)) | ((n.inputs[k].swizzle & 0xFFu) << shift);
+
+				const uint32_t srcWidth = m_Width[link.node];
+				uint32_t width = srcWidth;
+				if (IsSingleComponent(link.swizzle))
+					width = 1;
+				else if (link.width != 0)
+				{
+					if (link.width > srcWidth || link.width > 4)
+						return Fail(NodeText(id) + " 입력 " + PinName(k) + ": n" + std::to_string(link.node) + " 는 "
+							+ WidthName(srcWidth) + " 인데 width " + std::to_string(link.width) + " 로 읽음");
+					width = link.width;
+				}
+				in[k].reg = static_cast<uint32_t>(reg);
+				in[k].swz = link.swizzle & 0xFFu;
+				in[k].width = width;
 			}
-			I.srcA = src[0]; I.srcB = src[1]; I.srcC = src[2];
 
-			if (m_Instrs.size() >= MaterialProgram::kMaxInstrs)
-				return Fail("명령어가 " + std::to_string(MaterialProgram::kMaxInstrs) + " 개를 넘음");
-			if (m_Instrs.size() >= MaterialProgram::kMaxRegs)
-				return Fail("칸이 " + std::to_string(MaterialProgram::kMaxRegs) + " 개를 넘음 (칸 재사용은 아직 없음)");
+			const uint32_t outWidth = CheckTypes(id, in, need);
+			if (outWidth == 0)
+				return -1;
 
-			I.dst = static_cast<uint32_t>(m_Instrs.size());
-			m_Instrs.push_back(I);
-			m_InstrNode.push_back(id);
+			for (uint32_t k = 0; k < need; ++k)
+			{
+				if (in[k].width != 1)
+					continue;
+				const uint32_t expanded = Broadcast(in[k].swz);
+				if (expanded != in[k].swz && !in[k].autoFilled)
+				{
+					m_Notes.push_back(NodeText(id) + " 입력 " + PinName(k) + ": 숫자 하나(float)를 4 자리에 채움 (."
+						+ std::string(4, "xyzw"[expanded & 3]) + ")");
+					in[k].swz = expanded;
+				}
+			}
 
-			m_RegOf[id] = static_cast<int>(I.dst);
-			return m_RegOf[id];
+			MaterialInstr I = {};
+			I.op = static_cast<uint32_t>(OpOf(n.type));
+			I.swz = 0xE4E4E4u;
+			I.srcA = in[0].reg; I.srcB = in[1].reg; I.srcC = in[2].reg;
+			for (uint32_t k = 0; k < need; ++k)
+			{
+				const uint32_t shift = 8u * k;
+				I.swz = (I.swz & ~(0xFFu << shift)) | (in[k].swz << shift);
+			}
+
+			const int dst = Emit(I, id, -1);
+			if (dst < 0)
+				return -1;
+			m_RegOf[id] = dst;
+			m_Width[id] = outWidth;
+			return dst;
 		}
 
 		const MaterialGraph&        m_Graph;
 		std::vector<int>            m_RegOf;
+		std::vector<uint32_t>       m_Width;
 		std::vector<MaterialInstr>  m_Instrs;
 		std::vector<int>            m_InstrNode;
+		std::vector<int>            m_InstrAuto;
+		std::vector<float4>         m_AutoValues;
+		int                         m_AutoQuadUV = -1;
+		std::vector<std::string>    m_Notes;
 		std::string                 m_Error;
 	};
 }
@@ -260,11 +520,12 @@ namespace
 			return graph;
 		}
 
-		static MaterialLink L(int node, uint32_t swizzle = MaterialSwizzle::XYZW)
+		static MaterialLink L(int node, uint32_t swizzle = MaterialSwizzle::XYZW, uint32_t width = 0)
 		{
 			MaterialLink l;
 			l.node = node;
 			l.swizzle = swizzle;
+			l.width = width;
 			return l;
 		}
 	};
@@ -275,7 +536,7 @@ MaterialGraph BuildEffectGraph(ParticleMaterial::Effect effect)
 	using namespace MaterialSwizzle;
 	using NT = MaterialNodeType;
 	auto D = [effect](uint32_t k) { return ParticleMaterial::DefaultParam(k, effect); };
-	auto L = [](int node, uint32_t swz = XYZW) { return GraphWriter::L(node, swz); };
+	auto L = [](int node, uint32_t swz = XYZW, uint32_t width = 0) { return GraphWriter::L(node, swz, width); };
 
 	GraphWriter g;
 	switch (effect)
@@ -322,8 +583,8 @@ MaterialGraph BuildEffectGraph(ParticleMaterial::Effect effect)
 		const int sn   = g.Add(NT::UnpackSigned, { L(n2) });
 		const int c2   = g.Constant(D(2));
 		const int off  = g.Add(NT::Multiply, { L(sn), L(c2) });
-		const int base = g.Add(NT::BaseSample, { L(off) });
-		const int n3   = g.Add(NT::Add, { L(q), L(off) });
+		const int base = g.Add(NT::BaseSample, { L(off, XYZW, 2) });
+		const int n3   = g.Add(NT::Add, { L(q), L(off, XYZW, 2) });
 		const int n4   = g.Sample(n3, 1);
 		const int mul  = g.Add(NT::Multiply, { L(base), L(n4, X) });
 		const int out  = g.Add(NT::Append, { L(mul), L(base, W) });
@@ -355,6 +616,8 @@ namespace
 {
 	std::string LinkText(const MaterialLink& l)
 	{
+		if (l.node < 0)
+			return "(empty)";
 		std::string s = "n" + std::to_string(l.node);
 		switch (l.swizzle)
 		{
@@ -372,6 +635,8 @@ namespace
 			break;
 		}
 		}
+		if (l.width != 0)
+			s += "[w" + std::to_string(l.width) + "]";
 		return s;
 	}
 
@@ -383,7 +648,7 @@ namespace
 	}
 }
 
-std::string DumpMaterialGraph(const MaterialGraph& graph)
+std::string DumpMaterialGraph(const MaterialGraph& graph, const MaterialCompileResult* compiled)
 {
 	if (graph.output < 0)
 		return "(no graph = base color)\n";
@@ -395,6 +660,12 @@ std::string DumpMaterialGraph(const MaterialGraph& graph)
 		const MaterialNode& n = graph.nodes[id];
 		snprintf(line, sizeof(line), "n%-2u %-14s", uint32_t(id), MaterialNodeTypeName(n.type));
 		out += line;
+
+		if (compiled && compiled->ok && id < compiled->nodeWidth.size())
+		{
+			const uint32_t w = compiled->nodeWidth[id];
+			out += std::string(" : ") + (w == 0 ? "-     " : w == 1 ? "float " : w == 2 ? "float2" : w == 3 ? "float3" : "float4");
+		}
 
 		std::string args;
 		for (const MaterialLink& l : n.inputs)
@@ -411,5 +682,13 @@ std::string DumpMaterialGraph(const MaterialGraph& graph)
 		out += "\n";
 	}
 	out += "output = n" + std::to_string(graph.output) + "\n";
+
+	if (compiled)
+	{
+		if (!compiled->ok)
+			out += "compile error: " + compiled->error + "\n";
+		for (const std::string& note : compiled->notes)
+			out += "note: " + note + "\n";
+	}
 	return out;
 }

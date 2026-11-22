@@ -44,8 +44,11 @@ cbuffer GatherConstants : register(b0)
     float BlendNear; // 208
     float BlendFar; // 212
     uint CullEnable; // 216  0 = 컬링 안 함 (전부 append)
-    float _Pad0; // 220
+    uint ParticleParam0Offset; // 220
     float4 FrustumPlanes[6]; // 224  월드 공간, 안쪽이 + (dot(n, p) + d >= 0), 정규화됨
+    uint ParticleParam1Offset;
+    float2 DefaultParticleParams;
+    float _Pad1;
 };
 
 ByteAddressBuffer ParticleData : register(t0);
@@ -132,6 +135,8 @@ void main(uint3 dtid : SV_DispatchThreadID)
         p.Color = ReadF4(ColorOffset, i, DefaultColor);
         p.SubImage = ReadF1(SubImageOffset, i, DefaultSubImage);
         p.EmitterIndex = EmitterIndex;
+        p.Params = float2(ReadF1(ParticleParam0Offset, i, DefaultParticleParams.x),
+                          ReadF1(ParticleParam1Offset, i, DefaultParticleParams.y));
 
         // 깊이는 파티클 위치 기준 (피벗 / 카메라 오프셋과 상관없이 순서가 같게)
         depth = dot(s.Position - CamPos, CamForward);

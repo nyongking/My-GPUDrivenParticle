@@ -527,6 +527,17 @@ ParticleRenderList::Source SpriteRenderer::MakeListSource() const
 	src.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
 	src.texture = TextureSRV(ParticleMaterial::kBaseTexture);
 
+	src.particleParam0Offset = m_Offsets[kParticleParam0];
+	src.particleParam1Offset = m_Offsets[kParticleParam1];
+	src.defaultParticleParams = m_DefaultParticleParams;
+	if (m_Material)
+	{
+		src.program = &m_Material->Program();
+		src.materialParams = m_Material->Params();
+	}
+	for (uint32_t k = 0; k < ParticleMaterial::kNumEffectTextures; ++k)
+		src.effectTextures[k] = TextureSRV(ParticleMaterial::kTexture0 + k);
+
 	return src;
 }
 

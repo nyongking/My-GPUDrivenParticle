@@ -377,7 +377,9 @@ namespace
 
 				if (ImGui::TreeNode("Effect Graph"))
 				{
-					const std::string text = DumpMaterialGraph(BuildEffectGraph(runtime.Material().GetEffect()));
+					const MaterialGraph graph = BuildEffectGraph(runtime.Material().GetEffect());
+					const MaterialCompileResult compiled = CompileMaterialGraph(graph);
+					const std::string text = DumpMaterialGraph(graph, &compiled);
 					ImGui::TextUnformatted(text.c_str());
 					ImGui::TreePop();
 				}
