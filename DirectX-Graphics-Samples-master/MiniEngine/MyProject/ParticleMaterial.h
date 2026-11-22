@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 enum class TextureColorSpace : uint32_t
 {
@@ -23,6 +24,55 @@ struct MaterialTexture
 };
 
 const char* TextureColorSpaceName(TextureColorSpace colorSpace);
+
+enum class MaterialOp : uint32_t
+{
+	QuadUV,
+	BaseColor,
+	Coverage,
+	Particle,
+	Const,
+	UVTransform,
+	Sample,
+	Add,
+	Sub,
+	Mul,
+	Lerp,
+	Saturate,
+	OneMinus,
+	Smoothstep,
+	Append,
+	UnpackSigned,
+	BaseSample,
+	Count
+};
+const char* MaterialOpName(MaterialOp op);
+
+namespace MaterialSwizzle
+{
+	constexpr uint32_t XYZW = 0xE4;
+	constexpr uint32_t X = 0x00;
+	constexpr uint32_t Y = 0x55;
+	constexpr uint32_t Z = 0xAA;
+	constexpr uint32_t W = 0xFF;
+}
+
+struct MaterialInstr
+{
+	uint32_t op, dst, srcA, srcB, srcC, swz, param, _pad;
+};
+static_assert(sizeof(MaterialInstr) == 32, "MaterialInstr 32 B");
+
+struct MaterialProgram
+{
+	static const uint32_t kMaxInstrs = 32;
+	static const uint32_t kMaxRegs = 24;
+
+	std::vector<MaterialInstr>	instrs;
+	uint32_t					outputReg = 0;
+};
+
+std::string DumpMaterialProgram(const MaterialProgram& program);
 
 class ParticleMaterial
 {
@@ -61,6 +111,8 @@ public:
 	static const char*	EffectName(Effect effect);
 	static uint32_t		NumParams(Effect effect);
 
+	static MaterialProgram	BuildEffectProgram(Effect effect);
+
 
 
 public:
@@ -88,11 +140,17 @@ public:
 	void						SetEffect(Effect effect);
 	Effect						GetEffect() const { return m_Effect; }
 
+	void						SetUseVM(bool use) { m_UseVM = use; }
+	bool						UseVM() const { return m_UseVM; }
+	const MaterialProgram&		Program() const { return m_Program; }
+
 private:
 	MaterialTexture		m_Textures[kNumTextureSlot];
 	TextureRef			m_Refs[kNumTextureSlot];
 	alignas(16) float4				m_Params[kMaxParams];
 	Effect				m_Effect = Effect::None;
+	bool				m_UseVM = false;
+	MaterialProgram		m_Program;
 
 };
 

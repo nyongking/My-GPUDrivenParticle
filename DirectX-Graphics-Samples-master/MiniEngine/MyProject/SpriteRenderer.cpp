@@ -123,7 +123,17 @@ namespace
 	const uint32_t kSortKeyGroupSize = 256;            // ParticleSortKeyCS 의 numthreads
 	const uint32_t kDrawArgsInstanceCountOffset = 4;   // D3D12_DRAW_ARGUMENTS::InstanceCount (= alive)
 
-	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kRootMaterialCB, kNumRootParams };
+	struct MaterialProgramConstants
+	{
+		uint32_t      useVM;
+		uint32_t      instrCount;
+		uint32_t      outputReg;
+		uint32_t      _pad;
+		MaterialInstr instrs[MaterialProgram::kMaxInstrs];
+	};
+	static_assert(sizeof(MaterialProgramConstants) == 16 + 32 * MaterialProgram::kMaxInstrs, "HLSL MaterialProgramCB");
+
+	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kRootMaterialCB, kRootMaterialProgram, kNumRootParams };
 	static const uint32_t kNumSRVs = 2;
 
 	// 루트 시그니처 / PSO 는 모든 SpriteRenderer 가 같이 쓴다 (한 번만 만든다)
@@ -181,6 +191,7 @@ namespace
 
 		// Material Cbuffer 설정
 		s_RootSig[kRootMaterialCB].InitAsConstantBuffer(2, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig[kRootMaterialProgram].InitAsConstantBuffer(3, D3D12_SHADER_VISIBILITY_PIXEL);
 
 
 		s_RootSig.Finalize(L"Particle Sprite RootSig");
@@ -603,6 +614,21 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 		for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
 			defaults[k] = ParticleMaterial::DefaultParam(k);
 		gfx.SetDynamicConstantBufferView(kRootMaterialCB, sizeof(defaults), defaults);
+	}
+
+	{
+		MaterialProgramConstants mp = {};
+		if (m_Material)
+		{
+			const MaterialProgram& program = m_Material->Program();
+			const uint32_t count = (std::min)(uint32_t(program.instrs.size()), uint32_t(MaterialProgram::kMaxInstrs));
+			mp.useVM = m_Material->UseVM() ? 1u : 0u;
+			mp.instrCount = count;
+			mp.outputReg = program.outputReg;
+			if (count > 0)
+				std::memcpy(mp.instrs, program.instrs.data(), sizeof(MaterialInstr) * count);
+		}
+		gfx.SetDynamicConstantBufferView(kRootMaterialProgram, sizeof(mp), &mp);
 	}
 
 }

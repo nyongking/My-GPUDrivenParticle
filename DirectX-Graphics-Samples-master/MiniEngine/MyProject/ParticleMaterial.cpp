@@ -7,6 +7,7 @@
 #include "TextureConvert.h"
 
 #include <vector>
+#include <cstdio>
 
 
 const char* TextureColorSpaceName(TextureColorSpace colorSpace)
@@ -125,6 +126,7 @@ ParticleMaterial::ParticleMaterial()
 	for (uint32_t i = 0; i < kNumTextureSlot; ++i)
 		m_Textures[i] = DefaultTexture();
 	ResetParams();
+	m_Program = BuildEffectProgram(m_Effect);
 }
 
 ParticleMaterial::~ParticleMaterial()
@@ -199,6 +201,225 @@ void ParticleMaterial::SetEffect(Effect effect)
 
 	for (uint32_t k = kNumCommonParams; k < kMaxParams; ++k) 
 		m_Params[k] = DefaultParam(k, effect);
+
+	m_Program = BuildEffectProgram(effect);
+}
+
+const char* MaterialOpName(MaterialOp op)
+{
+	switch (op)
+	{
+	case MaterialOp::QuadUV:       return "QUAD_UV";
+	case MaterialOp::BaseColor:    return "BASE_COLOR";
+	case MaterialOp::Coverage:     return "COVERAGE";
+	case MaterialOp::Particle:     return "PARTICLE";
+	case MaterialOp::Const:        return "CONST";
+	case MaterialOp::UVTransform:  return "UV_TRANSFORM";
+	case MaterialOp::Sample:       return "SAMPLE";
+	case MaterialOp::Add:          return "ADD";
+	case MaterialOp::Sub:          return "SUB";
+	case MaterialOp::Mul:          return "MUL";
+	case MaterialOp::Lerp:         return "LERP";
+	case MaterialOp::Saturate:     return "SATURATE";
+	case MaterialOp::OneMinus:     return "ONE_MINUS";
+	case MaterialOp::Smoothstep:   return "SMOOTHSTEP";
+	case MaterialOp::Append:       return "APPEND";
+	case MaterialOp::UnpackSigned: return "UNPACK_SIGNED";
+	case MaterialOp::BaseSample:   return "BASE_SAMPLE";
+	default:                       return "?";
+	}
+}
+
+namespace
+{
+	uint32_t OpInputCount(MaterialOp op)
+	{
+		switch (op)
+		{
+		case MaterialOp::UVTransform: case MaterialOp::Sample: case MaterialOp::Saturate:
+		case MaterialOp::OneMinus: case MaterialOp::UnpackSigned: case MaterialOp::BaseSample:
+			return 1;
+		case MaterialOp::Add: case MaterialOp::Sub: case MaterialOp::Mul: case MaterialOp::Append:
+			return 2;
+		case MaterialOp::Lerp: case MaterialOp::Smoothstep:
+			return 3;
+		default:
+			return 0;
+		}
+	}
+
+	const char* OpParamText(MaterialOp op)
+	{
+		switch (op)
+		{
+		case MaterialOp::Const:       return "param";
+		case MaterialOp::UVTransform: return "param";
+		case MaterialOp::Sample:      return "slot";
+		default:                      return nullptr;
+		}
+	}
+
+	std::string RegText(uint32_t reg, uint32_t swz)
+	{
+		std::string s = "r" + std::to_string(reg);
+		if (swz == MaterialSwizzle::XYZW)
+			return s;
+		const char kComp[4] = { 'x', 'y', 'z', 'w' };
+		const uint32_t c0 = swz & 3, c1 = (swz >> 2) & 3, c2 = (swz >> 4) & 3, c3 = (swz >> 6) & 3;
+		s += '.';
+		s += kComp[c0];
+		if (!(c0 == c1 && c1 == c2 && c2 == c3))
+		{
+			s += kComp[c1];
+			s += kComp[c2];
+			s += kComp[c3];
+		}
+		return s;
+	}
+
+	struct Src
+	{
+		uint32_t reg = 0;
+		uint32_t swz = MaterialSwizzle::XYZW;
+	};
+	Src R(uint32_t reg, uint32_t swz = MaterialSwizzle::XYZW) { Src s; s.reg = reg; s.swz = swz; return s; }
+
+	struct ProgramWriter
+	{
+		MaterialProgram program;
+
+		uint32_t Emit(MaterialOp op, Src a = Src(), Src b = Src(), Src c = Src(), uint32_t param = 0)
+		{
+			MaterialInstr I = {};
+			I.op = static_cast<uint32_t>(op);
+			I.dst = static_cast<uint32_t>(program.instrs.size());
+			I.srcA = a.reg; I.srcB = b.reg; I.srcC = c.reg;
+			I.swz = a.swz | (b.swz << 8) | (c.swz << 16);
+			I.param = param;
+			program.instrs.push_back(I);
+			return I.dst;
+		}
+
+		MaterialProgram Finish(uint32_t output)
+		{
+			program.outputReg = output;
+			ASSERT(program.instrs.size() <= MaterialProgram::kMaxInstrs);
+			ASSERT(program.instrs.size() <= MaterialProgram::kMaxRegs);
+			return program;
+		}
+	};
+}
+
+std::string DumpMaterialProgram(const MaterialProgram& program)
+{
+	if (program.instrs.empty())
+		return "(no instructions = base color)\n";
+
+	std::string out;
+	char line[160];
+	for (size_t k = 0; k < program.instrs.size(); ++k)
+	{
+		const MaterialInstr& I = program.instrs[k];
+		const MaterialOp op = static_cast<MaterialOp>(I.op);
+
+		std::string args;
+		const uint32_t n = OpInputCount(op);
+		const uint32_t srcs[3] = { I.srcA, I.srcB, I.srcC };
+		for (uint32_t s = 0; s < n; ++s)
+		{
+			if (!args.empty()) args += ", ";
+			args += RegText(srcs[s], (I.swz >> (8 * s)) & 0xFF);
+		}
+		if (const char* pt = OpParamText(op))
+		{
+			if (!args.empty()) args += ", ";
+			args += std::string(pt) + " " + std::to_string(I.param);
+		}
+
+		snprintf(line, sizeof(line), "%2u  %-14s r%-2u <- %s\n", uint32_t(k), MaterialOpName(op), I.dst, args.c_str());
+		out += line;
+	}
+	snprintf(line, sizeof(line), "output = r%u (%u instrs)\n", program.outputReg, uint32_t(program.instrs.size()));
+	out += line;
+	return out;
+}
+
+MaterialProgram ParticleMaterial::BuildEffectProgram(Effect effect)
+{
+	using namespace MaterialSwizzle;
+	ProgramWriter w;
+
+	switch (effect)
+	{
+	case Effect::Pattern:
+	case Effect::Tint:
+	{
+		const uint32_t q    = w.Emit(MaterialOp::QuadUV);
+		const uint32_t uv   = w.Emit(MaterialOp::UVTransform, R(q), Src(), Src(), 0);
+		const uint32_t tex  = w.Emit(MaterialOp::Sample, R(uv), Src(), Src(), 0);
+		const uint32_t base = w.Emit(MaterialOp::BaseColor);
+		const uint32_t mul  = w.Emit(MaterialOp::Mul, R(base), R(tex, effect == Effect::Pattern ? X : XYZW));
+		const uint32_t out  = w.Emit(MaterialOp::Append, R(mul), R(base, W));
+		return w.Finish(out);
+	}
+	case Effect::Dissolve:
+	{
+		const uint32_t q    = w.Emit(MaterialOp::QuadUV);
+		const uint32_t uv   = w.Emit(MaterialOp::UVTransform, R(q), Src(), Src(), 0);
+		const uint32_t mask = w.Emit(MaterialOp::Sample, R(uv), Src(), Src(), 0);
+		const uint32_t age  = w.Emit(MaterialOp::Particle);
+		const uint32_t c2   = w.Emit(MaterialOp::Const, Src(), Src(), Src(), 2);
+		const uint32_t n4   = w.Emit(MaterialOp::Add, R(age, X), R(c2, X));
+		const uint32_t n5   = w.Emit(MaterialOp::Smoothstep, R(age, X), R(n4, X), R(mask, X));
+		const uint32_t base = w.Emit(MaterialOp::BaseColor);
+		const uint32_t n6   = w.Emit(MaterialOp::Mul, R(base), R(n5, X));
+		const uint32_t n7   = w.Emit(MaterialOp::Add, R(n4, X), R(c2, Y));
+		const uint32_t s    = w.Emit(MaterialOp::Smoothstep, R(n4, X), R(n7, X), R(mask, X));
+		const uint32_t n8   = w.Emit(MaterialOp::OneMinus, R(s));
+		const uint32_t cov  = w.Emit(MaterialOp::Coverage);
+		const uint32_t t0   = w.Emit(MaterialOp::Mul, R(n8, X), R(n5, X));
+		const uint32_t t1   = w.Emit(MaterialOp::Mul, R(t0, X), R(cov, X));
+		const uint32_t c3   = w.Emit(MaterialOp::Const, Src(), Src(), Src(), 3);
+		const uint32_t edge = w.Emit(MaterialOp::Mul, R(c3), R(t1, X));
+		const uint32_t n9   = w.Emit(MaterialOp::Add, R(n6), R(edge));
+		const uint32_t out  = w.Emit(MaterialOp::Append, R(n9), R(n6, W));
+		return w.Finish(out);
+	}
+	case Effect::Distortion:
+	{
+		const uint32_t q    = w.Emit(MaterialOp::QuadUV);
+		const uint32_t uv   = w.Emit(MaterialOp::UVTransform, R(q), Src(), Src(), 0);
+		const uint32_t n2   = w.Emit(MaterialOp::Sample, R(uv), Src(), Src(), 0);
+		const uint32_t sn   = w.Emit(MaterialOp::UnpackSigned, R(n2));
+		const uint32_t c2   = w.Emit(MaterialOp::Const, Src(), Src(), Src(), 2);
+		const uint32_t off  = w.Emit(MaterialOp::Mul, R(sn), R(c2));
+		const uint32_t base = w.Emit(MaterialOp::BaseSample, R(off));
+		const uint32_t n3   = w.Emit(MaterialOp::Add, R(q), R(off));
+		const uint32_t n4   = w.Emit(MaterialOp::Sample, R(n3), Src(), Src(), 1);
+		const uint32_t mul  = w.Emit(MaterialOp::Mul, R(base), R(n4, X));
+		const uint32_t out  = w.Emit(MaterialOp::Append, R(mul), R(base, W));
+		return w.Finish(out);
+	}
+	case Effect::Glow:
+	{
+		const uint32_t q    = w.Emit(MaterialOp::QuadUV);
+		const uint32_t uv0  = w.Emit(MaterialOp::UVTransform, R(q), Src(), Src(), 0);
+		const uint32_t n2   = w.Emit(MaterialOp::Sample, R(uv0), Src(), Src(), 0);
+		const uint32_t uv1  = w.Emit(MaterialOp::UVTransform, R(q), Src(), Src(), 2);
+		const uint32_t m2   = w.Emit(MaterialOp::Sample, R(uv1), Src(), Src(), 1);
+		const uint32_t n3   = w.Emit(MaterialOp::Mul, R(n2, X), R(m2, X));
+		const uint32_t cov  = w.Emit(MaterialOp::Coverage);
+		const uint32_t t0   = w.Emit(MaterialOp::Mul, R(n3, X), R(cov, X));
+		const uint32_t c4   = w.Emit(MaterialOp::Const, Src(), Src(), Src(), 4);
+		const uint32_t glow = w.Emit(MaterialOp::Mul, R(c4), R(t0, X));
+		const uint32_t base = w.Emit(MaterialOp::BaseColor);
+		const uint32_t n4   = w.Emit(MaterialOp::Add, R(base), R(glow));
+		const uint32_t out  = w.Emit(MaterialOp::Append, R(n4), R(base, W));
+		return w.Finish(out);
+	}
+	default:
+		return MaterialProgram();
+	}
 }
 
 

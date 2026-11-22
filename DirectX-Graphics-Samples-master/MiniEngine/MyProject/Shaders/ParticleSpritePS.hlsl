@@ -50,6 +50,16 @@ struct PSInput
     nointerpolation float2 params : TEXCOORD3;
 };
 
+float4 Param(uint k)
+{
+    return MaterialParams[k];
+}
+
+float4 SampleTex(uint slot, float2 uv)
+{
+    return MaterialTextures[slot].Sample(LinearWrap, uv);
+}
+
 struct MaterialInput
 {
     float2 quadUV;
@@ -116,6 +126,27 @@ float BaseCoverage(float4 color, float4 tex)
 
 float4 main(PSInput input) : SV_TARGET
 {
+    if (UseVM != 0)
+    {
+        const float4 vmTex = SampleBase(input, float2(0.f, 0.f));
+
+        MaterialInput mi;
+        mi.quadUV = input.quadUV;
+        mi.baseColor = ResolveSpriteColor(input.color, vmTex, TextureAlpha, BlendMode);
+        mi.coverage = BaseCoverage(input.color, vmTex);
+        mi.particleParams = input.params;
+        mi.subUV = input.uv;
+        mi.blend = input.blend;
+        mi.vertexColor = input.color;
+
+        const float4 vmResult = RunMaterial(mi, InstrCount, OutputReg);
+
+        const float vmVisible = (BlendMode == 1) ? max(vmResult.r, max(vmResult.g, vmResult.b)) : vmResult.a;
+        if (vmVisible < 0.01f)
+            discard;
+        return vmResult;
+    }
+
     float2 distortion = float2(0.f, 0.f);
     if (EffectMode == EFFECT_DISTORTION)
     {
@@ -178,5 +209,9 @@ float4 main(PSInput input) : SV_TARGET
         result = float4(n4, baseColor.a);
     }
          
+    const float visible = (BlendMode == 1) ? max(result.r, max(result.g, result.b)) : result.a;
+    if (visible < 0.01f)
+        discard;
+
     return result;
 }

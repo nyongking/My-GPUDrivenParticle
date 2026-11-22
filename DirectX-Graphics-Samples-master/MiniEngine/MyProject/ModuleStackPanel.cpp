@@ -353,6 +353,21 @@ namespace
 				runtime.SetMaterialEffect(static_cast<ParticleMaterial::Effect>(effect));
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip("None: base only\nPattern: color x Tex0.r\nTint: color x Tex0.rgb\nDissolve: Tex0 = mask, progress = ParticleParam0 binding (NormalizedAge)\nDistortion: Tex0 = flow noise, pushes Base (and Tex1), strength = [2].xy\nGlow: Tex0 x Tex1 -> add [4] color\n(Param slots 2+ change meaning per effect)");
+
+			ImGui::SameLine();
+			bool useVM = runtime.Material().UseVM();
+			if (ImGui::Checkbox("Run as VM", &useVM))
+				runtime.SetMaterialUseVM(useVM);
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("Draw the same effect with the material interpreter (MaterialVM.hlsli).\nThe image must not change when toggled.");
+
+			const MaterialProgram& program = runtime.Material().Program();
+			if (ImGui::TreeNode("VM Program", "VM Program (%u instrs)", uint32_t(program.instrs.size())))
+			{
+				const std::string text = DumpMaterialProgram(program);
+				ImGui::TextUnformatted(text.c_str());
+				ImGui::TreePop();
+			}
 		}
 
 

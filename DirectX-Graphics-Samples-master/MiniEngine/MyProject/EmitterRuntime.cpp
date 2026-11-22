@@ -326,6 +326,11 @@ void EmitterRuntime::SetMaterialEffect(ParticleMaterial::Effect effect)
 	m_Material.SetEffect(effect);
 }
 
+void EmitterRuntime::SetMaterialUseVM(bool use)
+{
+	m_Material.SetUseVM(use);
+}
+
 
 void EmitterRuntime::SetSpriteSettings(const SpriteSettings& settings)
 {
