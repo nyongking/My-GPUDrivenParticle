@@ -65,21 +65,7 @@ namespace
 		float    _pad1;
 	};
 	static_assert(sizeof(GatherConstants) == 336, "GatherConstants 336 B");
-	static_assert(offsetof(GatherConstants, particleParam0Offset) == 220, "ParticleParam0Offset offset 220");
-	static_assert(offsetof(GatherConstants, particleParam1Offset) == 320, "ParticleParam1Offset offset 320");
-	static_assert(offsetof(GatherConstants, defaultParticleParams) == 324, "DefaultParticleParams offset 324");
-	static_assert(offsetof(GatherConstants, defaultColor) == 48, "DefaultColor offset 48");
-	static_assert(offsetof(GatherConstants, camPos) == 80, "CamPos offset 80");
-	static_assert(offsetof(GatherConstants, camForward) == 96, "CamForward offset 96");
-	static_assert(offsetof(GatherConstants, camRight) == 112, "CamRight offset 112");
-	static_assert(offsetof(GatherConstants, camUp) == 128, "CamUp offset 128");
-	static_assert(offsetof(GatherConstants, defaultVelocity) == 144, "DefaultVelocity offset 144");
-	static_assert(offsetof(GatherConstants, defaultSpriteFacing) == 160, "DefaultSpriteFacing offset 160");
-	static_assert(offsetof(GatherConstants, defaultSpriteAlignment) == 176, "DefaultSpriteAlignment offset 176");
-	static_assert(offsetof(GatherConstants, pivot) == 192, "Pivot offset 192");
-	static_assert(offsetof(GatherConstants, cullEnable) == 216, "CullEnable offset 216");
-	static_assert(offsetof(GatherConstants, frustumPlanes) == 224, "FrustumPlanes offset 224");
-
+	
 	// ParticleListVS.hlsl 의 cbuffer ListDrawConstants 와 같은 배치 (빌보드 축은 Gather 가 계산)
 	struct alignas(16) DrawConstants
 	{

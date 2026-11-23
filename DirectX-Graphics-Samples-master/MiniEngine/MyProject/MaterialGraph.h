@@ -31,9 +31,9 @@ uint32_t    MaterialNodeInputCount(MaterialNodeType type);
 
 struct MaterialLink
 {
-	int      node = -1;
+	int      node = -1;		// -1일 경우 기본값을 넣는다.
 	uint32_t swizzle = MaterialSwizzle::XYZW;
-	uint32_t width = 0;
+	uint32_t width = 0;		// 0 = 노드 출력 그대로, 1~4 = 해당 값만큼 데이터 쓰기
 };
 
 struct MaterialNode

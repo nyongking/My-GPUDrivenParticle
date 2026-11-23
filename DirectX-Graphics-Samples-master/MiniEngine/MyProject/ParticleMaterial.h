@@ -50,11 +50,11 @@ const char* MaterialOpName(MaterialOp op);
 
 namespace MaterialSwizzle
 {
-	constexpr uint32_t XYZW = 0xE4;
-	constexpr uint32_t X = 0x00;
-	constexpr uint32_t Y = 0x55;
-	constexpr uint32_t Z = 0xAA;
-	constexpr uint32_t W = 0xFF;
+	constexpr uint32_t XYZW = 0xE4; // 0b11100100
+	constexpr uint32_t X = 0x00;	// 0b00000000
+	constexpr uint32_t Y = 0x55;	// 0b01010101
+	constexpr uint32_t Z = 0xAA;	// 0b10101010
+	constexpr uint32_t W = 0xFF;	// 0b11111111
 }
 
 struct MaterialInstr

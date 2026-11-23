@@ -32,12 +32,20 @@ uint32_t MaterialNodeInputCount(MaterialNodeType type)
 {
 	switch (type)
 	{
-	case MaterialNodeType::UVTransform: case MaterialNodeType::TextureSample: case MaterialNodeType::Saturate:
-	case MaterialNodeType::OneMinus: case MaterialNodeType::UnpackSigned: case MaterialNodeType::BaseSample:
+	case MaterialNodeType::UVTransform: 
+	case MaterialNodeType::TextureSample: 
+	case MaterialNodeType::Saturate:
+	case MaterialNodeType::OneMinus: 
+	case MaterialNodeType::UnpackSigned:
+	case MaterialNodeType::BaseSample:
 		return 1;
-	case MaterialNodeType::Add: case MaterialNodeType::Subtract: case MaterialNodeType::Multiply: case MaterialNodeType::Append:
+	case MaterialNodeType::Add: 
+	case MaterialNodeType::Subtract:
+	case MaterialNodeType::Multiply: 
+	case MaterialNodeType::Append:
 		return 2;
-	case MaterialNodeType::Lerp: case MaterialNodeType::Smoothstep:
+	case MaterialNodeType::Lerp: 
+	case MaterialNodeType::Smoothstep:
 		return 3;
 	default:
 		return 0;
