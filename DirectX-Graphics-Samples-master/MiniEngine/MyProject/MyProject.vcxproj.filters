@@ -162,6 +162,12 @@
     <ClCompile Include="MaterialGraph.cpp">
       <Filter>Particle\Material</Filter>
     </ClCompile>
+    <ClCompile Include="MaterialGraphEditor.cpp">
+      <Filter>Particle\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\imnodes\imnodes.cpp">
+      <Filter>Particle\Material</Filter>
+    </ClCompile>
     <ClCompile Include="GlobalData.cpp">
       <Filter>Global</Filter>
     </ClCompile>
@@ -280,6 +286,15 @@
       <Filter>Particle\Material</Filter>
     </ClInclude>
     <ClInclude Include="MaterialGraph.h">
+      <Filter>Particle\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="MaterialGraphEditor.h">
+      <Filter>Particle\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ThirdParty\imnodes\imnodes.h">
+      <Filter>Particle\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ThirdParty\imnodes\imnodes_internal.h">
       <Filter>Particle\Material</Filter>
     </ClInclude>
     <ClInclude Include="GlobalData.h">

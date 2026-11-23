@@ -47,7 +47,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
-      <AdditionalIncludeDirectories>..\Core;..\Model;..\ThirdParty\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Core;..\Model;..\ThirdParty\imgui;..\ThirdParty\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalOptions Condition="'$(Configuration)'=='Debug'">/nodefaultlib:MSVCRT %(AdditionalOptions)</AdditionalOptions>
@@ -80,6 +80,9 @@
     <ClInclude Include="ParticleEmitter.h" />
     <ClInclude Include="ParticleMaterial.h" />
     <ClInclude Include="MaterialGraph.h" />
+    <ClInclude Include="MaterialGraphEditor.h" />
+    <ClInclude Include="..\ThirdParty\imnodes\imnodes.h" />
+    <ClInclude Include="..\ThirdParty\imnodes\imnodes_internal.h" />
     <ClInclude Include="ParticleNamespace.h" />
     <ClInclude Include="ParticlePool.h" />
     <ClInclude Include="ParticleSettings.h" />
@@ -122,6 +125,10 @@
     <ClCompile Include="ParticleEmitter.cpp" />
     <ClCompile Include="ParticleMaterial.cpp" />
     <ClCompile Include="MaterialGraph.cpp" />
+    <ClCompile Include="MaterialGraphEditor.cpp" />
+    <ClCompile Include="..\ThirdParty\imnodes\imnodes.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="ParticlePool.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="ParticleSettings.cpp" />

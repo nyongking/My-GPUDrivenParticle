@@ -573,7 +573,18 @@ MaterialGraph ParticleMaterial::CurrentGraph() const
 
 MaterialGraph ParticleMaterial::LayersAsGraph() const
 {
-	return MaterialGraph();
+	MaterialGraph graph = BuildLayeredEffectGraph(m_Layers);
+	if (graph.output < 0)
+	{
+		MaterialNode base;
+		base.type = MaterialNodeType::BaseColor;
+		graph.nodes.push_back(base);
+		graph.output = 0;
+	}
+	FillMaterialGraphValues(graph, m_Params, kMaxParams);
+	graph = PruneMaterialGraph(graph);
+	LayoutMaterialGraph(graph);
+	return graph;
 }
 
 void ParticleMaterial::SetProgramSource(ProgramSource source)
@@ -670,6 +681,20 @@ bool ParticleMaterial::ApplyLayers(const std::vector<Effect>& layers, const std:
 void ParticleMaterial::RebuildProgram()
 {
 	m_ProgramError.clear();
+
+	if (m_CustomGraph)
+	{
+		const MaterialCompileResult custom = CompileMaterialGraph(*m_CustomGraph);
+		if (!custom.ok)
+		{
+			m_ProgramError = "Graph compile failed: " + custom.error;
+			return;
+		}
+		m_Program = custom.program;
+		for (size_t k = 0; k < custom.params.size() && k < kMaxParams; ++k)
+			m_Params[k] = custom.params[k];
+		return;
+	}
 
 	if (m_ProgramSource == ProgramSource::HandWritten && m_Layers.size() <= 1)
 	{

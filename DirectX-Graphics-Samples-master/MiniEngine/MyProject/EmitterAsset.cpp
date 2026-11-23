@@ -362,6 +362,16 @@ namespace
 		{
 			Utility::Printf("[EmitterAsset] '%s': material layers rejected (%s) -> no effect\n", asset.name.c_str(),
 				runtime.Material().LayerError().c_str());
+
+		if (asset.hasMaterialGraph)
+		{
+			runtime.SetMaterialGraph(asset.materialGraph);
+			if (!runtime.Material().ProgramError().empty())
+				Utility::Printf("[EmitterAsset] '%s': material graph does not compile (%s) -> base color\n", asset.name.c_str(),
+					runtime.Material().ProgramError().c_str());
+		}
+		else
+			runtime.ClearMaterialGraph();
 		}
 	}
 }
@@ -382,6 +392,9 @@ EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::strin
 	for (uint32_t i = 0; i < ParticleMaterial::kMaxParams; ++i)
 		a.materialParams[i] = runtime.Material().Param(i);
 	a.materialLayers = runtime.Material().Layers();
+	a.hasMaterialGraph = runtime.Material().HasCustomGraph();
+	if (a.hasMaterialGraph)
+		a.materialGraph = *runtime.Material().CustomGraph();
 	a.settings = runtime.GetSpriteSettings();
 	return a;
 }
@@ -466,6 +479,8 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
 	for (const ParticleMaterial::Effect effect : a.materialLayers)
 		layers.Push(JsonValue(ParticleMaterial::EffectName(effect)));
 	sprite.Set("materialLayers", std::move(layers));
+	if (a.hasMaterialGraph)
+		sprite.Set("materialGraph", MaterialGraphToJson(a.materialGraph));
 
 	sprite.Set("textureAlpha", JsonValue(kTextureAlphaNames[(std::min)(uint32_t(s.textureAlpha), uint32_t(SpriteTextureAlpha::Count) - 1)]));
 	sprite.Set("blend", JsonValue(kBlendNames[(std::min)(uint32_t(s.blend), 1u)]));
@@ -662,6 +677,16 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 			}
 			else
 				warnings.push_back("sprite.materialLayers: expected an array -> no layers");
+		}
+
+		if (const JsonValue* graph = sprite->Find("materialGraph"))
+		{
+			MaterialGraph g;
+			if (MaterialGraphFromJson(*graph, g, warnings))
+			{
+				a.hasMaterialGraph = true;
+				a.materialGraph = std::move(g);
+			}
 		}
 
 		if (EnumFromName(sprite->Find("textureAlpha"), kTextureAlphaNames, e, "textureAlpha", warnings))

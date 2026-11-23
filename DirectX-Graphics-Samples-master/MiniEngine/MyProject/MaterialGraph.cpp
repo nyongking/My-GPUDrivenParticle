@@ -1,5 +1,6 @@
 ﻿#include "pch.h"
 #include "MaterialGraph.h"
+#include "Json.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -813,4 +814,333 @@ std::string DumpMaterialGraph(const MaterialGraph& graph, const MaterialCompileR
 
 	}
 	return out;
+}
+
+const char* MaterialNodePinName(MaterialNodeType type, uint32_t pin)
+{
+	switch (type)
+	{
+	case MaterialNodeType::UVTransform:
+	case MaterialNodeType::TextureSample: return "uv";
+	case MaterialNodeType::BaseSample:    return "offset";
+	case MaterialNodeType::Saturate:
+	case MaterialNodeType::OneMinus:
+	case MaterialNodeType::UnpackSigned:  return "in";
+	case MaterialNodeType::Append:        return pin == 0 ? "rgb" : "a";
+	case MaterialNodeType::Lerp:          return pin == 0 ? "a" : (pin == 1 ? "b" : "t");
+	case MaterialNodeType::Smoothstep:    return pin == 0 ? "min" : (pin == 1 ? "max" : "x");
+	default:                              return pin == 0 ? "a" : (pin == 1 ? "b" : "c");
+	}
+}
+
+bool MaterialNodeTypeFromName(const std::string& name, MaterialNodeType& out)
+{
+	for (uint32_t t = 0; t < uint32_t(MaterialNodeType::Count); ++t)
+	{
+		if (name == MaterialNodeTypeName(MaterialNodeType(t)))
+		{
+			out = MaterialNodeType(t);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool HasMaterialGraphLayout(const MaterialGraph& graph)
+{
+	for (const MaterialNode& n : graph.nodes)
+	{
+		if (n.pos.x != 0.f || n.pos.y != 0.f)
+			return true;
+	}
+	return false;
+}
+
+void LayoutMaterialGraph(MaterialGraph& graph)
+{
+	const int count = static_cast<int>(graph.nodes.size());
+	std::vector<int> depth(count, -1);
+	if (graph.output >= 0 && graph.output < count)
+		depth[graph.output] = 0;
+	for (int pass = 0; pass < count; ++pass)
+	{
+		bool changed = false;
+		for (int id = 0; id < count; ++id)
+		{
+			if (depth[id] < 0)
+				continue;
+			for (const MaterialLink& l : graph.nodes[id].inputs)
+			{
+				if (l.node < 0 || l.node >= count || depth[l.node] >= depth[id] + 1)
+					continue;
+				depth[l.node] = depth[id] + 1;
+				changed = true;
+			}
+		}
+		if (!changed)
+			break;
+	}
+
+	const float kColumn = 230.f, kRow = 120.f;
+	int maxDepth = 0;
+	for (int d : depth)
+		maxDepth = (std::max)(maxDepth, d);
+	std::vector<int> rows(maxDepth + 2, 0);
+	for (int id = 0; id < count; ++id)
+	{
+		const int column = (depth[id] < 0) ? 0 : (maxDepth - depth[id] + 1);
+		const int row = rows[column]++;
+		graph.nodes[id].pos = { 40.f + column * kColumn, 40.f + row * kRow };
+	}
+}
+
+MaterialGraph KeepMaterialGraphNodes(const MaterialGraph& graph, const std::vector<bool>& keep)
+{
+	std::vector<int> remap(graph.nodes.size(), -1);
+	MaterialGraph out;
+	for (size_t id = 0; id < graph.nodes.size(); ++id)
+	{
+		if (id < keep.size() && !keep[id])
+			continue;
+		remap[id] = static_cast<int>(out.nodes.size());
+		out.nodes.push_back(graph.nodes[id]);
+	}
+	for (MaterialNode& n : out.nodes)
+	{
+		for (MaterialLink& l : n.inputs)
+		{
+			if (l.node >= 0)
+				l.node = (l.node < static_cast<int>(remap.size())) ? remap[l.node] : -1;
+		}
+	}
+	out.output = (graph.output >= 0 && graph.output < static_cast<int>(remap.size())) ? remap[graph.output] : -1;
+	return out;
+}
+
+MaterialGraph PruneMaterialGraph(const MaterialGraph& graph)
+{
+	const int count = static_cast<int>(graph.nodes.size());
+	std::vector<bool> keep(count, false);
+	std::vector<int> stack;
+	if (graph.output >= 0 && graph.output < count)
+		stack.push_back(graph.output);
+	while (!stack.empty())
+	{
+		const int id = stack.back();
+		stack.pop_back();
+		if (keep[id])
+			continue;
+		keep[id] = true;
+		for (const MaterialLink& l : graph.nodes[id].inputs)
+		{
+			if (l.node >= 0 && l.node < count && !keep[l.node])
+				stack.push_back(l.node);
+		}
+	}
+	return KeepMaterialGraphNodes(graph, keep);
+}
+
+bool FillMaterialGraphValues(MaterialGraph& graph, const float4* params, uint32_t count)
+{
+	const MaterialCompileResult compiled = CompileMaterialGraph(graph);
+	if (!compiled.ok)
+		return false;
+	uint32_t slot = 0;
+	for (size_t id = 0; id < graph.nodes.size(); ++id)
+	{
+		if (id >= compiled.nodeWidth.size() || compiled.nodeWidth[id] == 0)
+			continue;
+		MaterialNode& n = graph.nodes[id];
+		for (uint32_t k = 0; k < ParamSlotsOf(n.type); ++k, ++slot)
+		{
+			if (slot < count)
+				n.values[k] = params[slot];
+		}
+	}
+	return true;
+}
+
+std::string MaterialSwizzleText(uint32_t swizzle)
+{
+	const char kComp[4] = { 'x', 'y', 'z', 'w' };
+	swizzle &= 0xFFu;
+	if (swizzle == (swizzle & 3u) * 0x55u)
+		return std::string(1, kComp[swizzle & 3u]);
+	std::string s;
+	for (uint32_t c = 0; c < 4; ++c)
+		s += kComp[(swizzle >> (2 * c)) & 3u];
+	return s;
+}
+
+bool MaterialSwizzleFromText(const std::string& text, uint32_t& out)
+{
+	auto Comp = [](char c) -> int { return c == 'x' ? 0 : c == 'y' ? 1 : c == 'z' ? 2 : c == 'w' ? 3 : -1; };
+	if (text.size() == 1 && Comp(text[0]) >= 0)
+	{
+		out = uint32_t(Comp(text[0])) * 0x55u;
+		return true;
+	}
+	if (text.size() != 4)
+		return false;
+	uint32_t s = 0;
+	for (uint32_t c = 0; c < 4; ++c)
+	{
+		const int v = Comp(text[c]);
+		if (v < 0)
+			return false;
+		s |= uint32_t(v) << (2 * c);
+	}
+	out = s;
+	return true;
+}
+
+namespace
+{
+	JsonValue Float4Json(const float4& v)
+	{
+		JsonValue a = JsonValue::MakeArray();
+		a.Push(JsonValue(v.x));
+		a.Push(JsonValue(v.y));
+		a.Push(JsonValue(v.z));
+		a.Push(JsonValue(v.w));
+		return a;
+	}
+
+	bool JsonFloats(const JsonValue* v, float* out, uint32_t count)
+	{
+		if (v == nullptr || !v->IsArray() || v->Size() != count)
+			return false;
+		for (uint32_t i = 0; i < count; ++i)
+		{
+			if (!v->At(i).IsNumber())
+				return false;
+			out[i] = static_cast<float>(v->At(i).AsNumber());
+		}
+		return true;
+	}
+}
+
+JsonValue MaterialGraphToJson(const MaterialGraph& graph)
+{
+	JsonValue root = JsonValue::MakeObject();
+	root.Set("output", JsonValue(graph.output));
+	JsonValue nodes = JsonValue::MakeArray();
+	for (const MaterialNode& n : graph.nodes)
+	{
+		JsonValue jn = JsonValue::MakeObject();
+		jn.Set("type", JsonValue(MaterialNodeTypeName(n.type)));
+		JsonValue pos = JsonValue::MakeArray();
+		pos.Push(JsonValue(n.pos.x));
+		pos.Push(JsonValue(n.pos.y));
+		jn.Set("pos", std::move(pos));
+
+		JsonValue inputs = JsonValue::MakeArray();
+		for (const MaterialLink& l : n.inputs)
+		{
+			JsonValue jl = JsonValue::MakeObject();
+			jl.Set("node", JsonValue(l.node));
+			if ((l.swizzle & 0xFFu) != MaterialSwizzle::XYZW)
+				jl.Set("swizzle", JsonValue(MaterialSwizzleText(l.swizzle)));
+			if (l.width != 0)
+				jl.Set("width", JsonValue(l.width));
+			inputs.Push(std::move(jl));
+		}
+		jn.Set("inputs", std::move(inputs));
+
+		if (n.type == MaterialNodeType::Constant)
+			jn.Set("value", Float4Json(n.values[0]));
+		else if (n.type == MaterialNodeType::UVTransform)
+		{
+			jn.Set("tilingOffset", Float4Json(n.values[0]));
+			jn.Set("scroll", Float4Json(n.values[1]));
+		}
+		else if (n.type == MaterialNodeType::TextureSample)
+			jn.Set("slot", JsonValue(n.textureSlot));
+		nodes.Push(std::move(jn));
+	}
+	root.Set("nodes", std::move(nodes));
+	return root;
+}
+
+bool MaterialGraphFromJson(const JsonValue& json, MaterialGraph& out, std::vector<std::string>& warnings)
+{
+	const JsonValue* nodes = json.Find("nodes");
+	if (!json.IsObject() || nodes == nullptr || !nodes->IsArray())
+	{
+		warnings.push_back("materialGraph: expected { \"output\": n, \"nodes\": [...] } -> no graph");
+		return false;
+	}
+
+	MaterialGraph g;
+	const int count = static_cast<int>(nodes->Size());
+	for (int id = 0; id < count; ++id)
+	{
+		const JsonValue& jn = nodes->At(id);
+		const std::string where = "materialGraph.nodes[" + std::to_string(id) + "]";
+		MaterialNode n;
+		const JsonValue* type = jn.Find("type");
+		if (type == nullptr || !MaterialNodeTypeFromName(type->AsString(), n.type))
+		{
+			warnings.push_back(where + ": unknown type '" + (type ? type->AsString() : std::string()) + "' -> Constant 0");
+			n.type = MaterialNodeType::Constant;
+		}
+		float pos[2] = {};
+		if (JsonFloats(jn.Find("pos"), pos, 2))
+			n.pos = { pos[0], pos[1] };
+
+		if (const JsonValue* inputs = jn.Find("inputs"))
+		{
+			const uint32_t need = MaterialNodeInputCount(n.type);
+			if (inputs->Size() > need)
+				warnings.push_back(where + ": more inputs than " + std::to_string(need) + " -> extra ignored");
+			for (uint32_t k = 0; k < (std::min)(uint32_t(inputs->Size()), need); ++k)
+			{
+				const JsonValue& jl = inputs->At(k);
+				MaterialLink l;
+				if (const JsonValue* v = jl.Find("node"))
+					l.node = static_cast<int>(v->AsNumber(-1.0));
+				if (l.node >= count || l.node < -1)
+				{
+					warnings.push_back(where + ".inputs[" + std::to_string(k) + "]: node " + std::to_string(l.node) + " does not exist -> empty");
+					l.node = -1;
+				}
+				if (const JsonValue* v = jl.Find("swizzle"))
+				{
+					if (!MaterialSwizzleFromText(v->AsString(), l.swizzle))
+					{
+						warnings.push_back(where + ".inputs[" + std::to_string(k) + "]: bad swizzle '" + v->AsString() + "' -> xyzw");
+						l.swizzle = MaterialSwizzle::XYZW;
+					}
+				}
+				if (const JsonValue* v = jl.Find("width"))
+					l.width = (std::min)(static_cast<uint32_t>(v->AsNumber(0.0)), 4u);
+				n.inputs.push_back(l);
+			}
+		}
+
+		if (n.type == MaterialNodeType::Constant)
+			JsonFloats(jn.Find("value"), &n.values[0].x, 4);
+		else if (n.type == MaterialNodeType::UVTransform)
+		{
+			JsonFloats(jn.Find("tilingOffset"), &n.values[0].x, 4);
+			JsonFloats(jn.Find("scroll"), &n.values[1].x, 4);
+		}
+		else if (n.type == MaterialNodeType::TextureSample)
+		{
+			if (const JsonValue* v = jn.Find("slot"))
+				n.textureSlot = (std::min)(static_cast<uint32_t>(v->AsNumber(0.0)), ParticleMaterial::kNumEffectTextures - 1);
+		}
+		g.nodes.push_back(n);
+	}
+
+	g.output = -1;
+	if (const JsonValue* v = json.Find("output"))
+		g.output = static_cast<int>(v->AsNumber(-1.0));
+	if (g.output >= count || g.output < -1)
+	{
+		warnings.push_back("materialGraph.output: node " + std::to_string(g.output) + " does not exist -> no output");
+		g.output = -1;
+	}
+	out = std::move(g);
+	return true;
 }

@@ -71,6 +71,9 @@ public:
 	bool MoveMaterialLayer(uint32_t index, int direction);
 	bool SetMaterialLayers(const std::vector<ParticleMaterial::Effect>& layers);
 	bool SetMaterialLayerEffect(uint32_t index, ParticleMaterial::Effect effect);
+	void SetMaterialGraph(const MaterialGraph& graph);
+	void SetMaterialGraphLayout(const MaterialGraph& graph);
+	void ClearMaterialGraph();
 	void SetMaterialUseVM(bool use);
 	void SetMaterialProgramSource(ParticleMaterial::ProgramSource source);
 

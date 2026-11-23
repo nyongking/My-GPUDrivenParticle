@@ -351,6 +351,21 @@ bool EmitterRuntime::SetMaterialLayerEffect(uint32_t index, ParticleMaterial::Ef
 	return m_Material.SetLayerEffect(index, effect);
 }
 
+void EmitterRuntime::SetMaterialGraph(const MaterialGraph& graph)
+{
+	m_Material.SetCustomGraph(graph);
+}
+
+void EmitterRuntime::SetMaterialGraphLayout(const MaterialGraph& graph)
+{
+	m_Material.SetCustomGraphLayout(graph);
+}
+
+void EmitterRuntime::ClearMaterialGraph()
+{
+	m_Material.ClearCustomGraph();
+}
+
 void EmitterRuntime::SetMaterialUseVM(bool use)
 {
 	m_Material.SetUseVM(use);

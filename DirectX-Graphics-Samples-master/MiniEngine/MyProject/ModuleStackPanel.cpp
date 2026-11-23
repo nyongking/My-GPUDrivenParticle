@@ -4,6 +4,7 @@
 #include "EmitterAsset.h"
 #include "EmitterRuntime.h"
 #include "MaterialGraph.h"
+#include "MaterialGraphEditor.h"
 #include "ModuleLibrary.h"
 #include "UberGpuProgram.h"
 #include "imgui.h"
@@ -187,6 +188,21 @@ namespace
 
 		if (changed)
 			runtime.SetMaterialTexture(slot, t);
+
+		if (slot >= ParticleMaterial::kTexture0 && runtime.Material().HasCustomGraph())
+		{
+			bool sampled = false;
+			for (const MaterialNode& n : runtime.Material().CustomGraph()->nodes)
+				sampled |= (n.type == MaterialNodeType::TextureSample && n.textureSlot == slot - ParticleMaterial::kTexture0);
+			ImGui::SameLine();
+			if (!sampled)
+				ImGui::TextDisabled("(not used by graph)");
+			else if (t.path.empty())
+				ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "<- graph (empty: white)");
+			else
+				ImGui::TextDisabled("<- graph");
+		}
+		else
 
 		// 이 슬롯을 어떤 효과가 쓰는가?
 		if (slot >= ParticleMaterial::kTexture0)
@@ -380,6 +396,57 @@ namespace
 		return true;
 	}
 
+	bool s_ShowGraphEditor = false;
+
+	void DrawMaterialGraphWindow(EmitterRuntime& runtime)
+	{
+		ImGui::SetNextWindowSize(ImVec2(960.f, 560.f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Material Graph", &s_ShowGraphEditor))
+		{
+			ImGui::End();
+			return;
+		}
+
+		const ParticleMaterial& material = runtime.Material();
+		const bool editable = material.HasCustomGraph();
+		MaterialGraph graph = material.CurrentGraph();
+
+		if (editable)
+		{
+			if (ImGui::Button("Auto layout"))
+			{
+				LayoutMaterialGraph(graph);
+				runtime.SetMaterialGraphLayout(graph);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Back to layers"))
+			{
+				runtime.ClearMaterialGraph();
+				ImGui::End();
+				return;
+			}
+		}
+		else if (ImGui::Button("Edit as graph"))
+		{
+			runtime.SetMaterialGraph(material.LayersAsGraph());
+			ImGui::End();
+			return;
+		}
+		ImGui::SameLine();
+		const std::string& error = material.ProgramError();
+		if (!error.empty())
+			ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "drawing with the last good program");
+
+		const MaterialCompileResult compiled = CompileMaterialGraph(graph);
+		const uint32_t change = MaterialGraphEditor::Draw(editable ? "edit" : "view", graph, compiled, editable);
+		if (editable && (change & MaterialGraphEditor::kGraph))
+			runtime.SetMaterialGraph(graph);
+		else if (editable && (change & MaterialGraphEditor::kLayout))
+			runtime.SetMaterialGraphLayout(graph);
+
+		ImGui::End();
+	}
+
 	void DrawMaterialParams(EmitterRuntime& runtime)
 	{
 		if (!ImGui::TreeNode("Material Params"))
@@ -393,6 +460,26 @@ namespace
 				names[i] = ParticleMaterial::EffectName(Effect(i + 1));
 
 			const ParticleMaterial& material = runtime.Material();
+
+			ImGui::Checkbox("Graph Editor", &s_ShowGraphEditor);
+			ImGui::SameLine();
+			if (material.HasCustomGraph())
+			{
+				if (ImGui::Button("Back to layers"))
+					runtime.ClearMaterialGraph();
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("Discard the custom graph and draw with the effect layers again.\nParam slots reset to the layer defaults.");
+				ImGui::SameLine();
+				ImGui::TextDisabled("(custom graph)");
+			}
+			else if (ImGui::Button("Edit as graph"))
+			{
+				runtime.SetMaterialGraph(material.LayersAsGraph());
+				s_ShowGraphEditor = true;
+			}
+
+			if (!material.HasCustomGraph())
+			{
 			ImGui::Text("Effect Layers (%u / %u)", uint32_t(material.Layers().size()), ParticleMaterial::kMaxLayers);
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip("Applied top to bottom: each layer's result is the next layer's base color.\n"
@@ -462,6 +549,7 @@ namespace
 			}
 			if (!material.LayerError().empty())
 				ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", material.LayerError().c_str());
+			}
 
 			bool useVM = runtime.Material().UseVM();
 			if (ImGui::Checkbox("Run as VM", &useVM))
@@ -489,7 +577,7 @@ namespace
 
 				if (ImGui::TreeNode("Effect Graph"))
 				{
-					const MaterialGraph graph = BuildLayeredEffectGraph(runtime.Material().Layers());
+					const MaterialGraph graph = runtime.Material().CurrentGraph();
 					const MaterialCompileResult compiled = CompileMaterialGraph(graph);
 					const std::string text = DumpMaterialGraph(graph, &compiled);
 					ImGui::TextUnformatted(text.c_str());
@@ -509,6 +597,13 @@ namespace
 				ImGui::TextUnformatted(text.c_str());
 				ImGui::TreePop();
 			}
+		}
+
+		if (runtime.Material().HasCustomGraph())
+		{
+			ImGui::TextDisabled("Param values are edited on the Constant / UVTransform nodes (Material Graph window).");
+			ImGui::TreePop();
+			return;
 		}
 
 		const std::vector<ParticleMaterial::LayerLayout>& layouts = runtime.Material().LayerLayouts();
@@ -948,4 +1043,7 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 	}
 
 	DrawBindings(runtime);
+
+	if (s_ShowGraphEditor)
+		DrawMaterialGraphWindow(runtime);
 }

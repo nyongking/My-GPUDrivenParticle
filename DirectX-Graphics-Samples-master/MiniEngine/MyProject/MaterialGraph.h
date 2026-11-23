@@ -70,3 +70,18 @@ MaterialGraph BuildLayeredEffectGraph(const std::vector<ParticleMaterial::Effect
 
 std::string DumpMaterialGraph(const MaterialGraph& graph, const MaterialCompileResult* compiled = nullptr);
 
+const char* MaterialNodePinName(MaterialNodeType type, uint32_t pin);
+bool        MaterialNodeTypeFromName(const std::string& name, MaterialNodeType& out);
+void        LayoutMaterialGraph(MaterialGraph& graph);
+bool        HasMaterialGraphLayout(const MaterialGraph& graph);
+
+MaterialGraph KeepMaterialGraphNodes(const MaterialGraph& graph, const std::vector<bool>& keep);
+MaterialGraph PruneMaterialGraph(const MaterialGraph& graph);
+bool          FillMaterialGraphValues(MaterialGraph& graph, const float4* params, uint32_t count);
+
+class JsonValue;
+std::string MaterialSwizzleText(uint32_t swizzle);
+bool        MaterialSwizzleFromText(const std::string& text, uint32_t& out);
+JsonValue   MaterialGraphToJson(const MaterialGraph& graph);
+bool        MaterialGraphFromJson(const JsonValue& json, MaterialGraph& out, std::vector<std::string>& warnings);
+

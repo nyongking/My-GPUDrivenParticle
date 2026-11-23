@@ -35,6 +35,7 @@
 #include "UberGpuProgram.h"
 
 #include "ModuleStackPanel.h"
+#include "MaterialGraphEditor.h"
 #include "EmitterAsset.h"
 #include <algorithm>
 #include <cmath>
@@ -174,6 +175,7 @@ void MyProject::Startup(void)
 
 void MyProject::Cleanup(void)
 {
+    MaterialGraphEditor::Shutdown();
     // Free up resources in an orderly fashion
     m_TestScene.Shutdown();
     m_Runtime.Shutdown();
