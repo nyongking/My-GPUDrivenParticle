@@ -7,6 +7,7 @@
 #include "TextureConvert.h"
 #include "MaterialGraph.h"
 
+#include <algorithm>
 #include <vector>
 #include <cstdio>
 
@@ -281,6 +282,80 @@ MaterialProgram ParticleMaterial::BuildEffectProgram(Effect effect)
 	}
 }
 
+uint32_t ParticleMaterial::NumEffectTextures(Effect effect)
+{
+	switch (effect)
+	{
+	case Effect::Pattern:    return 1;	// Tex0 = 무늬
+	case Effect::Tint:       return 1;	// Tex0 = 색
+	case Effect::Dissolve:   return 1;	// Tex0 = 마스크
+	case Effect::Distortion: return 2;	// Tex0 = 흐름 노이즈, Tex1 = 밀린 UV 로 읽는 텍스처
+	case Effect::Glow:       return 2;	// Tex0 x Tex1
+	default:                 return 0;
+	}
+}
+
+bool ParticleMaterial::LayoutLayers(const std::vector<Effect>& layers, std::vector<LayerLayout>* out, std::string* error)
+{
+	if (layers.size() > kMaxLayers)
+	{
+		if (error)
+		{
+			*error = "Layer은 " + std::to_string(kMaxLayers) + "개 까지";
+		}
+		return false;
+	}
+
+	std::vector<LayerLayout> layout;
+	uint32_t params = 0;
+	uint32_t textures = 0;
+
+	for (size_t i = 0; i < layers.size(); ++i)
+	{
+		const Effect e = layers[i];
+		const std::string who = std::string("층 ") + std::to_string(i) + " (" + (EffectName(e) ? EffectName(e) : "?") + ")";
+		if (e == Effect::None || e >= Effect::Count)
+		{
+			if (error)	
+				*error = who + ": 효과가 없는 층은 넣을 수 없음";
+			return false;
+		}
+		if (e == Effect::Distortion && i != 0)
+		{
+			if (error)
+				*error = who + ": Distortion 은 베이스 텍스처를 다시 읽으므로 첫 층에만 둘 수 있음";
+			return false;
+		}
+
+		LayerLayout l;
+		l.effect = e;
+		l.paramBase = params;
+		l.paramCount = NumParams(e);
+		l.textureBase = textures;
+		l.textureCount = NumEffectTextures(e);
+		params += l.paramCount;
+		textures += l.textureCount;
+		if (textures > kNumEffectTextures)
+		{
+			if (error)
+				*error = who + ": 효과용 텍스처가 " + std::to_string(kNumEffectTextures) + " 장을 넘음 (지금까지 "
+				+ std::to_string(textures) + " 장)";
+			return false;
+		}
+		if (params > kMaxParams)
+		{
+			if (error)
+				*error = who + ": 값 칸이 " + std::to_string(kMaxParams) + " 개를 넘음 (지금까지 " + std::to_string(params) + " 칸)";
+			return false;
+		}
+		layout.push_back(l);
+	}
+		
+	if (out)
+		*out = layout;
+	return true;
+}
+
 ParticleMaterial::ParticleMaterial()
 {
 	for (uint32_t i = 0; i < kNumTextureSlot; ++i)
@@ -350,19 +425,93 @@ const float4& ParticleMaterial::Param(uint32_t k) const
 void ParticleMaterial::ResetParams()
 {
 	for (uint32_t i = 0; i < kMaxParams; ++i)
-		m_Params[i] = DefaultParam(i, m_Effect);
+		m_Params[i] = DefaultParam(i, Effect::None);
+
+	for (const LayerLayout& l : m_LayerLayouts)
+	{
+		for (uint32_t k = 0; k < l.paramCount; ++k)
+			m_Params[l.paramBase + k] = DefaultParam(k, l.effect);
+	}
 }
 
 void ParticleMaterial::SetEffect(Effect effect)
 {
-	if (effect == m_Effect)
+	if (effect == Effect::None ? m_Layers.empty() : (m_Layers.size() == 1 && m_Layers[0] == effect))
 		return;
-	m_Effect = effect;
 
-	for (uint32_t k = kNumCommonParams; k < kMaxParams; ++k) 
-		m_Params[k] = DefaultParam(k, effect);
+	std::vector<Effect> layers;
+	std::vector<int> from;
+	if (effect != Effect::None)
+	{
+		layers.push_back(effect);
+		from.push_back(m_Layers.empty() ? -1 : 0);
+	}
 
-	RebuildProgram();
+	ApplyLayers(layers, from, true);
+}
+
+bool ParticleMaterial::AddLayer(Effect effect)
+{
+	std::vector<Effect> layers = m_Layers;
+	std::vector<int> from;
+
+	for (size_t i = 0; i < m_Layers.size(); ++i)
+		from.push_back(static_cast<int>(i));
+	layers.push_back(effect);
+
+	from.push_back(-1);
+	return ApplyLayers(layers, from, false);
+}
+
+bool ParticleMaterial::RemoveLayer(uint32_t index)
+{
+	if (index >= m_Layers.size())
+		return false;
+
+	std::vector<Effect> layers;
+	std::vector<int> from;
+	for (size_t i = 0; i < m_Layers.size(); ++i)
+	{
+		if (i == index)
+			continue;
+		layers.push_back(m_Layers[i]);
+		from.push_back(static_cast<int>(i));
+	}
+	return ApplyLayers(layers, from, false);
+}
+
+bool ParticleMaterial::MoveLayer(uint32_t index, int direction)
+{
+	const int to = static_cast<int>(index) + (direction < 0 ? -1 : 1);
+
+	if (index >= m_Layers.size() || to < 0 || to >= static_cast<int>(m_Layers.size()))
+		return false;
+
+	std::vector<Effect> layers = m_Layers;
+	std::vector<int> from;
+	for (size_t i = 0; i < m_Layers.size(); ++i)
+		from.push_back(static_cast<int>(i));
+
+	std::swap(layers[index], layers[to]);
+	std::swap(from[index], from[to]);
+
+	return ApplyLayers(layers, from, false);
+}
+
+bool ParticleMaterial::SetLayerEffect(uint32_t index, Effect effect)
+{
+	if (index >= m_Layers.size())
+		return false;
+	if (m_Layers[index] == effect)
+		return true;
+
+	std::vector<Effect> layers = m_Layers;
+	std::vector<int> from;
+	for (size_t i = 0; i < m_Layers.size(); ++i)
+		from.push_back(static_cast<int>(i));
+	layers[index] = effect;
+
+	return ApplyLayers(layers, from, false);
 }
 
 void ParticleMaterial::SetProgramSource(ProgramSource source)
@@ -371,6 +520,89 @@ void ParticleMaterial::SetProgramSource(ProgramSource source)
 		return;
 	m_ProgramSource = source;
 	RebuildProgram();
+}
+
+bool ParticleMaterial::ApplyLayers(const std::vector<Effect>& layers, const std::vector<int>& from, bool keepTextures)
+{
+	ASSERT(layers.size() == from.size());
+	std::vector<LayerLayout> layout;
+	std::string error;
+
+	if (!LayoutLayers(layers, &layout, &error))
+	{
+		m_LayerError = error;
+		return false;
+	}
+	m_LayerError.clear();
+
+	// 1) 같은 효과면 그대로, 효과가 바뀌면 기본값 (단 앞 kNumCommonParams 칸 = Tex0 타일링 / 스크롤은 유지)
+	float4 params[kMaxParams];
+	for (uint32_t k = 0; k < kMaxParams; ++k)
+		params[k] = DefaultParam(k, Effect::None);
+
+	for (size_t i = 0; i < layout.size(); ++i)
+	{
+		const LayerLayout& n = layout[i];
+		for (uint32_t k = 0; k < n.paramCount; ++k)
+			params[n.paramBase + k] = DefaultParam(k, n.effect);
+
+		if (from[i] < 0)
+			continue;
+		const LayerLayout& o = m_LayerLayouts[from[i]];
+		const uint32_t keep = (o.effect == n.effect) ? n.paramCount : (std::min)(uint32_t(kNumCommonParams), (std::min)(o.paramCount, n.paramCount));
+		for (uint32_t k = 0; k < keep; ++k)
+			params[n.paramBase + k] = m_Params[o.paramBase + k];
+	}
+
+	// 2) 효과용 텍스처 (Tex0 ~ Tex3): 새 슬롯마다 "이전 몇 번 슬롯을 가져오나" 를 정한다 (-1 = 비움)
+	int source[kNumEffectTextures];
+	for (uint32_t t = 0; t < kNumEffectTextures; ++t)
+	{
+		bool owned = false;
+		for (const LayerLayout& o : m_LayerLayouts)
+			owned |= (t >= o.textureBase && t < o.textureBase + o.textureCount);
+		source[t] = (owned && !keepTextures) ? -1 : static_cast<int>(t);
+	}
+
+	for (size_t i = 0; i < layout.size(); ++i)
+	{
+		const LayerLayout& n = layout[i];
+		if (from[i] < 0)
+			continue;
+		const LayerLayout& o = m_LayerLayouts[from[i]];
+		const uint32_t count = (std::min)(o.textureCount, n.textureCount);
+		for (uint32_t t = 0; t < count; ++t)
+			source[n.textureBase + t] = static_cast<int>(o.textureBase + t);
+	}
+
+	MaterialTexture textures[kNumEffectTextures];
+	TextureRef      refs[kNumEffectTextures];
+	bool            taken[kNumEffectTextures] = {};
+
+	for (uint32_t t = 0; t < kNumEffectTextures; ++t)
+	{
+		textures[t] = DefaultTexture();
+		if (source[t] < 0)
+			continue;
+		textures[t] = m_Textures[kTexture0 + source[t]];
+		refs[t] = m_Refs[kTexture0 + source[t]];		// 참조 수가 늘어 아래 Retire 와 상관없이 살아 있다
+		taken[source[t]] = true;
+	}
+	for (uint32_t t = 0; t < kNumEffectTextures; ++t)
+	{
+		if (!taken[t])
+			ParticleTextures::Retire(m_Refs[kTexture0 + t]);
+		m_Textures[kTexture0 + t] = textures[t];
+		m_Refs[kTexture0 + t] = refs[t];
+	}
+
+	for (uint32_t k = 0; k < kMaxParams; ++k)
+		m_Params[k] = params[k];
+	m_Layers = layers;
+	m_LayerLayouts = layout;
+	m_Effect = (layers.size() == 1) ? layers[0] : Effect::None;
+	RebuildProgram();
+	return true;
 }
 
 void ParticleMaterial::RebuildProgram()

@@ -693,6 +693,43 @@ MaterialGraph BuildEffectGraph(ParticleMaterial::Effect effect)
 	}
 }
 
+MaterialGraph BuildLayeredEffectGraph(const std::vector<ParticleMaterial::Effect>& layers)
+{
+	MaterialGraph graph;
+	int previousOutput = -1;
+	uint32_t textureBase = 0;
+
+	for (const ParticleMaterial::Effect effect : layers)
+	{
+		const MaterialGraph layer = BuildEffectGraph(effect);
+		if (layer.output < 0)
+			continue;
+
+		const int offset = static_cast<int>(graph.nodes.size());
+		for (MaterialNode node : layer.nodes)
+		{
+			if (node.type == MaterialNodeType::TextureSample)
+				node.textureSlot += textureBase;
+
+			for (MaterialLink& link : node.inputs)
+			{
+				if (link.node < 0)
+					continue;
+
+				const bool readsBase = (layer.nodes[link.node].type == MaterialNodeType::BaseColor);
+				link.node = (readsBase && previousOutput >= 0) ? previousOutput : link.node + offset;
+			}
+			graph.nodes.push_back(node);
+		}
+
+		previousOutput = layer.output + offset;
+		textureBase += ParticleMaterial::NumEffectTextures(effect);
+	}
+	graph.output = previousOutput;
+
+	return graph;
+}
+
 namespace
 {
 	std::string LinkText(const MaterialLink& l)

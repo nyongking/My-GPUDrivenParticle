@@ -66,6 +66,10 @@ public:
 	const ParticleMaterial& Material() const { return m_Material; }
 	void SetMaterialParam(uint32_t k, const float4& value);
 	void SetMaterialEffect(ParticleMaterial::Effect effect);
+	bool AddMaterialLayer(ParticleMaterial::Effect effect);
+	bool RemoveMaterialLayer(uint32_t index);
+	bool MoveMaterialLayer(uint32_t index, int direction);
+	bool SetMaterialLayerEffect(uint32_t index, ParticleMaterial::Effect effect);
 	void SetMaterialUseVM(bool use);
 	void SetMaterialProgramSource(ParticleMaterial::ProgramSource source);
 

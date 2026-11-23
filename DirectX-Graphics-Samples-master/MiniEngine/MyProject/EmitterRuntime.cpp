@@ -326,6 +326,26 @@ void EmitterRuntime::SetMaterialEffect(ParticleMaterial::Effect effect)
 	m_Material.SetEffect(effect);
 }
 
+bool EmitterRuntime::AddMaterialLayer(ParticleMaterial::Effect effect)
+{
+	return m_Material.AddLayer(effect);
+}
+
+bool EmitterRuntime::RemoveMaterialLayer(uint32_t index)
+{
+	return m_Material.RemoveLayer(index);
+}
+
+bool EmitterRuntime::MoveMaterialLayer(uint32_t index, int direction)
+{
+	return m_Material.MoveLayer(index, direction);
+}
+
+bool EmitterRuntime::SetMaterialLayerEffect(uint32_t index, ParticleMaterial::Effect effect)
+{
+	return m_Material.SetLayerEffect(index, effect);
+}
+
 void EmitterRuntime::SetMaterialUseVM(bool use)
 {
 	m_Material.SetUseVM(use);

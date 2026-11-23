@@ -636,7 +636,8 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 		{
 			const MaterialProgram& program = m_Material->Program();
 			const uint32_t count = (std::min)(uint32_t(program.instrs.size()), uint32_t(MaterialProgram::kMaxInstrs));
-			mp.useVM = m_Material->UseVM() ? 1u : 0u;
+			
+			mp.useVM = m_Material->NeedsVM() ? 1u : 0u;
 			mp.instrCount = count;
 			mp.outputReg = program.outputReg;
 

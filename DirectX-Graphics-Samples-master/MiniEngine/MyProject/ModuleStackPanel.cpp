@@ -322,13 +322,31 @@ namespace
 			runtime.SetSpriteSettings(s);
 	}
 
-	bool DrawMaterialParam(EmitterRuntime& runtime, uint32_t k)
+	std::string LayerParamName(const char* name, uint32_t textureBase)
+	{
+		if (!name)
+			return std::string();
+		std::string out;
+		for (const char* c = name; *c; ++c)
+		{
+			if (c[0] == 'T' && c[1] == 'e' && c[2] == 'x' && c[3] >= '0' && c[3] <= '9')
+			{
+				out += "Tex" + std::to_string(textureBase + uint32_t(c[3] - '0'));
+				c += 3;
+				continue;
+			}
+			out += *c;
+		}
+
+		return out;
+	}
+
+	bool DrawMaterialParam(EmitterRuntime& runtime, uint32_t k, const std::string& name)
 	{
 		float4 v = runtime.Material().Param(k);
-		const char* name = ParticleMaterial::ParamName(k, runtime.Material().GetEffect());
-		char label[64];
-		if (name)
-			snprintf(label, sizeof(label), "[%u] %s", k, name);
+		char label[96];
+		if (!name.empty())
+			snprintf(label, sizeof(label), "[%u] %s", k, name.c_str());
 		else
 			snprintf(label, sizeof(label), "[%u] Param", k);
 
@@ -345,22 +363,84 @@ namespace
 			return;
 
 		{
-			int effect = static_cast<int>(runtime.Material().GetEffect());
-			const char* names[uint32_t(ParticleMaterial::Effect::Count)];
-			for (uint32_t i = 0; i < uint32_t(ParticleMaterial::Effect::Count); ++i)
-				names[i] = ParticleMaterial::EffectName(ParticleMaterial::Effect(i));
-			ImGui::SetNextItemWidth(160.f);
-			if (ImGui::Combo("Effect (temp)", &effect, names, IM_ARRAYSIZE(names)))
-				runtime.SetMaterialEffect(static_cast<ParticleMaterial::Effect>(effect));
-			if (ImGui::IsItemHovered())
-				ImGui::SetTooltip("None: base only\nPattern: color x Tex0.r\nTint: color x Tex0.rgb\nDissolve: Tex0 = mask, progress = ParticleParam0 binding (NormalizedAge)\nDistortion: Tex0 = flow noise, pushes Base (and Tex1), strength = [2].xy\nGlow: Tex0 x Tex1 -> add [4] color\n(Param slots 2+ change meaning per effect)");
+			using Effect = ParticleMaterial::Effect;
+			const uint32_t numEffects = uint32_t(Effect::Count) - 1;		// None 은 층으로 넣지 않는다 (층 없음 = None)
+			const char* names[uint32_t(Effect::Count) - 1];
+			for (uint32_t i = 0; i < numEffects; ++i)
+				names[i] = ParticleMaterial::EffectName(Effect(i + 1));
 
-			ImGui::SameLine();
+			const ParticleMaterial& material = runtime.Material();
+			ImGui::Text("Effect Layers (%u / %u)", uint32_t(material.Layers().size()), ParticleMaterial::kMaxLayers);
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("Applied top to bottom: each layer's result is the next layer's base color.\n"
+					"Coverage (shape alpha) is always the original sprite shape.\n"
+					"Pattern: color x Tex.r / Tint: color x Tex.rgb / Dissolve: Tex = mask, progress = ParticleParam0\n"
+					"Distortion: first layer only (re-reads the base texture) / Glow: Tex x Tex -> add color\n"
+					"Limits: 4 layers, 4 effect textures, 16 param slots");
+
+			for (uint32_t i = 0; i < uint32_t(material.LayerLayouts().size()); ++i)
+			{
+				const ParticleMaterial::LayerLayout l = material.LayerLayouts()[i];	// 복사: 아래에서 층이 바뀌면 목록이 바뀐다
+				bool edited = false;
+				ImGui::PushID(static_cast<int>(i));
+				int effect = static_cast<int>(l.effect) - 1;
+				ImGui::SetNextItemWidth(120.f);
+				if (ImGui::Combo("##effect", &effect, names, static_cast<int>(numEffects)))
+				{
+					runtime.SetMaterialLayerEffect(i, Effect(effect + 1));		// 실패해도(한도) 이유는 LayerError 로 보인다
+					edited = true;
+				}
+				ImGui::SameLine();
+				if (ImGui::ArrowButton("##up", ImGuiDir_Up))
+				{
+					runtime.MoveMaterialLayer(i, -1);		// 실패해도(한도) 이유는 LayerError 로 보인다
+					edited = true;
+				}
+				ImGui::SameLine();
+				if (ImGui::ArrowButton("##down", ImGuiDir_Down))
+				{
+					runtime.MoveMaterialLayer(i, +1);		// 실패해도(한도) 이유는 LayerError 로 보인다
+					edited = true;
+				}
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Remove"))
+				{
+					runtime.RemoveMaterialLayer(i);		// 실패해도(한도) 이유는 LayerError 로 보인다
+					edited = true;
+				}
+				ImGui::SameLine();
+				if (l.textureCount == 0)
+					ImGui::TextDisabled("params [%u ~ %u]", l.paramBase, l.paramBase + l.paramCount - 1);
+				else if (l.textureCount == 1)
+					ImGui::TextDisabled("params [%u ~ %u]  Tex%u", l.paramBase, l.paramBase + l.paramCount - 1, l.textureBase);
+				else
+					ImGui::TextDisabled("params [%u ~ %u]  Tex%u, Tex%u", l.paramBase, l.paramBase + l.paramCount - 1, l.textureBase, l.textureBase + 1);
+				ImGui::PopID();
+				if (edited)
+					break;		// 목록이 바뀌었으니 이번 프레임은 여기까지
+			}
+
+			{
+				static int s_AddEffect = 0;		// 추가할 효과 (UI 상태만)
+				ImGui::SetNextItemWidth(120.f);
+				ImGui::Combo("##addEffect", &s_AddEffect, names, static_cast<int>(numEffects));
+				ImGui::SameLine();
+				if (ImGui::Button("Add Layer"))
+					runtime.AddMaterialLayer(Effect(s_AddEffect + 1));
+			}
+			if (!material.LayerError().empty())
+				ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", material.LayerError().c_str());
+
 			bool useVM = runtime.Material().UseVM();
 			if (ImGui::Checkbox("Run as VM", &useVM))
 				runtime.SetMaterialUseVM(useVM);
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip("Draw the same effect with the material interpreter (MaterialVM.hlsli).\nThe image must not change when toggled.");
+			if (runtime.Material().Layers().size() > 1)
+			{
+				ImGui::SameLine();
+				ImGui::TextDisabled("(2+ layers: always VM + Graph compile)");
+			}
 
 			{
 				static const char* const kSources[] = { "Hand list", "Graph compile" };
@@ -377,7 +457,8 @@ namespace
 
 				if (ImGui::TreeNode("Effect Graph"))
 				{
-					const MaterialGraph graph = BuildEffectGraph(runtime.Material().GetEffect());
+					// [AI step-15] MOD (이전: BuildEffectGraph(runtime.Material().GetEffect()))
+					const MaterialGraph graph = BuildLayeredEffectGraph(runtime.Material().Layers());
 					const MaterialCompileResult compiled = CompileMaterialGraph(graph);
 					const std::string text = DumpMaterialGraph(graph, &compiled);
 					ImGui::TextUnformatted(text.c_str());
@@ -386,10 +467,10 @@ namespace
 			}
 
 			const MaterialProgram& program = runtime.Material().Program();
+
 			uint32_t regs = 0;
 			for (const MaterialInstr& instr : program.instrs)
 				regs = (std::max)(regs, instr.dst + 1);
-
 			if (ImGui::TreeNode("VM Program", "VM Program (%u / %u instrs, %u / %u regs)", uint32_t(program.instrs.size()),
 				MaterialProgram::kMaxInstrs, regs, MaterialProgram::kMaxRegs))
 			{
@@ -399,23 +480,32 @@ namespace
 			}
 		}
 
-
-		const ParticleMaterial::Effect effectNow = runtime.Material().GetEffect();
-		const uint32_t used = ParticleMaterial::NumParams(effectNow);
-		for (uint32_t k = 0; k < used; ++k)
-			DrawMaterialParam(runtime, k);
+		const std::vector<ParticleMaterial::LayerLayout>& layouts = runtime.Material().LayerLayouts();
+		uint32_t used = 0;
+		for (const ParticleMaterial::LayerLayout& l : layouts)
+		{
+			ImGui::TextDisabled("%s", ParticleMaterial::EffectName(l.effect));
+			for (uint32_t k = 0; k < l.paramCount; ++k)
+				DrawMaterialParam(runtime, l.paramBase + k, LayerParamName(ParticleMaterial::ParamName(k, l.effect), l.textureBase));
+			used = l.paramBase + l.paramCount;
+		}
 
 		if (ImGui::TreeNode("Unused", "Unused [%u ~ %u]", used, ParticleMaterial::kMaxParams - 1))
 		{
 			for (uint32_t k = used; k < ParticleMaterial::kMaxParams; ++k)
-				DrawMaterialParam(runtime, k);
+				DrawMaterialParam(runtime, k, std::string());
 			ImGui::TreePop();
 		}
 
 		if (ImGui::SmallButton("Reset Params"))
 		{
 			for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
-				runtime.SetMaterialParam(k, ParticleMaterial::DefaultParam(k, effectNow));
+				runtime.SetMaterialParam(k, ParticleMaterial::DefaultParam(k, ParticleMaterial::Effect::None));
+			for (const ParticleMaterial::LayerLayout& l : layouts)
+			{
+				for (uint32_t k = 0; k < l.paramCount; ++k)
+					runtime.SetMaterialParam(l.paramBase + k, ParticleMaterial::DefaultParam(k, l.effect));
+			}
 		}
 		ImGui::TreePop();
 	}

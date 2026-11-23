@@ -65,5 +65,6 @@ struct MaterialCompileResult
 MaterialCompileResult CompileMaterialGraph(const MaterialGraph& graph);
 
 MaterialGraph BuildEffectGraph(ParticleMaterial::Effect effect);
+MaterialGraph BuildLayeredEffectGraph(const std::vector<ParticleMaterial::Effect>& layers);
 
 std::string DumpMaterialGraph(const MaterialGraph& graph, const MaterialCompileResult* compiled = nullptr);

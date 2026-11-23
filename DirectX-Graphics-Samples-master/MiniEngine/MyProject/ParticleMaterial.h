@@ -98,9 +98,19 @@ public:
 		Count
 	};
 
+	struct LayerLayout
+	{
+		Effect effect = Effect::None;
+		uint32_t paramBase = 0; // 
+		uint32_t paramCount = 0; // 
+		uint32_t textureBase = 0; //
+		uint32_t textureCount = 0; // 
+	};
+
 	static const uint32_t kNumEffectTextures = kNumTextureSlot - kTexture0;
 	static const uint32_t kMaxParams = 16;
 	static const uint32_t kNumCommonParams = 2;
+	static const uint32_t kMaxLayers = 4;
 
 	static const char*		SlotName(uint32_t slot);
 	static MaterialTexture	DefaultTexture();
@@ -113,6 +123,8 @@ public:
 
 	static MaterialProgram	BuildEffectProgram(Effect effect);
 
+	static uint32_t		NumEffectTextures(Effect effect);
+	static bool			LayoutLayers(const std::vector<Effect>& layers, std::vector<LayerLayout>* out, std::string* error);
 
 
 public:
@@ -140,6 +152,15 @@ public:
 	void						SetEffect(Effect effect);
 	Effect						GetEffect() const { return m_Effect; }
 
+	const std::vector<Effect>& Layers() const { return m_Layers; }
+	const std::vector<LayerLayout>& LayerLayouts() const { return m_LayerLayouts; }
+	bool						AddLayer(Effect effect);
+	bool						RemoveLayer(uint32_t index);
+	bool						MoveLayer(uint32_t index, int direction);	// -1 = 위로, +1 = 아래로
+	bool						SetLayerEffect(uint32_t index, Effect effect);
+	const std::string& LayerError() const { return m_LayerError; }
+	bool						NeedsVM() const { return m_UseVM || m_Layers.size() > 1; }
+
 	void						SetUseVM(bool use) { m_UseVM = use; }
 	bool						UseVM() const { return m_UseVM; }
 	const MaterialProgram&		Program() const { return m_Program; }
@@ -150,10 +171,15 @@ public:
 	const std::string&			ProgramError() const { return m_ProgramError; }
 
 private:
+	bool						ApplyLayers(const std::vector<Effect>& layers, const std::vector<int>& from, bool keepTextures);
+	
 	MaterialTexture		m_Textures[kNumTextureSlot];
 	TextureRef			m_Refs[kNumTextureSlot];
 	alignas(16) float4				m_Params[kMaxParams];
 	Effect				m_Effect = Effect::None;
+	std::vector<Effect>			m_Layers;
+	std::vector<LayerLayout>	m_LayerLayouts;
+	std::string					m_LayerError;
 	bool				m_UseVM = false;
 	MaterialProgram		m_Program;
 	ProgramSource		m_ProgramSource = ProgramSource::HandWritten;
