@@ -124,13 +124,57 @@
     }
   ],
   "sprite": {
-    "texture": "Assets/Textures/T_Fire_subUV.PNG",
+    "textures": [
+      {
+        "slot": "Base",
+        "path": "Assets/Textures/T_Fire_subUV.PNG",
+        "colorSpace": "sRGB"
+      },
+      {
+        "slot": "Tex0",
+        "path": "",
+        "colorSpace": "Linear"
+      },
+      {
+        "slot": "Tex1",
+        "path": "",
+        "colorSpace": "Linear"
+      },
+      {
+        "slot": "Tex2",
+        "path": "",
+        "colorSpace": "Linear"
+      },
+      {
+        "slot": "Tex3",
+        "path": "",
+        "colorSpace": "Linear"
+      }
+    ],
+    "materialParams": [
+      [1, 1, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0]
+    ],
     "textureAlpha": "FromLuminance",
     "blend": "Translucent",
     "subImage": [6, 6],
     "subUVBlend": true,
     "facing": "FaceCameraPlane",
-    "alignment": "CustomAlignment",
+    "alignment": "Unaligned",
     "pivot": [0.5, 0.5],
     "cameraOffset": 0,
     "velocityStretch": 0,
@@ -172,6 +216,14 @@
       "SpriteAlignment": {
         "attribute": "Particles.SpriteAlignment",
         "default": [0, 1, 0]
+      },
+      "ParticleParam0": {
+        "attribute": "Particles.NormalizedAge",
+        "default": 0
+      },
+      "ParticleParam1": {
+        "attribute": "",
+        "default": 0
       }
     }
   }

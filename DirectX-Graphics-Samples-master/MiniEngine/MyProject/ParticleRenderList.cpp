@@ -380,7 +380,7 @@ void ParticleRenderList::Render(GraphicsContext& gfx, bool sorted)
 	D3D12_CPU_DESCRIPTOR_HANDLE textures[kMaxTextures];
 	for (uint32_t i = 0; i < kMaxTextures; ++i)
 		textures[i] = (i < m_Textures.size()) ? m_Textures[i] : m_Textures[0];
-	gfx.SetDynamicDescriptors(kDrawTextures, 0, kMaxTextures, textures);
-
-	gfx.DrawIndirect(m_DrawArgs);
+	static_assert(kMaxTextures % 16 == 0, "텍스처 표는 16 칸 단위"); // 16칸 단위를 2번으로 나누어서
+	for (uint32_t i = 0; i < kMaxTextures; i += 16)
+		gfx.SetDynamicDescriptors(kDrawTextures, i, 16, textures + i);
 }

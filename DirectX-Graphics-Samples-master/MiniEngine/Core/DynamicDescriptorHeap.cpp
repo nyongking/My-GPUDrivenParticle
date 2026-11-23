@@ -176,7 +176,7 @@ void DynamicDescriptorHeap::DescriptorHandleCache::CopyAndBindStaleTables(
 
     m_StaleRootParamsBitMap = 0;
 
-    static const uint32_t kMaxDescriptorsPerCopy = 16;
+    static const uint32_t kMaxDescriptorsPerCopy = 64;
     UINT NumDestDescriptorRanges = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE pDestDescriptorRangeStarts[kMaxDescriptorsPerCopy];
     UINT pDestDescriptorRangeSizes[kMaxDescriptorsPerCopy];
@@ -207,6 +207,7 @@ void DynamicDescriptorHeap::DescriptorHandleCache::CopyAndBindStaleTables(
 
             unsigned long DescriptorCount;
             _BitScanForward64(&DescriptorCount, ~SetHandles);
+            ASSERT(DescriptorCount <= kMaxDescriptorsPerCopy, "Descriptor run exceeds kMaxDescriptorsPerCopy");
             SetHandles >>= DescriptorCount;
 
             // If we run out of temp room, copy what we've got so far
