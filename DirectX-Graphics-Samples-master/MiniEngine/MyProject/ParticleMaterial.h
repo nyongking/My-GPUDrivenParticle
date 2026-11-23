@@ -172,6 +172,7 @@ public:
 
 private:
 	bool						ApplyLayers(const std::vector<Effect>& layers, const std::vector<int>& from, bool keepTextures);
+	void						RebuildProgram();
 	
 	MaterialTexture		m_Textures[kNumTextureSlot];
 	TextureRef			m_Refs[kNumTextureSlot];
@@ -184,7 +185,6 @@ private:
 	MaterialProgram		m_Program;
 	ProgramSource		m_ProgramSource = ProgramSource::HandWritten;
 	std::string			m_ProgramError;
-	void				RebuildProgram();
 
 };
 

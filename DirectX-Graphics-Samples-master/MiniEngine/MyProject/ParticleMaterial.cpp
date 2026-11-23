@@ -609,13 +609,12 @@ void ParticleMaterial::RebuildProgram()
 {
 	m_ProgramError.clear();
 
-	if (m_ProgramSource == ProgramSource::HandWritten)
+	if (m_ProgramSource == ProgramSource::HandWritten && m_Layers.size() <= 1)
 	{
 		m_Program = BuildEffectProgram(m_Effect);
 		return;
 	}
-
-	const MaterialCompileResult result = CompileMaterialGraph(BuildEffectGraph(m_Effect));
+	const MaterialCompileResult result = CompileMaterialGraph(BuildLayeredEffectGraph(m_Layers));
 	if (!result.ok)
 	{
 		m_ProgramError = "Graph compile failed: " + result.error;
@@ -628,7 +627,13 @@ void ParticleMaterial::RebuildProgram()
 
 	for (size_t k = 0; k < result.graphParamCount; ++k)
 	{
-		const float4 d = DefaultParam(static_cast<uint32_t>(k), m_Effect);
+		float4 d = DefaultParam(static_cast<uint32_t>(k), Effect::None);
+		for (const LayerLayout& l : m_LayerLayouts)
+		{
+			if (k >= l.paramBase && k < l.paramBase + l.paramCount)
+				d = DefaultParam(static_cast<uint32_t>(k - l.paramBase), l.effect);
+		}
+
 		const float4& p = result.params[k];
 		if (d.x != p.x || d.y != p.y || d.z != p.z || d.w != p.w)
 		{
