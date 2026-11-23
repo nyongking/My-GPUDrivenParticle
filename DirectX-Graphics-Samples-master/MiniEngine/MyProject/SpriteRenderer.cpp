@@ -129,11 +129,11 @@ namespace
 		uint32_t      instrCount;
 		uint32_t      outputReg;
 		uint32_t      _pad;
-		MaterialInstr instrs[MaterialProgram::kMaxInstrs];
 	};
-	static_assert(sizeof(MaterialProgramConstants) == 16 + 32 * MaterialProgram::kMaxInstrs, "HLSL MaterialProgramCB");
+	static_assert(sizeof(MaterialProgramConstants) == 16, "HLSL MaterialProgramCB");
 
-	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kRootMaterialCB, kRootMaterialProgram, kNumRootParams };
+	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kRootMaterialCB, kRootMaterialProgram, kRootMaterialInstrs, kNumRootParams };
+	alignas(16) const MaterialInstr kEmptyInstr = {};
 	static const uint32_t kNumSRVs = 2;
 
 	// 루트 시그니처 / PSO 는 모든 SpriteRenderer 가 같이 쓴다 (한 번만 만든다)
@@ -192,7 +192,7 @@ namespace
 		// Material Cbuffer 설정
 		s_RootSig[kRootMaterialCB].InitAsConstantBuffer(2, D3D12_SHADER_VISIBILITY_PIXEL);
 		s_RootSig[kRootMaterialProgram].InitAsConstantBuffer(3, D3D12_SHADER_VISIBILITY_PIXEL);
-
+		s_RootSig[kRootMaterialInstrs].InitAsBufferSRV(7, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		s_RootSig.Finalize(L"Particle Sprite RootSig");
 
@@ -629,6 +629,9 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 
 	{
 		MaterialProgramConstants mp = {};
+
+		const void* instrData = &kEmptyInstr;
+		size_t      instrBytes = sizeof(MaterialInstr);
 		if (m_Material)
 		{
 			const MaterialProgram& program = m_Material->Program();
@@ -636,10 +639,15 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 			mp.useVM = m_Material->UseVM() ? 1u : 0u;
 			mp.instrCount = count;
 			mp.outputReg = program.outputReg;
+
 			if (count > 0)
-				std::memcpy(mp.instrs, program.instrs.data(), sizeof(MaterialInstr) * count);
+			{
+				instrData = program.instrs.data();
+				instrBytes = sizeof(MaterialInstr) * count;
+			}
 		}
 		gfx.SetDynamicConstantBufferView(kRootMaterialProgram, sizeof(mp), &mp);
+		gfx.SetDynamicSRV(kRootMaterialInstrs, instrBytes, instrData);
 	}
 
 }

@@ -59,6 +59,7 @@ struct MaterialCompileResult
 	uint32_t                 graphParamCount = 0;
 	std::vector<uint32_t>    nodeWidth;
 	std::vector<std::string> notes;
+	uint32_t			regCount = 0; // 실제로 사용한 Reg 칸 수
 };
 
 MaterialCompileResult CompileMaterialGraph(const MaterialGraph& graph);

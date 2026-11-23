@@ -1,6 +1,7 @@
 ﻿#include "pch.h"
 #include "MaterialGraph.h"
 
+#include <algorithm>
 #include <cstdio>
 
 const char* MaterialNodeTypeName(MaterialNodeType type)
@@ -189,7 +190,7 @@ namespace
 			if (outputReg < 0)
 				return Failed(result);
 
-			if (m_Width[m_Graph.output] != 4)
+			if (m_Width[m_Graph.output] != 4) // return은 무조건 Color
 			{
 				Fail("출력 노드 n" + std::to_string(m_Graph.output) + " 는 float4 (색 + 알파) 여야 하는데 "
 					+ WidthName(m_Width[m_Graph.output]) + ". 색과 알파를 Append 로 합쳐 주세요");
@@ -201,13 +202,17 @@ namespace
 			{
 				if (m_RegOf[id] < 0)
 					continue;
+
 				const MaterialNode& n = m_Graph.nodes[id];
 				const uint32_t count = ParamSlotsOf(n.type);
 				if (count == 0)
 					continue;
+
 				if (!ReserveParams(result, count, "노드 n" + std::to_string(id)))
 					return Failed(result);
+
 				slotOf[id] = static_cast<int>(result.params.size());
+
 				for (uint32_t k = 0; k < count; ++k)
 					result.params.push_back(n.values[k]);
 			}
@@ -238,9 +243,15 @@ namespace
 					m_Instrs[k].param = n.textureSlot;
 			}
 
+			uint32_t regCount = 0;
+			const int outputPhys = AllocateRegisters(static_cast<uint32_t>(outputReg), regCount);
+			if (outputPhys < 0)
+				return Failed(result);
+			result.regCount = regCount;
+
 			result.ok = true;
 			result.program.instrs = m_Instrs;
-			result.program.outputReg = static_cast<uint32_t>(outputReg);
+			result.program.outputReg = static_cast<uint32_t>(outputPhys);
 			result.notes = m_Notes;
 			for (size_t id = 0; id < m_Graph.nodes.size(); ++id)
 				result.nodeWidth[id] = (m_RegOf[id] >= 0) ? m_Width[id] : 0u;
@@ -263,6 +274,7 @@ namespace
 			result.params.clear();
 			result.graphParamCount = 0;
 			result.notes.clear();
+			result.regCount = 0;
 			result.nodeWidth.assign(m_Graph.nodes.size(), 0);
 			return result;
 		}
@@ -280,18 +292,76 @@ namespace
 			return "n" + std::to_string(id) + " (" + MaterialNodeTypeName(m_Graph.nodes[id].type) + ")";
 		}
 
-		int Emit(MaterialInstr I, int node, int autoIndex)
+		// Emit시에 
+		int Emit(MaterialInstr I, int node, int autoIndex, uint32_t inputCount)
 		{
 			if (m_Instrs.size() >= MaterialProgram::kMaxInstrs)
 				return Fail("명령어가 " + std::to_string(MaterialProgram::kMaxInstrs) + " 개를 넘음");
-			if (m_Instrs.size() >= MaterialProgram::kMaxRegs)
-				return Fail("칸이 " + std::to_string(MaterialProgram::kMaxRegs) + " 개를 넘음 (칸 재사용은 아직 없음)");
 			I.dst = static_cast<uint32_t>(m_Instrs.size());
 			m_Instrs.push_back(I);
 			m_InstrNode.push_back(node);
 			m_InstrAuto.push_back(autoIndex);
+			m_InstrInputs.push_back(inputCount);
 			return static_cast<int>(I.dst);
+
 		}
+
+		// outputVirtual = 출력 노드의 임시 번호 / 반환 = 출력의 실제 칸, 실패하면 -1
+		int AllocateRegisters(uint32_t outputVirtual, uint32_t& regCount)
+		{
+			const size_t count = m_Instrs.size();
+			const size_t kNever = static_cast<size_t>(-1);
+
+			// 1) 값마다 마지막으로 읽는 명령어
+			std::vector<size_t> lastUse(count, kNever);
+			for (size_t i = 0; i < count; ++i)
+			{
+				const uint32_t src[3] = { m_Instrs[i].srcA, m_Instrs[i].srcB, m_Instrs[i].srcC };
+				for (uint32_t j = 0; j < m_InstrInputs[i]; ++j)
+					lastUse[src[j]] = i;
+			}
+
+			// 2) 앞에서부터 칸 배정
+			std::vector<uint32_t> phys(count, 0);
+			bool busy[MaterialProgram::kMaxRegs] = {};
+			regCount = 0;
+
+			for (size_t i = 0; i < count; ++i)
+			{
+				MaterialInstr& In = m_Instrs[i];
+				uint32_t* src[3] = { &In.srcA, &In.srcB, &In.srcC };
+				uint32_t original[3] = { In.srcA, In.srcB, In.srcC };
+
+				for (uint32_t j = 0; j < 3; ++j)
+					*src[j] = (j < m_InstrInputs[i]) ? phys[original[j]] : 0u;
+
+				for (uint32_t j = 0; j < m_InstrInputs[i]; ++j)
+				{
+					if (lastUse[original[j]] == i && original[j] != outputVirtual)
+						busy[phys[original[j]]] = false;
+				}
+
+				// 결과: 비어 있는 가장 앞 칸
+				uint32_t r = 0;
+				while (r < MaterialProgram::kMaxRegs && busy[r])
+					++r;
+				if (r == MaterialProgram::kMaxRegs)
+				{
+					const std::string who = (m_InstrNode[i] >= 0) ? NodeText(m_InstrNode[i]) : std::string("빈 핀 기본값");
+					Fail("동시에 살아 있는 값이 " + std::to_string(MaterialProgram::kMaxRegs) + " 개를 넘음 (" + who
+						+ "). 앞에서 만든 값을 한참 뒤에서 쓰는 연결이 많으면 이렇게 됩니다");
+					return -1;
+				}
+				phys[i] = r;
+				In.dst = r;
+				regCount = (std::max)(regCount, r + 1);
+
+				// 아무도 안 읽는 값(출력 제외)은 쓰자마자 비운다
+				busy[r] = (lastUse[i] != kNever) || (i == outputVirtual);
+			}
+			return static_cast<int>(phys[outputVirtual]);
+		}
+
 
 		bool DefaultInput(int id, uint32_t pin, InputInfo& out)
 		{
@@ -304,7 +374,7 @@ namespace
 					MaterialInstr I = {};
 					I.op = static_cast<uint32_t>(MaterialOp::QuadUV);
 					I.swz = 0xE4E4E4u;
-					m_AutoQuadUV = Emit(I, -1, -1);
+					m_AutoQuadUV = Emit(I, -1, -1, 0);
 				}
 				reg = m_AutoQuadUV;
 			}
@@ -314,7 +384,7 @@ namespace
 				I.op = static_cast<uint32_t>(MaterialOp::Const);
 				I.swz = 0xE4E4E4u;
 				m_AutoValues.push_back(d.value);
-				reg = Emit(I, -1, static_cast<int>(m_AutoValues.size()) - 1);
+				reg = Emit(I, -1, static_cast<int>(m_AutoValues.size()) - 1, 0);
 			}
 			if (reg < 0)
 				return false;
@@ -400,7 +470,7 @@ namespace
 			const MaterialNode& n = m_Graph.nodes[id];
 			const uint32_t need = MaterialNodeInputCount(n.type);
 			if (n.inputs.size() > need)
-				return Fail(NodeText(id) + ": 입력은 " + std::to_string(need) + " 개까지인데 " + std::to_string(n.inputs.size()) + " 개");
+				return Fail(NodeText(id) + ": 입력은 " + std::to_string(need) + " 개 까지인데 " + std::to_string(n.inputs.size()) + " 개");
 			if (n.type == MaterialNodeType::TextureSample && n.textureSlot >= ParticleMaterial::kNumEffectTextures)
 				return Fail("노드 n" + std::to_string(id) + ": 텍스처 슬롯 " + std::to_string(n.textureSlot) + " 는 없음 (0 ~ 3)");
 
@@ -462,9 +532,11 @@ namespace
 				I.swz = (I.swz & ~(0xFFu << shift)) | (in[k].swz << shift);
 			}
 
-			const int dst = Emit(I, id, -1);
+			const int dst = Emit(I, id, -1, need);
+
 			if (dst < 0)
 				return -1;
+
 			m_RegOf[id] = dst;
 			m_Width[id] = outWidth;
 			return dst;
@@ -476,6 +548,7 @@ namespace
 		std::vector<MaterialInstr>  m_Instrs;
 		std::vector<int>            m_InstrNode;
 		std::vector<int>            m_InstrAuto;
+		std::vector<uint32_t>       m_InstrInputs;
 		std::vector<float4>         m_AutoValues;
 		int                         m_AutoQuadUV = -1;
 		std::vector<std::string>    m_Notes;
@@ -697,6 +770,10 @@ std::string DumpMaterialGraph(const MaterialGraph& graph, const MaterialCompileR
 			out += "compile error: " + compiled->error + "\n";
 		for (const std::string& note : compiled->notes)
 			out += "note: " + note + "\n";
+		if (compiled->ok)
+			out += "instrs " + std::to_string(compiled->program.instrs.size()) + " / " + std::to_string(MaterialProgram::kMaxInstrs)
+			+ ", regs " + std::to_string(compiled->regCount) + " / " + std::to_string(MaterialProgram::kMaxRegs) + "\n";
+
 	}
 	return out;
 }

@@ -13,6 +13,7 @@
 
 Texture2D<float4> SpriteTexture : register(t2); // t0, t1 은 VS (파티클 / 정렬 인덱스)
 Texture2D<float4> MaterialTextures[MAX_MATERIAL_TEXTURES] : register(t3);
+StructuredBuffer<uint4> InstrWords : register(t7); // 4,5,6,7 = texture slot
 
 SamplerState LinearClamp : register(s0);
 SamplerState LinearWrap : register(s1);
@@ -37,8 +38,9 @@ cbuffer MaterialProgramCB : register(b3)
     uint InstrCount; 
     uint OutputReg; // 결과가 든 register
     uint _ProgramPad;
-    uint4 InstrWords[MAX_INSTRS * 2]; // 명령이 들어있는 내용
 }
+
+
 
 struct PSInput
 {

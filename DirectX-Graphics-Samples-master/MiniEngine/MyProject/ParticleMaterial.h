@@ -65,7 +65,7 @@ static_assert(sizeof(MaterialInstr) == 32, "MaterialInstr 32 B");
 
 struct MaterialProgram
 {
-	static const uint32_t kMaxInstrs = 32;
+	static const uint32_t kMaxInstrs = 256;
 	static const uint32_t kMaxRegs = 24;
 
 	std::vector<MaterialInstr>	instrs;

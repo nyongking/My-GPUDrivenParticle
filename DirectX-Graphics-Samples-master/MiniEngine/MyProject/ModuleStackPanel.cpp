@@ -386,7 +386,12 @@ namespace
 			}
 
 			const MaterialProgram& program = runtime.Material().Program();
-			if (ImGui::TreeNode("VM Program", "VM Program (%u instrs)", uint32_t(program.instrs.size())))
+			uint32_t regs = 0;
+			for (const MaterialInstr& instr : program.instrs)
+				regs = (std::max)(regs, instr.dst + 1);
+
+			if (ImGui::TreeNode("VM Program", "VM Program (%u / %u instrs, %u / %u regs)", uint32_t(program.instrs.size()),
+				MaterialProgram::kMaxInstrs, regs, MaterialProgram::kMaxRegs))
 			{
 				const std::string text = DumpMaterialProgram(program);
 				ImGui::TextUnformatted(text.c_str());
