@@ -69,6 +69,7 @@ public:
 	bool AddMaterialLayer(ParticleMaterial::Effect effect);
 	bool RemoveMaterialLayer(uint32_t index);
 	bool MoveMaterialLayer(uint32_t index, int direction);
+	bool SetMaterialLayers(const std::vector<ParticleMaterial::Effect>& layers);
 	bool SetMaterialLayerEffect(uint32_t index, ParticleMaterial::Effect effect);
 	void SetMaterialUseVM(bool use);
 	void SetMaterialProgramSource(ParticleMaterial::ProgramSource source);

@@ -122,8 +122,8 @@ public:
 	static uint32_t		NumParams(Effect effect);
 
 	static MaterialProgram	BuildEffectProgram(Effect effect);
-
 	static uint32_t		NumEffectTextures(Effect effect);
+	static const char*	EffectTextureName(Effect effect, uint32_t local);
 	static bool			LayoutLayers(const std::vector<Effect>& layers, std::vector<LayerLayout>* out, std::string* error);
 
 
@@ -158,6 +158,7 @@ public:
 	bool						RemoveLayer(uint32_t index);
 	bool						MoveLayer(uint32_t index, int direction);	// -1 = 위로, +1 = 아래로
 	bool						SetLayerEffect(uint32_t index, Effect effect);
+	bool						SetLayers(const std::vector<Effect>& layers);
 	const std::string& LayerError() const { return m_LayerError; }
 	bool						NeedsVM() const { return m_UseVM || m_Layers.size() > 1; }
 

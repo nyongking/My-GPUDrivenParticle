@@ -188,6 +188,29 @@ namespace
 		if (changed)
 			runtime.SetMaterialTexture(slot, t);
 
+		// 이 슬롯을 어떤 효과가 쓰는가?
+		if (slot >= ParticleMaterial::kTexture0)
+		{
+			const uint32_t effectSlot = slot - ParticleMaterial::kTexture0;
+			const ParticleMaterial::LayerLayout* owner = nullptr;
+			for (const ParticleMaterial::LayerLayout& l : runtime.Material().LayerLayouts())
+			{
+				if (effectSlot >= l.textureBase && effectSlot < l.textureBase + l.textureCount)
+					owner = &l;
+			}
+			ImGui::SameLine();
+			if (owner == nullptr)
+				ImGui::TextDisabled("(no layer)");
+			else
+			{
+				const char* use = ParticleMaterial::EffectTextureName(owner->effect, effectSlot - owner->textureBase);
+				if (t.path.empty())		// 비어 있으면 흰색이라 그 층 효과가 티 없이 사라진다
+					ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "<- %s %s (empty: white)", ParticleMaterial::EffectName(owner->effect), use ? use : "");
+				else
+					ImGui::TextDisabled("<- %s %s", ParticleMaterial::EffectName(owner->effect), use ? use : "");
+			}
+		}
+
 		ImGui::PopID();
 	}
 
@@ -415,6 +438,15 @@ namespace
 					ImGui::TextDisabled("params [%u ~ %u]  Tex%u", l.paramBase, l.paramBase + l.paramCount - 1, l.textureBase);
 				else
 					ImGui::TextDisabled("params [%u ~ %u]  Tex%u, Tex%u", l.paramBase, l.paramBase + l.paramCount - 1, l.textureBase, l.textureBase + 1);
+				
+				for (uint32_t t = 0; t < l.textureCount; ++t)
+				{
+					if (!material.SlotTexture(ParticleMaterial::kTexture0 + l.textureBase + t).path.empty())
+						continue;
+					ImGui::SameLine();
+					ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Tex%u empty", l.textureBase + t);
+				}
+				
 				ImGui::PopID();
 				if (edited)
 					break;		// 목록이 바뀌었으니 이번 프레임은 여기까지
@@ -457,7 +489,6 @@ namespace
 
 				if (ImGui::TreeNode("Effect Graph"))
 				{
-					// [AI step-15] MOD (이전: BuildEffectGraph(runtime.Material().GetEffect()))
 					const MaterialGraph graph = BuildLayeredEffectGraph(runtime.Material().Layers());
 					const MaterialCompileResult compiled = CompileMaterialGraph(graph);
 					const std::string text = DumpMaterialGraph(graph, &compiled);

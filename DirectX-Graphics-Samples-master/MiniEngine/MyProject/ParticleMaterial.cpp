@@ -295,6 +295,19 @@ uint32_t ParticleMaterial::NumEffectTextures(Effect effect)
 	}
 }
 
+const char* ParticleMaterial::EffectTextureName(Effect effect, uint32_t local)
+{
+	switch (effect)
+	{
+	case Effect::Pattern:    return local == 0 ? "pattern" : nullptr;
+	case Effect::Tint:       return local == 0 ? "color" : nullptr;
+	case Effect::Dissolve:   return local == 0 ? "mask" : nullptr;
+	case Effect::Distortion: return local == 0 ? "flow noise" : (local == 1 ? "distorted" : nullptr);
+	case Effect::Glow:       return local == 0 ? "glow A" : (local == 1 ? "glow B" : nullptr);
+	default:                 return nullptr;
+	}
+}
+
 bool ParticleMaterial::LayoutLayers(const std::vector<Effect>& layers, std::vector<LayerLayout>* out, std::string* error)
 {
 	if (layers.size() > kMaxLayers)
@@ -514,6 +527,15 @@ bool ParticleMaterial::SetLayerEffect(uint32_t index, Effect effect)
 	return ApplyLayers(layers, from, false);
 }
 
+bool ParticleMaterial::SetLayers(const std::vector<Effect>& layers)
+{
+	if (layers == m_Layers)
+		return true;
+	const std::vector<int> from(layers.size(), -1);
+
+	return ApplyLayers(layers, from, true);
+}
+
 void ParticleMaterial::SetProgramSource(ProgramSource source)
 {
 	if (source == m_ProgramSource)
@@ -614,6 +636,7 @@ void ParticleMaterial::RebuildProgram()
 		m_Program = BuildEffectProgram(m_Effect);
 		return;
 	}
+
 	const MaterialCompileResult result = CompileMaterialGraph(BuildLayeredEffectGraph(m_Layers));
 	if (!result.ok)
 	{
@@ -627,6 +650,7 @@ void ParticleMaterial::RebuildProgram()
 
 	for (size_t k = 0; k < result.graphParamCount; ++k)
 	{
+
 		float4 d = DefaultParam(static_cast<uint32_t>(k), Effect::None);
 		for (const LayerLayout& l : m_LayerLayouts)
 		{

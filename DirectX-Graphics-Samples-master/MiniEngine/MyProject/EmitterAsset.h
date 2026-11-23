@@ -27,6 +27,8 @@ struct EmitterAsset
 	
 	MaterialTexture			textures[ParticleMaterial::kNumTextureSlot];
 	float4					materialParams[ParticleMaterial::kMaxParams];	// PS Param(k). 파일에 없으면 DefaultParam
+	std::vector<ParticleMaterial::Effect>	materialLayers;
+
 	SpriteSettings          settings;
 
 	EmitterAsset();

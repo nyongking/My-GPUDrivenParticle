@@ -341,6 +341,11 @@ bool EmitterRuntime::MoveMaterialLayer(uint32_t index, int direction)
 	return m_Material.MoveLayer(index, direction);
 }
 
+bool EmitterRuntime::SetMaterialLayers(const std::vector<ParticleMaterial::Effect>& layers)
+{
+	return m_Material.SetLayers(layers);
+}
+
 bool EmitterRuntime::SetMaterialLayerEffect(uint32_t index, ParticleMaterial::Effect effect)
 {
 	return m_Material.SetLayerEffect(index, effect);

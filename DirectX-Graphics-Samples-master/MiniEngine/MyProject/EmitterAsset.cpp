@@ -355,6 +355,15 @@ namespace
 		for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
 			runtime.SetMaterialParam(k, asset.materialParams[k]);
 	}
+
+	void ApplyMaterialLayers(EmitterRuntime& runtime, const EmitterAsset& asset)
+	{
+		if (!runtime.SetMaterialLayers(asset.materialLayers))
+		{
+			Utility::Printf("[EmitterAsset] '%s': material layers rejected (%s) -> no effect\n", asset.name.c_str(),
+				runtime.Material().LayerError().c_str());
+		}
+	}
 }
 
 // ------------------------------------------------------------------ 캡처 / 적용
@@ -372,7 +381,7 @@ EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::strin
 		a.textures[i] = runtime.Material().SlotTexture(i);
 	for (uint32_t i = 0; i < ParticleMaterial::kMaxParams; ++i)
 		a.materialParams[i] = runtime.Material().Param(i);
-
+	a.materialLayers = runtime.Material().Layers();
 	a.settings = runtime.GetSpriteSettings();
 	return a;
 }
@@ -381,6 +390,7 @@ bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset, std::
 {
 	runtime.ReplaceDescription(asset.modules, asset.sprite, asset.capacity, asset.backend);
 	runtime.SetSpriteSettings(asset.settings);
+	ApplyMaterialLayers(runtime, asset);
 	ApplyMaterialParams(runtime, asset);
 	return ApplyTextures(runtime, asset, failedTextures);
 }
@@ -397,6 +407,7 @@ bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& ass
 
 	// 둘 다 재시작이 필요 없는 값이라 시작한 뒤에 넣는다
 	runtime.SetSpriteSettings(asset.settings);
+	ApplyMaterialLayers(runtime, asset);
 	ApplyMaterialParams(runtime, asset);
 
 	std::vector<std::string> failed;
@@ -450,6 +461,12 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
 	for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
 		params.Push(EncodeValue(&Types::Float4, reinterpret_cast<const uint8_t*>(&a.materialParams[k])));
 	sprite.Set("materialParams", std::move(params));
+	
+	JsonValue layers = JsonValue::MakeArray();
+	for (const ParticleMaterial::Effect effect : a.materialLayers)
+		layers.Push(JsonValue(ParticleMaterial::EffectName(effect)));
+	sprite.Set("materialLayers", std::move(layers));
+
 	sprite.Set("textureAlpha", JsonValue(kTextureAlphaNames[(std::min)(uint32_t(s.textureAlpha), uint32_t(SpriteTextureAlpha::Count) - 1)]));
 	sprite.Set("blend", JsonValue(kBlendNames[(std::min)(uint32_t(s.blend), 1u)]));
 	JsonValue grid = JsonValue::MakeArray();
@@ -614,6 +631,37 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 			}
 			else
 				warnings.push_back("sprite.materialParams: expected an array -> kept default");
+		}
+
+		if (const JsonValue* layers = sprite->Find("materialLayers"))
+		{
+			if (layers->IsArray())
+			{
+				std::vector<ParticleMaterial::Effect> list;
+				for (size_t i = 0; i < layers->Size(); ++i)
+				{
+					const std::string& name = layers->At(i).AsString();
+					bool found = false;
+					for (uint32_t k = 1; k < uint32_t(ParticleMaterial::Effect::Count); ++k)
+					{
+						if (name == ParticleMaterial::EffectName(ParticleMaterial::Effect(k)))
+						{
+							list.push_back(ParticleMaterial::Effect(k));
+							found = true;
+							break;
+						}
+					}
+					if (!found)
+						warnings.push_back("sprite.materialLayers[" + std::to_string(i) + "]: unknown effect '" + name + "' -> layer skipped");
+				}
+				std::string layerError;
+				if (ParticleMaterial::LayoutLayers(list, nullptr, &layerError))
+					a.materialLayers = list;
+				else
+					warnings.push_back("sprite.materialLayers: " + layerError + " -> no layers");
+			}
+			else
+				warnings.push_back("sprite.materialLayers: expected an array -> no layers");
 		}
 
 		if (EnumFromName(sprite->Find("textureAlpha"), kTextureAlphaNames, e, "textureAlpha", warnings))
