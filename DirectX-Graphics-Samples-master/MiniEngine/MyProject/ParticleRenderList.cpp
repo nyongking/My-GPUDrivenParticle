@@ -383,4 +383,6 @@ void ParticleRenderList::Render(GraphicsContext& gfx, bool sorted)
 	static_assert(kMaxTextures % 16 == 0, "텍스처 표는 16 칸 단위"); // 16칸 단위를 2번으로 나누어서
 	for (uint32_t i = 0; i < kMaxTextures; i += 16)
 		gfx.SetDynamicDescriptors(kDrawTextures, i, 16, textures + i);
+
+	gfx.DrawIndirect(m_DrawArgs);
 }
