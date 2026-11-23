@@ -48,6 +48,8 @@ bool         InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAs
 // 문자열 단위. 실패(파일 형식 / 모르는 모듈)면 out 은 그대로, 고칠 수 있는 문제는 warnings 에 남기고 계속
 std::string EmitterAssetToJson(const EmitterAsset& asset);
 bool        EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings);
+JsonValue   EmitterAssetToJsonValue(const EmitterAsset& asset);
+bool        EmitterAssetFromJsonValue(const JsonValue& json, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings);
 
 // 파일 단위. 저장은 임시 파일에 쓴 뒤 교체한다 (쓰다가 실패해도 기존 파일이 남음)
 bool SaveEmitterAsset(const std::string& path, const EmitterAsset& asset, std::string& error);
@@ -58,3 +60,7 @@ const char*              EmitterAssetExtension();          // ".emitter.json"
 std::string              EmitterAssetPath(const std::string& name);
 bool                     IsValidEmitterAssetName(const std::string& name);   // 영문 / 숫자 / _ - . 만
 std::vector<std::string> ListEmitterAssets();              // 폴더 안의 에셋 이름 (확장자 제외, 정렬)
+
+bool                     WriteAssetTextFile(const std::string& path, const std::string& text, std::string& error);
+bool                     ReadAssetTextFile(const std::string& path, std::string& text, std::string& error);
+std::vector<std::string> ListAssetFiles(const std::string& directory, const std::string& extension);

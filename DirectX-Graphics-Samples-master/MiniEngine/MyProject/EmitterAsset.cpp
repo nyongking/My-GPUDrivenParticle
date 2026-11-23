@@ -433,7 +433,7 @@ bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& ass
 
 // ------------------------------------------------------------------ JSON
 
-std::string EmitterAssetToJson(const EmitterAsset& a)
+JsonValue EmitterAssetToJsonValue(const EmitterAsset& a)
 {
 	JsonValue root = JsonValue::MakeObject();
 	root.Set("format", JsonValue(kFormat));
@@ -508,7 +508,12 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
 	sprite.Set("bindings", std::move(bindings));
 	root.Set("sprite", std::move(sprite));
 
-	return WriteJson(root);
+	return root;
+}
+
+std::string EmitterAssetToJson(const EmitterAsset& a)
+{
+	return WriteJson(EmitterAssetToJsonValue(a));
 }
 
 bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings)
@@ -516,6 +521,11 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 	JsonValue root;
 	if (!ParseJson(text, root, error))
 		return false;
+	return EmitterAssetFromJsonValue(root, out, error, warnings);
+}
+
+bool EmitterAssetFromJsonValue(const JsonValue& root, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings)
+{
 	if (!root.IsObject())
 	{
 		error = "root is not an object";
@@ -758,7 +768,7 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 
 // ------------------------------------------------------------------ 파일
 
-bool SaveEmitterAsset(const std::string& path, const EmitterAsset& asset, std::string& error)
+bool WriteAssetTextFile(const std::string& path, const std::string& text, std::string& error)
 {
 	const size_t slash = path.find_last_of("/\\");
 	if (slash != std::string::npos)
@@ -772,7 +782,7 @@ bool SaveEmitterAsset(const std::string& path, const EmitterAsset& asset, std::s
 			error = "cannot open " + temp + " for writing";
 			return false;
 		}
-		file << EmitterAssetToJson(asset);
+		file << text;
 		file.flush();
 		if (!file)
 		{
@@ -790,7 +800,12 @@ bool SaveEmitterAsset(const std::string& path, const EmitterAsset& asset, std::s
 	return true;
 }
 
-bool LoadEmitterAsset(const std::string& path, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings)
+bool SaveEmitterAsset(const std::string& path, const EmitterAsset& asset, std::string& error)
+{
+	return WriteAssetTextFile(path, EmitterAssetToJson(asset), error);
+}
+
+bool ReadAssetTextFile(const std::string& path, std::string& text, std::string& error)
 {
 	std::ifstream file(path, std::ios::in | std::ios::binary);
 	if (!file)
@@ -800,9 +815,17 @@ bool LoadEmitterAsset(const std::string& path, EmitterAsset& out, std::string& e
 	}
 	std::ostringstream ss;
 	ss << file.rdbuf();
-	std::string text = ss.str();
+	text = ss.str();
 	if (text.size() >= 3 && text.compare(0, 3, "\xEF\xBB\xBF") == 0)
 		text.erase(0, 3);   // 메모장 등이 붙인 BOM
+	return true;
+}
+
+bool LoadEmitterAsset(const std::string& path, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings)
+{
+	std::string text;
+	if (!ReadAssetTextFile(path, text, error))
+		return false;
 
 	return EmitterAssetFromJson(text, out, error, warnings);
 }
@@ -831,11 +854,16 @@ bool IsValidEmitterAssetName(const std::string& name)
 
 std::vector<std::string> ListEmitterAssets()
 {
+	return ListAssetFiles(kDirectory, kExtension);
+}
+
+std::vector<std::string> ListAssetFiles(const std::string& directory, const std::string& extension)
+{
 	std::vector<std::string> names;
-	const std::string ext = kExtension;
+	const std::string ext = extension;
 
 	WIN32_FIND_DATAA fd;
-	HANDLE h = FindFirstFileA((std::string(kDirectory) + "*" + ext).c_str(), &fd);
+	HANDLE h = FindFirstFileA((directory + "*" + ext).c_str(), &fd);
 	if (h == INVALID_HANDLE_VALUE)
 		return names;
 	do

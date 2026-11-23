@@ -36,6 +36,7 @@
 
 #include "ModuleStackPanel.h"
 #include "MaterialGraphEditor.h"
+#include "EffectSystem.h"
 #include "EmitterAsset.h"
 #include <algorithm>
 #include <cmath>
@@ -81,7 +82,8 @@ private:
     std::unique_ptr<CameraController> m_CameraController;
 
     // -----------
-    EmitterRuntime  m_Runtime;
+    EffectSystem    m_System;
+    int             m_SelectedEmitter = 0;
     float3          m_EmitterPos = { 0.f, 0.f, 0.f };
 
     // ----------- 소유자 변환 (엔진 값 LocalToWorld / Velocity 확인)
@@ -178,7 +180,7 @@ void MyProject::Cleanup(void)
     MaterialGraphEditor::Shutdown();
     // Free up resources in an orderly fashion
     m_TestScene.Shutdown();
-    m_Runtime.Shutdown();
+    m_System.Shutdown();
     CurveLibrary::Shutdown();       // 이미터가 다 내려간 뒤 (Shutdown 이 GPU 를 기다린다)
     ParticleTextures::Shutdown();
 
@@ -199,7 +201,7 @@ void MyProject::Update(float deltaT)
     // Update something
     m_CameraController->Update(deltaT);
 
-    m_Runtime.ApplyPending();     // UI 가 지난 프레임에 남긴 변경을 Tick 전에 적용
+    m_System.ApplyPending();
 
     // 타임 스톱: 시뮬레이션 / 소유자 시간을 0 으로 (Tick 은 그대로 돌려 펜스 / 버퍼 흐름 유지). Step 은 한 프레임만 진행
     const bool  advance = !m_TimeStop || m_StepOnce;
@@ -230,14 +232,14 @@ void MyProject::Update(float deltaT)
         if (m_UseTestScene)
             m_TestScene.Tick(simCtx, simDt);
         else
-            m_Runtime.Tick(simCtx, simDt, owner);
+            m_System.Tick(simCtx, simDt, owner);
 
         const uint64_t fence = simCtx.Finish();
 
         if (m_UseTestScene)
             m_TestScene.OnSubmitted(fence);
         else
-            m_Runtime.OnSubmitted(fence);
+            m_System.OnSubmitted(fence);
 
         m_LastSimStats = GpuEmitterInstance::FrameStats();
     }
@@ -270,7 +272,7 @@ void MyProject::RenderScene(void)
     if (m_UseTestScene)
         m_TestScene.Render(gfxContext, m_Camera);
     else
-        m_Runtime.Render(gfxContext, m_Camera);
+        m_System.Render(gfxContext, m_Camera);
 
     // Finish
     gfxContext.Finish();
@@ -296,10 +298,14 @@ void MyProject::InitializeEmitter()
         SubUVAnimation(0.f, 63.f)      // 수명 동안 0~63 프레임 (T_Smoke_SubUV = 8x8)
     };
 
-    if (!m_Runtime.Initialize(modules, 10'000, EmitterBackend::Gpu))
-        Utility::Print(m_Runtime.LastError().c_str());
+    m_SelectedEmitter = m_System.AddEmitter("Emitter", modules, 10'000, EmitterBackend::Gpu);
+    if (m_SelectedEmitter < 0)
+    {
+        Utility::Print(m_System.LastError().c_str());
+        return;
+    }
 
-    Utility::Print(DescribeUber(m_Runtime.Uber()).c_str());
+    Utility::Print(DescribeUber(m_System.At(0).runtime->Uber()).c_str());
 }
 
 void MyProject::UpdateImGui(float deltaT)
@@ -326,7 +332,17 @@ void MyProject::UpdateImGui(float deltaT)
     ImGui::Checkbox("Move up/down (velocity)", &m_MoveOwner);
 
     if (!m_UseTestScene)
-        DrawModuleStackPanel(m_Runtime);
+    {
+        DrawSystemPanel(m_System, m_SelectedEmitter);
+        if (m_SelectedEmitter >= 0 && m_SelectedEmitter < static_cast<int>(m_System.Count()))
+        {
+            EffectSystem::Emitter& selected = m_System.At(static_cast<size_t>(m_SelectedEmitter));
+            ImGui::SeparatorText(("Emitter: " + selected.name).c_str());
+            ImGui::PushID(selected.runtime.get());
+            DrawModuleStackPanel(*selected.runtime);
+            ImGui::PopID();
+        }
+    }
 
     UpdateTestSceneImGui();
 
@@ -608,14 +624,14 @@ void MyProject::TickRecorder()
     if (m_CsvPending && m_CsvRetryWait > 0 && --m_CsvRetryWait == 0)
         SaveCsvRow(m_PendingCsv);
 
-    const uint32_t alive = m_UseTestScene ? m_TestScene.AliveTotal() : m_Runtime.AliveCount();
+    const uint32_t alive = m_UseTestScene ? m_TestScene.AliveTotal() : m_System.AliveTotal();
     if (!m_Recorder.Tick(alive))
         return;
 
     // 기록이 끝난 프레임: 조건과 함께 CSV 한 줄
     const EmitterGpuProgram::Stats& ps = EmitterGpuProgram::GetStats();
-    const uint32_t emitters = m_UseTestScene ? m_TestScene.Count() : 1u;
-    const uint32_t capacity = m_UseTestScene ? m_TestScene.CapacityTotal() : m_Runtime.Capacity();
+    const uint32_t emitters = m_UseTestScene ? m_TestScene.Count() : uint32_t(m_System.Count());
+    const uint32_t capacity = m_UseTestScene ? m_TestScene.CapacityTotal() : m_System.CapacityTotal();
     const GpuSimFrameStats& fs = m_LastSimStats;
     const bool anyGenerated = fs.emitters > fs.uberEmitters;
     const uint32_t psoCount = (fs.uberEmitters > 0 ? UberGpuProgram::kNumPSOs : 0u)
@@ -625,7 +641,7 @@ void MyProject::TickRecorder()
     const std::string header = "emitters,capPerEmitter,spawnRate,fixedDt,psoCount,psoChanges,dispatches,setupMs,shaderBuildMs";
     // 에셋 capacity 를 쓰면 이미터마다 다를 수 있어서 평균을 남긴다
     const EmitterTestScene::Settings& applied = m_TestScene.AppliedSettings();
-    const uint32_t capPerEmitter = !m_UseTestScene ? m_Runtime.Capacity()
+    const uint32_t capPerEmitter = !m_UseTestScene ? m_System.CapacityTotal() / (std::max)(uint32_t(m_System.Count()), 1u)
         : (!applied.assets.empty() && applied.assetCapacity) ? m_TestScene.CapacityTotal() / (std::max)(m_TestScene.Count(), 1u)
         : applied.capacityPerEmitter;
 

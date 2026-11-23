@@ -34,3 +34,8 @@ float4x4 MakeLocalToWorld(const OwnerTransform& t);
 
 // (지금 위치 - 지난 위치) / 실제 dt. 첫 프레임(prev == nullptr) 이나 dt <= 0 이면 0
 float3   ComputeOwnerVelocity(const float3& now, const float3* prev, float deltaTime);
+
+OwnerTransform ComposeOwnerTransform(const OwnerTransform& parent, const OwnerTransform& child);
+
+float4 QuatFromEulerDegrees(const float3& degrees);
+float3 EulerDegreesFromQuat(const float4& q);

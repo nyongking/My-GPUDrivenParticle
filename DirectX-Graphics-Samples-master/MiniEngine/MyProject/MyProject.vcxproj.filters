@@ -165,6 +165,9 @@
     <ClCompile Include="MaterialGraphEditor.cpp">
       <Filter>Particle\Material</Filter>
     </ClCompile>
+    <ClCompile Include="EffectSystem.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
     <ClCompile Include="..\ThirdParty\imnodes\imnodes.cpp">
       <Filter>Particle\Material</Filter>
     </ClCompile>
@@ -290,6 +293,9 @@
     </ClInclude>
     <ClInclude Include="MaterialGraphEditor.h">
       <Filter>Particle\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="EffectSystem.h">
+      <Filter>Particle\Emitter</Filter>
     </ClInclude>
     <ClInclude Include="..\ThirdParty\imnodes\imnodes.h">
       <Filter>Particle\Material</Filter>

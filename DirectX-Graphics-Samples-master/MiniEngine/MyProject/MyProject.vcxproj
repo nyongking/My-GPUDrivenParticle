@@ -81,6 +81,7 @@
     <ClInclude Include="ParticleMaterial.h" />
     <ClInclude Include="MaterialGraph.h" />
     <ClInclude Include="MaterialGraphEditor.h" />
+    <ClInclude Include="EffectSystem.h" />
     <ClInclude Include="..\ThirdParty\imnodes\imnodes.h" />
     <ClInclude Include="..\ThirdParty\imnodes\imnodes_internal.h" />
     <ClInclude Include="ParticleNamespace.h" />
@@ -126,6 +127,7 @@
     <ClCompile Include="ParticleMaterial.cpp" />
     <ClCompile Include="MaterialGraph.cpp" />
     <ClCompile Include="MaterialGraphEditor.cpp" />
+    <ClCompile Include="EffectSystem.cpp" />
     <ClCompile Include="..\ThirdParty\imnodes\imnodes.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>

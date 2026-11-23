@@ -2,6 +2,8 @@
 #include "ModuleStackPanel.h"
 
 #include "EmitterAsset.h"
+#include "EffectSystem.h"
+#include "EmitterTestScene.h"
 #include "EmitterRuntime.h"
 #include "MaterialGraph.h"
 #include "MaterialGraphEditor.h"
@@ -438,7 +440,8 @@ namespace
 			ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "drawing with the last good program");
 
 		const MaterialCompileResult compiled = CompileMaterialGraph(graph);
-		const uint32_t change = MaterialGraphEditor::Draw(editable ? "edit" : "view", graph, compiled, editable);
+		const std::string editorId = std::string(editable ? "edit#" : "view#") + std::to_string(reinterpret_cast<uintptr_t>(&runtime));
+		const uint32_t change = MaterialGraphEditor::Draw(editorId.c_str(), graph, compiled, editable);
 		if (editable && (change & MaterialGraphEditor::kGraph))
 			runtime.SetMaterialGraph(graph);
 		else if (editable && (change & MaterialGraphEditor::kLayout))
@@ -1046,4 +1049,252 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 
 	if (s_ShowGraphEditor)
 		DrawMaterialGraphWindow(runtime);
+}
+
+namespace
+{
+	struct SystemPanelState
+	{
+		char                     name[65] = "NewSystem";
+		std::string              status;
+		bool                     statusIsError = false;
+		std::vector<std::string> warnings;
+		const EmitterRuntime*    owner = nullptr;
+		char                     rename[65] = "";
+		float3                   eulerDeg = { 0.f, 0.f, 0.f };
+	};
+
+	SystemPanelState& SystemState()
+	{
+		static SystemPanelState s_State;
+		return s_State;
+	}
+
+	void SetSystemStatus(const std::string& status, bool isError)
+	{
+		SystemPanelState& st = SystemState();
+		st.status = status;
+		st.statusIsError = isError;
+	}
+
+	std::vector<ModuleDesc> DefaultEmitterModules()
+	{
+		return MakePreset(EmitterPreset::Basic, 50.f);
+	}
+
+	void SaveSystem(EffectSystem& system, const std::string& name)
+	{
+		SystemPanelState& st = SystemState();
+		st.warnings.clear();
+		std::string error;
+		const std::string path = SystemAssetPath(name);
+		if (SaveSystemAsset(path, system.Capture(name), error))
+			SetSystemStatus("Saved " + path + " (" + std::to_string(system.Count()) + " emitters)", false);
+		else
+			SetSystemStatus("Save failed: " + error, true);
+	}
+
+	void LoadSystem(EffectSystem& system, int& selected, const std::string& name)
+	{
+		SystemPanelState& st = SystemState();
+		st.warnings.clear();
+		SystemAsset asset;
+		std::string error;
+		if (!LoadSystemAsset(SystemAssetPath(name), asset, error, st.warnings))
+		{
+			SetSystemStatus("Load failed: " + error, true);
+			return;
+		}
+		std::vector<std::string> failures;
+		system.Load(asset, &failures);
+		for (const std::string& f : failures)
+			st.warnings.push_back(f);
+		selected = system.Count() > 0 ? 0 : -1;
+		snprintf(st.name, sizeof(st.name), "%s", name.c_str());
+		SetSystemStatus("Loaded " + name + " (" + std::to_string(system.Count()) + " emitters)", false);
+	}
+}
+
+void DrawSystemPanel(EffectSystem& system, int& selected)
+{
+	SystemPanelState& st = SystemState();
+	ImGui::SeparatorText("Effect System");
+
+	ImGui::SetNextItemWidth(200.f);
+	ImGui::InputText("##systemName", st.name, sizeof(st.name));
+	const std::string name = st.name;
+	ImGui::SameLine();
+	if (ImGui::Button("Save##system"))
+	{
+		if (!IsValidEmitterAssetName(name))
+			SetSystemStatus("Invalid name (use A-Z a-z 0-9 _ - .)", true);
+		else if (GetFileAttributesA(SystemAssetPath(name).c_str()) != INVALID_FILE_ATTRIBUTES)
+			ImGui::OpenPopup("Overwrite system?");
+		else
+			SaveSystem(system, name);
+	}
+	if (ImGui::BeginPopupModal("Overwrite system?", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+	{
+		ImGui::Text("%s already exists. Overwrite?", SystemAssetPath(name).c_str());
+		if (ImGui::Button("Overwrite"))
+		{
+			SaveSystem(system, name);
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel"))
+			ImGui::CloseCurrentPopup();
+		ImGui::EndPopup();
+	}
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(160.f);
+	if (ImGui::BeginCombo("##loadSystem", "Load..."))
+	{
+		const std::vector<std::string> systems = ListSystemAssets();
+		if (systems.empty())
+			ImGui::TextDisabled("(no files in %s)", SystemAssetDirectory());
+		for (const std::string& s : systems)
+			if (ImGui::Selectable(s.c_str()))
+				LoadSystem(system, selected, s);
+		ImGui::EndCombo();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("New##system"))
+	{
+		system.Clear();
+		selected = system.AddEmitter("Emitter", DefaultEmitterModules(), 10'000, EmitterBackend::Gpu);
+		snprintf(st.name, sizeof(st.name), "NewSystem");
+		SetSystemStatus("New system", false);
+	}
+
+	if (!st.status.empty())
+	{
+		const ImVec4 color = st.statusIsError ? ImVec4(1.f, 0.3f, 0.3f, 1.f) : ImVec4(0.5f, 1.f, 0.5f, 1.f);
+		ImGui::TextColored(color, "%s", st.status.c_str());
+	}
+	for (const std::string& w : st.warnings)
+		ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f), "%s", w.c_str());
+
+	ImGui::Text("Alive : %u / %u  (%u emitters)", system.AliveTotal(), system.CapacityTotal(), uint32_t(system.Count()));
+	if (system.Count() > 1)
+	{
+		bool sortTogether = system.GlobalSort();
+		if (ImGui::Checkbox("Sort emitters together", &sortTogether))
+			system.SetGlobalSort(sortTogether);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("On: all emitters' particles are depth-sorted in one list and drawn in one draw call\n(smoke in front of fire stays correct between emitters).\nOff: each emitter sorts and draws on its own, in list order.");
+	}
+
+	int moveIndex = -1, moveDirection = 0, removeIndex = -1, duplicateIndex = -1;
+	for (size_t i = 0; i < system.Count(); ++i)
+	{
+		EffectSystem::Emitter& e = system.At(i);
+		ImGui::PushID(static_cast<int>(i));
+		ImGui::Checkbox("##enabled", &e.enabled);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("Off: this emitter stops (no simulation, not drawn)");
+		ImGui::SameLine();
+		if (ImGui::Selectable(e.name.c_str(), selected == static_cast<int>(i), 0, ImVec2(160.f, 0.f)))
+			selected = static_cast<int>(i);
+		ImGui::SameLine();
+		ImGui::BeginDisabled(i == 0);
+		if (ImGui::ArrowButton("##up", ImGuiDir_Up)) { moveIndex = static_cast<int>(i); moveDirection = -1; }
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		ImGui::BeginDisabled(i + 1 == system.Count());
+		if (ImGui::ArrowButton("##down", ImGuiDir_Down)) { moveIndex = static_cast<int>(i); moveDirection = 1; }
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Dup"))
+			duplicateIndex = static_cast<int>(i);
+		ImGui::SameLine();
+		if (ImGui::SmallButton("X"))
+			removeIndex = static_cast<int>(i);
+		ImGui::PopID();
+	}
+
+	if (duplicateIndex >= 0)
+	{
+		const int added = system.DuplicateEmitter(static_cast<size_t>(duplicateIndex));
+		if (added >= 0)
+			selected = added;
+		else
+			SetSystemStatus(system.LastError(), true);
+	}
+	else if (moveIndex >= 0)
+	{
+		system.MoveEmitter(static_cast<size_t>(moveIndex), moveDirection);
+		if (selected == moveIndex)
+			selected += moveDirection;
+		else if (selected == moveIndex + moveDirection)
+			selected -= moveDirection;
+	}
+	else if (removeIndex >= 0)
+	{
+		system.RemoveEmitter(static_cast<size_t>(removeIndex));
+		if (selected >= static_cast<int>(system.Count()))
+			selected = static_cast<int>(system.Count()) - 1;
+	}
+
+	if (ImGui::Button("Add emitter"))
+	{
+		const int added = system.AddEmitter("Emitter " + std::to_string(system.Count()), DefaultEmitterModules(), 10'000, EmitterBackend::Gpu);
+		if (added >= 0)
+			selected = added;
+		else
+			SetSystemStatus(system.LastError(), true);
+	}
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(200.f);
+	if (ImGui::BeginCombo("##addFromAsset", "Add from emitter asset..."))
+	{
+		const std::vector<std::string> assets = ListEmitterAssets();
+		if (assets.empty())
+			ImGui::TextDisabled("(no files in %s)", EmitterAssetDirectory());
+		for (const std::string& asset : assets)
+		{
+			if (!ImGui::Selectable(asset.c_str()))
+				continue;
+			EmitterAsset a;
+			std::string error;
+			st.warnings.clear();
+			if (!LoadEmitterAsset(EmitterAssetPath(asset), a, error, st.warnings))
+			{
+				SetSystemStatus("Load failed: " + error, true);
+				continue;
+			}
+			const int added = system.AddEmitter(asset, a);
+			if (added >= 0)
+			{
+				selected = added;
+				SetSystemStatus("Added " + asset, false);
+			}
+			else
+				SetSystemStatus(system.LastError(), true);
+		}
+		ImGui::EndCombo();
+	}
+
+	if (selected < 0 || selected >= static_cast<int>(system.Count()))
+	{
+		selected = system.Count() > 0 ? 0 : -1;
+		return;
+	}
+	EffectSystem::Emitter& e = system.At(static_cast<size_t>(selected));
+	if (st.owner != e.runtime.get())
+	{
+		st.owner = e.runtime.get();
+		snprintf(st.rename, sizeof(st.rename), "%s", e.name.c_str());
+		st.eulerDeg = EulerDegreesFromQuat(e.local.rotation);
+	}
+	ImGui::SetNextItemWidth(200.f);
+	if (ImGui::InputText("Name", st.rename, sizeof(st.rename)))
+		e.name = st.rename;
+	ImGui::SetNextItemWidth(240.f);
+	ImGui::DragFloat3("Position in system (m)", &e.local.position.x, 0.01f);
+	ImGui::SetNextItemWidth(240.f);
+	if (ImGui::DragFloat3("Rotation (pitch, yaw, roll deg)", &st.eulerDeg.x, 0.5f))
+		e.local.rotation = QuatFromEulerDegrees(st.eulerDeg);
+	ImGui::SetNextItemWidth(240.f);
+	ImGui::DragFloat3("Scale in system", &e.local.scale.x, 0.01f, 0.01f, 100.f);
 }
