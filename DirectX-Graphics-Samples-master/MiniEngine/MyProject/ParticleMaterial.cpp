@@ -536,6 +536,46 @@ bool ParticleMaterial::SetLayers(const std::vector<Effect>& layers)
 	return ApplyLayers(layers, from, true);
 }
 
+void ParticleMaterial::SetCustomGraph(const MaterialGraph& graph)
+{
+	if (!m_CustomGraph)
+		m_CustomGraph.reset(new MaterialGraph());
+	*m_CustomGraph = graph;
+
+	SyncEffect();
+	RebuildProgram();
+
+}
+
+void ParticleMaterial::SetCustomGraphLayout(const MaterialGraph& graph)
+{
+	if (!m_CustomGraph || m_CustomGraph->nodes.size() != graph.nodes.size())
+		return;
+	for (size_t i = 0; i < graph.nodes.size(); ++i)
+		m_CustomGraph->nodes[i].pos = graph.nodes[i].pos;
+}
+
+void ParticleMaterial::ClearCustomGraph()
+{
+	if (!m_CustomGraph)
+		return;
+	m_CustomGraph.reset();
+
+	SyncEffect();
+	ResetParams();
+	RebuildProgram();
+}
+
+MaterialGraph ParticleMaterial::CurrentGraph() const
+{
+	return m_CustomGraph ? *m_CustomGraph : BuildLayeredEffectGraph(m_Layers);
+}
+
+MaterialGraph ParticleMaterial::LayersAsGraph() const
+{
+	return MaterialGraph();
+}
+
 void ParticleMaterial::SetProgramSource(ProgramSource source)
 {
 	if (source == m_ProgramSource)
@@ -622,7 +662,7 @@ bool ParticleMaterial::ApplyLayers(const std::vector<Effect>& layers, const std:
 		m_Params[k] = params[k];
 	m_Layers = layers;
 	m_LayerLayouts = layout;
-	m_Effect = (layers.size() == 1) ? layers[0] : Effect::None;
+	SyncEffect();
 	RebuildProgram();
 	return true;
 }
@@ -665,6 +705,11 @@ void ParticleMaterial::RebuildProgram()
 			break;
 		}
 	}
+}
+
+void ParticleMaterial::SyncEffect()
+{
+	m_Effect = (m_Layers.size() == 1 && !m_CustomGraph) ? m_Layers[0] : Effect::None;
 }
 
 const char* MaterialOpName(MaterialOp op)

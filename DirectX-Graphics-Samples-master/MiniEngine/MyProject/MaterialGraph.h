@@ -42,6 +42,7 @@ struct MaterialNode
 	std::vector<MaterialLink> inputs;
 	float4                    values[2] = {};
 	uint32_t                  textureSlot = 0;
+	float2						pos = { 0.f, 0.f };
 };
 
 struct MaterialGraph
@@ -68,3 +69,4 @@ MaterialGraph BuildEffectGraph(ParticleMaterial::Effect effect);
 MaterialGraph BuildLayeredEffectGraph(const std::vector<ParticleMaterial::Effect>& layers);
 
 std::string DumpMaterialGraph(const MaterialGraph& graph, const MaterialCompileResult* compiled = nullptr);
+

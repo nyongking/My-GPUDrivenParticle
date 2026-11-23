@@ -3,8 +3,11 @@
 #include "TextureManager.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
+
+struct MaterialGraph;
 
 enum class TextureColorSpace : uint32_t
 {
@@ -160,7 +163,15 @@ public:
 	bool						SetLayerEffect(uint32_t index, Effect effect);
 	bool						SetLayers(const std::vector<Effect>& layers);
 	const std::string& LayerError() const { return m_LayerError; }
-	bool						NeedsVM() const { return m_UseVM || m_Layers.size() > 1; }
+	bool						NeedsVM() const { return m_UseVM || m_Layers.size() > 1 || m_CustomGraph != nullptr; }
+
+	bool						HasCustomGraph() const { return m_CustomGraph != nullptr; }
+	const MaterialGraph*		CustomGraph() const { return m_CustomGraph.get(); }
+	void						SetCustomGraph(const MaterialGraph& graph);
+	void						SetCustomGraphLayout(const MaterialGraph& graph);
+	void						ClearCustomGraph();
+	MaterialGraph				CurrentGraph() const;
+	MaterialGraph				LayersAsGraph() const;
 
 	void						SetUseVM(bool use) { m_UseVM = use; }
 	bool						UseVM() const { return m_UseVM; }
@@ -174,7 +185,8 @@ public:
 private:
 	bool						ApplyLayers(const std::vector<Effect>& layers, const std::vector<int>& from, bool keepTextures);
 	void						RebuildProgram();
-	
+	void						SyncEffect();
+
 	MaterialTexture		m_Textures[kNumTextureSlot];
 	TextureRef			m_Refs[kNumTextureSlot];
 	alignas(16) float4				m_Params[kMaxParams];
@@ -186,6 +198,7 @@ private:
 	MaterialProgram		m_Program;
 	ProgramSource		m_ProgramSource = ProgramSource::HandWritten;
 	std::string			m_ProgramError;
+	std::unique_ptr<MaterialGraph> m_CustomGraph;
 
 };
 

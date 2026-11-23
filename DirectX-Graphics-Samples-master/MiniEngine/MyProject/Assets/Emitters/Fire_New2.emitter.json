@@ -8,7 +8,7 @@
     {
       "module": "SpawnRate",
       "params": {
-        "Rate": 50
+        "Rate": 500
       }
     },
     {
