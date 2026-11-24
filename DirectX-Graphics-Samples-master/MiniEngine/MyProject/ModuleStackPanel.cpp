@@ -483,13 +483,13 @@ namespace
 
 			if (!material.HasCustomGraph())
 			{
-			ImGui::Text("Effect Layers (%u / %u)", uint32_t(material.Layers().size()), ParticleMaterial::kMaxLayers);
-			if (ImGui::IsItemHovered())
-				ImGui::SetTooltip("Applied top to bottom: each layer's result is the next layer's base color.\n"
-					"Coverage (shape alpha) is always the original sprite shape.\n"
-					"Pattern: color x Tex.r / Tint: color x Tex.rgb / Dissolve: Tex = mask, progress = ParticleParam0\n"
-					"Distortion: first layer only (re-reads the base texture) / Glow: Tex x Tex -> add color\n"
-					"Limits: 4 layers, 4 effect textures, 16 param slots");
+				ImGui::Text("Effect Layers (%u / %u)", uint32_t(material.Layers().size()), ParticleMaterial::kMaxLayers);
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("Applied top to bottom: each layer's result is the next layer's base color.\n"
+						"Coverage (shape alpha) is always the original sprite shape.\n"
+						"Pattern: color x Tex.r / Tint: color x Tex.rgb / Dissolve: Tex = mask, progress = ParticleParam0\n"
+						"Distortion: first layer only (re-reads the base texture), later layers read the shifted UV / Glow: Tex x Tex -> add color\n"
+						"Limits: 4 layers, 4 effect textures, 16 param slots");
 
 			for (uint32_t i = 0; i < uint32_t(material.LayerLayouts().size()); ++i)
 			{

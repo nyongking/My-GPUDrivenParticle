@@ -124,6 +124,7 @@ public:
 	static const char*	EffectName(Effect effect);
 	static uint32_t		NumParams(Effect effect);
 
+	// 단순 Effect Preset에 따른 Material 설계
 	static MaterialProgram	BuildEffectProgram(Effect effect);
 	static uint32_t		NumEffectTextures(Effect effect);
 	static const char*	EffectTextureName(Effect effect, uint32_t local);

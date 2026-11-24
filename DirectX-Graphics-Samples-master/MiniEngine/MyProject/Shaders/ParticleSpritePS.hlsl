@@ -130,7 +130,7 @@ float4 main(PSInput input) : SV_TARGET
 {
     if (UseVM != 0)
     {
-        const float4 vmTex = SampleBase(input, float2(0.f, 0.f));
+        const float4 vmTex = SampleBase(input, float2(0.f, 0.f));           // 베이스 텍스처 읽기
 
         MaterialInput mi;
         mi.quadUV = input.quadUV;
@@ -192,12 +192,6 @@ float4 main(PSInput input) : SV_TARGET
         const float n8 = 1.f - smoothstep(n4, n7, n2.r);
         const float3 n9 = n6.rgb + Param(3).rgb * (n8 * n5 * coverage);
         result = float4(n9, n6.a);
-    }
-    else if (EffectMode == EFFECT_DISTORTION)
-    {
-        const float2 n3 = input.quadUV + distortion;
-        const float4 n4 = SampleTex(1, n3);
-        result = float4(baseColor.rgb * n4.r, baseColor.a);
     }
     else if (EffectMode == EFFECT_GLOW)
     {

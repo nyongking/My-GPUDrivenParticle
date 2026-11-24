@@ -95,6 +95,7 @@ float4  RunMaterial(MaterialInput i, uint instrCount, uint outputReg)
             default:
                 break;
         }
+        
         reg[min(dst, (uint) (MAX_REGS - 1))] = v;
     }
     return reg[min(outputReg, (uint) (MAX_REGS - 1))];

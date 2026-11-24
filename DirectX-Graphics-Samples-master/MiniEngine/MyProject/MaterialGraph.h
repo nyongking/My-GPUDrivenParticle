@@ -65,7 +65,9 @@ struct MaterialCompileResult
 
 MaterialCompileResult CompileMaterialGraph(const MaterialGraph& graph);
 
+// 하나의 Effect인 경우의 MaterialGraph 생성
 MaterialGraph BuildEffectGraph(ParticleMaterial::Effect effect);
+// 여러 Effect로 합쳐진 경우의 MaterialGraph 생성
 MaterialGraph BuildLayeredEffectGraph(const std::vector<ParticleMaterial::Effect>& layers);
 
 std::string DumpMaterialGraph(const MaterialGraph& graph, const MaterialCompileResult* compiled = nullptr);

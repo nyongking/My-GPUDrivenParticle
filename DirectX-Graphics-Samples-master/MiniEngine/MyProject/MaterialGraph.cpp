@@ -613,10 +613,12 @@ namespace
 	};
 }
 
+//
 MaterialGraph BuildEffectGraph(ParticleMaterial::Effect effect)
 {
 	using namespace MaterialSwizzle;
 	using NT = MaterialNodeType;
+
 	auto D = [effect](uint32_t k) { return ParticleMaterial::DefaultParam(k, effect); };
 	auto L = [](int node, uint32_t swz = XYZW, uint32_t width = 0) { return GraphWriter::L(node, swz, width); };
 
@@ -666,11 +668,8 @@ MaterialGraph BuildEffectGraph(ParticleMaterial::Effect effect)
 		const int c2   = g.Constant(D(2));
 		const int off  = g.Add(NT::Multiply, { L(sn), L(c2) });
 		const int base = g.Add(NT::BaseSample, { L(off, XYZW, 2) });
-		const int n3   = g.Add(NT::Add, { L(q), L(off, XYZW, 2) });
-		const int n4   = g.Sample(n3, 1);
-		const int mul  = g.Add(NT::Multiply, { L(base), L(n4, X) });
-		const int out  = g.Add(NT::Append, { L(mul), L(base, W) });
-		return g.Finish(out);
+
+		return g.Finish(base);
 	}
 	case ParticleMaterial::Effect::Glow:
 	{
@@ -694,10 +693,12 @@ MaterialGraph BuildEffectGraph(ParticleMaterial::Effect effect)
 	}
 }
 
+
 MaterialGraph BuildLayeredEffectGraph(const std::vector<ParticleMaterial::Effect>& layers)
 {
 	MaterialGraph graph;
 	int previousOutput = -1;
+	int previousUV = -1;
 	uint32_t textureBase = 0;
 
 	for (const ParticleMaterial::Effect effect : layers)
@@ -710,7 +711,7 @@ MaterialGraph BuildLayeredEffectGraph(const std::vector<ParticleMaterial::Effect
 		for (MaterialNode node : layer.nodes)
 		{
 			if (node.type == MaterialNodeType::TextureSample)
-				node.textureSlot += textureBase;
+				node.textureSlot += textureBase;				// 텍스처 슬롯
 
 			for (MaterialLink& link : node.inputs)
 			{
@@ -718,7 +719,7 @@ MaterialGraph BuildLayeredEffectGraph(const std::vector<ParticleMaterial::Effect
 					continue;
 
 				const bool readsBase = (layer.nodes[link.node].type == MaterialNodeType::BaseColor);
-				link.node = (readsBase && previousOutput >= 0) ? previousOutput : link.node + offset;
+				link.node = (readsBase && previousOutput >= 0) ? previousOutput : link.node + offset; // 각 노드가 읽는 값이 offset만큼 밀려남
 			}
 			graph.nodes.push_back(node);
 		}

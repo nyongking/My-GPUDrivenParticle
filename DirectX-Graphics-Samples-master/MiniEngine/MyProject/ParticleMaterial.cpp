@@ -254,11 +254,7 @@ MaterialProgram ParticleMaterial::BuildEffectProgram(Effect effect)
 		const uint32_t c2 = w.Emit(MaterialOp::Const, Src(), Src(), Src(), 2);
 		const uint32_t off = w.Emit(MaterialOp::Mul, R(sn), R(c2));
 		const uint32_t base = w.Emit(MaterialOp::BaseSample, R(off));
-		const uint32_t n3 = w.Emit(MaterialOp::Add, R(q), R(off));
-		const uint32_t n4 = w.Emit(MaterialOp::Sample, R(n3), Src(), Src(), 1);
-		const uint32_t mul = w.Emit(MaterialOp::Mul, R(base), R(n4, X));
-		const uint32_t out = w.Emit(MaterialOp::Append, R(mul), R(base, W));
-		return w.Finish(out);
+		return w.Finish(base);
 	}
 	case Effect::Glow:
 	{
@@ -289,7 +285,7 @@ uint32_t ParticleMaterial::NumEffectTextures(Effect effect)
 	case Effect::Pattern:    return 1;	// Tex0 = 무늬
 	case Effect::Tint:       return 1;	// Tex0 = 색
 	case Effect::Dissolve:   return 1;	// Tex0 = 마스크
-	case Effect::Distortion: return 2;	// Tex0 = 흐름 노이즈, Tex1 = 밀린 UV 로 읽는 텍스처
+	case Effect::Distortion: return 1;	// Tex0 = 흐름 노이즈, Tex1 = 밀린 UV 로 읽는 텍스처
 	case Effect::Glow:       return 2;	// Tex0 x Tex1
 	default:                 return 0;
 	}
@@ -302,7 +298,7 @@ const char* ParticleMaterial::EffectTextureName(Effect effect, uint32_t local)
 	case Effect::Pattern:    return local == 0 ? "pattern" : nullptr;
 	case Effect::Tint:       return local == 0 ? "color" : nullptr;
 	case Effect::Dissolve:   return local == 0 ? "mask" : nullptr;
-	case Effect::Distortion: return local == 0 ? "flow noise" : (local == 1 ? "distorted" : nullptr);
+	case Effect::Distortion: return local == 0 ? "flow noise" : nullptr;
 	case Effect::Glow:       return local == 0 ? "glow A" : (local == 1 ? "glow B" : nullptr);
 	default:                 return nullptr;
 	}
@@ -608,11 +604,11 @@ bool ParticleMaterial::ApplyLayers(const std::vector<Effect>& layers, const std:
 	}
 	m_LayerError.clear();
 
-	// 1) 같은 효과면 그대로, 효과가 바뀌면 기본값 (단 앞 kNumCommonParams 칸 = Tex0 타일링 / 스크롤은 유지)
 	float4 params[kMaxParams];
 	for (uint32_t k = 0; k < kMaxParams; ++k)
 		params[k] = DefaultParam(k, Effect::None);
 
+	// 1) 같은 효과면 그대로, 효과가 바뀌면 기본값 (단 앞 kNumCommonParams 칸 = Tex0 타일링 / 스크롤은 유지)
 	for (size_t i = 0; i < layout.size(); ++i)
 	{
 		const LayerLayout& n = layout[i];
@@ -621,10 +617,11 @@ bool ParticleMaterial::ApplyLayers(const std::vector<Effect>& layers, const std:
 
 		if (from[i] < 0)
 			continue;
-		const LayerLayout& o = m_LayerLayouts[from[i]];
-		const uint32_t keep = (o.effect == n.effect) ? n.paramCount : (std::min)(uint32_t(kNumCommonParams), (std::min)(o.paramCount, n.paramCount));
+
+		const LayerLayout& own = m_LayerLayouts[from[i]];
+		const uint32_t keep = (own.effect == n.effect) ? n.paramCount : (std::min)(uint32_t(kNumCommonParams), (std::min)(own.paramCount, n.paramCount));
 		for (uint32_t k = 0; k < keep; ++k)
-			params[n.paramBase + k] = m_Params[o.paramBase + k];
+			params[n.paramBase + k] = m_Params[own.paramBase + k];
 	}
 
 	// 2) 효과용 텍스처 (Tex0 ~ Tex3): 새 슬롯마다 "이전 몇 번 슬롯을 가져오나" 를 정한다 (-1 = 비움)
@@ -632,18 +629,22 @@ bool ParticleMaterial::ApplyLayers(const std::vector<Effect>& layers, const std:
 	for (uint32_t t = 0; t < kNumEffectTextures; ++t)
 	{
 		bool owned = false;
-		for (const LayerLayout& o : m_LayerLayouts)
-			owned |= (t >= o.textureBase && t < o.textureBase + o.textureCount);
+		for (const LayerLayout& own : m_LayerLayouts)
+			owned |= (t >= own.textureBase && t < own.textureBase + own.textureCount);
+
 		source[t] = (owned && !keepTextures) ? -1 : static_cast<int>(t);
 	}
 
 	for (size_t i = 0; i < layout.size(); ++i)
 	{
 		const LayerLayout& n = layout[i];
+		
 		if (from[i] < 0)
 			continue;
+
 		const LayerLayout& o = m_LayerLayouts[from[i]];
 		const uint32_t count = (std::min)(o.textureCount, n.textureCount);
+
 		for (uint32_t t = 0; t < count; ++t)
 			source[n.textureBase + t] = static_cast<int>(o.textureBase + t);
 	}
@@ -657,6 +658,7 @@ bool ParticleMaterial::ApplyLayers(const std::vector<Effect>& layers, const std:
 		textures[t] = DefaultTexture();
 		if (source[t] < 0)
 			continue;
+
 		textures[t] = m_Textures[kTexture0 + source[t]];
 		refs[t] = m_Refs[kTexture0 + source[t]];		// 참조 수가 늘어 아래 Retire 와 상관없이 살아 있다
 		taken[source[t]] = true;
@@ -665,16 +667,20 @@ bool ParticleMaterial::ApplyLayers(const std::vector<Effect>& layers, const std:
 	{
 		if (!taken[t])
 			ParticleTextures::Retire(m_Refs[kTexture0 + t]);
+
 		m_Textures[kTexture0 + t] = textures[t];
 		m_Refs[kTexture0 + t] = refs[t];
 	}
 
 	for (uint32_t k = 0; k < kMaxParams; ++k)
 		m_Params[k] = params[k];
+
 	m_Layers = layers;
 	m_LayerLayouts = layout;
+
 	SyncEffect();
 	RebuildProgram();
+
 	return true;
 }
 
@@ -685,17 +691,21 @@ void ParticleMaterial::RebuildProgram()
 	if (m_CustomGraph)
 	{
 		const MaterialCompileResult custom = CompileMaterialGraph(*m_CustomGraph);
+		
 		if (!custom.ok)
 		{
 			m_ProgramError = "Graph compile failed: " + custom.error;
 			return;
 		}
 		m_Program = custom.program;
+
 		for (size_t k = 0; k < custom.params.size() && k < kMaxParams; ++k)
 			m_Params[k] = custom.params[k];
+
 		return;
 	}
 
+	// 기본값에 맞춰진 Effect이다 -> 기본값에 따라 정해진 루트를 따라간다.
 	if (m_ProgramSource == ProgramSource::HandWritten && m_Layers.size() <= 1)
 	{
 		m_Program = BuildEffectProgram(m_Effect);
@@ -703,11 +713,13 @@ void ParticleMaterial::RebuildProgram()
 	}
 
 	const MaterialCompileResult result = CompileMaterialGraph(BuildLayeredEffectGraph(m_Layers));
+	
 	if (!result.ok)
 	{
 		m_ProgramError = "Graph compile failed: " + result.error;
 		return;
 	}
+
 	m_Program = result.program;
 
 	for (size_t k = result.graphParamCount; k < result.params.size(); ++k)
