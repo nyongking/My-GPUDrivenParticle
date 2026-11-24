@@ -21,6 +21,7 @@
 #define OP_APPEND           14  // 벡터 합치기 (RGB, A)
 #define OP_UNPACK_SIGNED    15  // 0~1 -> -1~1
 #define OP_BASE_SAMPLE      16  // 베이스를 a.xy만큼 밀어 다시 읽은 색
+#define OP_POWER            17
 
 
 // val에서 s에 설정된 비트에 따라서 return의 value가 채워진다

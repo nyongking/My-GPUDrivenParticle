@@ -24,6 +24,7 @@ enum class MaterialNodeType : uint32_t
 	Append,
 	UnpackSigned,
 	BaseSample,
+	Power,
 	Count
 };
 const char* MaterialNodeTypeName(MaterialNodeType type);

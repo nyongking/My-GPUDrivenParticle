@@ -47,6 +47,7 @@ enum class MaterialOp : uint32_t
 	Append,
 	UnpackSigned,
 	BaseSample,
+	Power,
 	Count
 };
 const char* MaterialOpName(MaterialOp op);
@@ -69,7 +70,7 @@ static_assert(sizeof(MaterialInstr) == 32, "MaterialInstr 32 B");
 struct MaterialProgram
 {
 	static const uint32_t kMaxInstrs = 256;
-	static const uint32_t kMaxRegs = 24;
+	static const uint32_t kMaxRegs = 8;
 
 	std::vector<MaterialInstr>	instrs;
 	uint32_t					outputReg = 0;

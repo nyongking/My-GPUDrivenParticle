@@ -133,6 +133,7 @@ namespace
 		case MaterialOp::OneMinus: case MaterialOp::UnpackSigned: case MaterialOp::BaseSample:
 			return 1;
 		case MaterialOp::Add: case MaterialOp::Sub: case MaterialOp::Mul: case MaterialOp::Append:
+		case MaterialOp::Power:
 			return 2;
 		case MaterialOp::Lerp: case MaterialOp::Smoothstep:
 			return 3;
@@ -196,9 +197,47 @@ namespace
 
 		MaterialProgram Finish(uint32_t output)
 		{
-			program.outputReg = output;
 			ASSERT(program.instrs.size() <= MaterialProgram::kMaxInstrs);
-			ASSERT(program.instrs.size() <= MaterialProgram::kMaxRegs);
+
+			std::vector<MaterialInstr>& instrs = program.instrs;
+			const size_t count = instrs.size();
+			const size_t kNever = static_cast<size_t>(-1);
+
+			std::vector<size_t> lastUse(count, kNever);
+			for (size_t i = 0; i < count; ++i)
+			{
+				const uint32_t src[3] = { instrs[i].srcA, instrs[i].srcB, instrs[i].srcC };
+				const uint32_t n = OpInputCount(static_cast<MaterialOp>(instrs[i].op));
+				for (uint32_t j = 0; j < n; ++j)
+					lastUse[src[j]] = i;
+			}
+
+			std::vector<uint32_t> phys(count, 0);
+			bool busy[MaterialProgram::kMaxRegs] = {};
+			for (size_t i = 0; i < count; ++i)
+			{
+				MaterialInstr& In = instrs[i];
+				const uint32_t n = OpInputCount(static_cast<MaterialOp>(In.op));
+				uint32_t* src[3] = { &In.srcA, &In.srcB, &In.srcC };
+				const uint32_t original[3] = { In.srcA, In.srcB, In.srcC };
+				for (uint32_t j = 0; j < 3; ++j)
+					*src[j] = (j < n) ? phys[original[j]] : 0u;
+				for (uint32_t j = 0; j < n; ++j)
+				{
+					if (lastUse[original[j]] == i && original[j] != output)
+						busy[phys[original[j]]] = false;
+				}
+
+				uint32_t r = 0;
+				while (r < MaterialProgram::kMaxRegs && busy[r])
+					++r;
+				ASSERT(r < MaterialProgram::kMaxRegs);
+				phys[i] = r;
+				In.dst = r;
+				busy[r] = (lastUse[i] != kNever) || (i == output);
+			}
+
+			program.outputReg = count > 0 ? phys[output] : 0u;
 			return program;
 		}
 	};
@@ -770,6 +809,7 @@ const char* MaterialOpName(MaterialOp op)
 	case MaterialOp::Append:       return "APPEND";
 	case MaterialOp::UnpackSigned: return "UNPACK_SIGNED";
 	case MaterialOp::BaseSample:   return "BASE_SAMPLE";
+	case MaterialOp::Power:        return "POWER";
 	default:                       return "?";
 	}
 }

@@ -92,6 +92,9 @@ float4  RunMaterial(MaterialInput i, uint instrCount, uint outputReg)
             case OP_BASE_SAMPLE:
                 v = SampleBaseOffset(i, a.xy);
                 break;
+            case OP_POWER:
+                v = pow(max(a, 1e-6f), b);
+                break;
             default:
                 break;
         }

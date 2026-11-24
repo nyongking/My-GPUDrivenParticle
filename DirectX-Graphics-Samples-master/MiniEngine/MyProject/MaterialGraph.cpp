@@ -26,6 +26,7 @@ const char* MaterialNodeTypeName(MaterialNodeType type)
 	case MaterialNodeType::Append:        return "Append";
 	case MaterialNodeType::UnpackSigned:  return "UnpackSigned";
 	case MaterialNodeType::BaseSample:    return "BaseSample";
+	case MaterialNodeType::Power:         return "Power";
 	default:                              return "?";
 	}
 }
@@ -45,6 +46,7 @@ uint32_t MaterialNodeInputCount(MaterialNodeType type)
 	case MaterialNodeType::Subtract:
 	case MaterialNodeType::Multiply: 
 	case MaterialNodeType::Append:
+	case MaterialNodeType::Power:
 		return 2;
 	case MaterialNodeType::Lerp: 
 	case MaterialNodeType::Smoothstep:
@@ -77,6 +79,7 @@ namespace
 		case MaterialNodeType::Append:        return MaterialOp::Append;
 		case MaterialNodeType::UnpackSigned:  return MaterialOp::UnpackSigned;
 		case MaterialNodeType::BaseSample:    return MaterialOp::BaseSample;
+		case MaterialNodeType::Power:         return MaterialOp::Power;
 		default:                              return MaterialOp::Count;
 		}
 	}
@@ -142,6 +145,7 @@ namespace
 			d.width = 2; d.text = "(0, 0)";
 			break;
 		case MaterialNodeType::Multiply:
+		case MaterialNodeType::Power:
 			if (pin == 1) { d.value = { 1.f, 1.f, 1.f, 1.f }; d.text = "1"; }
 			break;
 		case MaterialNodeType::Lerp:
@@ -830,6 +834,7 @@ const char* MaterialNodePinName(MaterialNodeType type, uint32_t pin)
 	case MaterialNodeType::Append:        return pin == 0 ? "rgb" : "a";
 	case MaterialNodeType::Lerp:          return pin == 0 ? "a" : (pin == 1 ? "b" : "t");
 	case MaterialNodeType::Smoothstep:    return pin == 0 ? "min" : (pin == 1 ? "max" : "x");
+	case MaterialNodeType::Power:         return pin == 0 ? "base" : "exp";
 	default:                              return pin == 0 ? "a" : (pin == 1 ? "b" : "c");
 	}
 }
