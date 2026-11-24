@@ -469,7 +469,7 @@ namespace
 			m_RegOf[id] = kVisiting;
 
 			const MaterialNode& n = m_Graph.nodes[id];
-			const uint32_t need = MaterialNodeInputCount(n.type);
+			const uint32_t need = MaterialNodeInputCount(n.type); // 해당 노드 타입이 읽어야 하는 input의 개수 (1에서 3까지)
 			if (n.inputs.size() > need)
 				return Fail(NodeText(id) + ": 입력은 " + std::to_string(need) + " 개 까지인데 " + std::to_string(n.inputs.size()) + " 개");
 			if (n.type == MaterialNodeType::TextureSample && n.textureSlot >= ParticleMaterial::kNumEffectTextures)
@@ -479,7 +479,7 @@ namespace
 			for (uint32_t k = 0; k < need; ++k)
 			{
 				const MaterialLink link = (k < n.inputs.size()) ? n.inputs[k] : MaterialLink();
-				if (link.node < 0)
+				if (link.node < 0) // 기본값을 입력 받는 경우
 				{
 					if (!DefaultInput(id, k, in[k]))
 						return -1;
