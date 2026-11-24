@@ -267,7 +267,7 @@ void MyProject::RenderScene(void)
     // Rendering something
     DebugDraw::Render(gfxContext, m_Camera.GetViewProjMatrix());
     QuadRenderer::BeginDraw(gfxContext, m_Camera.GetViewProjMatrix());
-    //m_Floor.Draw(gfxContext);
+    m_Floor.Draw(gfxContext);
 
     if (m_UseTestScene)
         m_TestScene.Render(gfxContext, m_Camera);

@@ -8,7 +8,7 @@
     {
       "module": "SpawnRate",
       "params": {
-        "Rate": 500
+        "Rate": 50
       }
     },
     {
@@ -132,7 +132,7 @@
       },
       {
         "slot": "Tex0",
-        "path": "Assets/Textures/T_FireDistNoise.PNG",
+        "path": "Assets/Textures/T_Fire_Tiled.PNG",
         "colorSpace": "Linear"
       },
       {
@@ -153,9 +153,9 @@
     ],
     "materialParams": [
       [1, 1, 0, 0],
-      [0.06, 0, 0, 0],
-      [0.05, 0.05, 0, 0],
       [0, 0, 0, 0],
+      [0.05, 0.05, 0, 0],
+      [1, 1, 0, 0],
       [0, 0, 0, 0],
       [0, 0, 0, 0],
       [0, 0, 0, 0],
@@ -170,7 +170,8 @@
       [0, 0, 0, 0]
     ],
     "materialLayers": [
-      "Distortion"
+      "Distortion",
+      "Pattern"
     ],
     "textureAlpha": "FromLuminance",
     "blend": "Translucent",
