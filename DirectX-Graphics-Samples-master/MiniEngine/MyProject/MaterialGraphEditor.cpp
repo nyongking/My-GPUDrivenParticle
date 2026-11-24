@@ -289,6 +289,7 @@ namespace MaterialGraphEditor
 		ImNodes::MiniMap(0.15f, ImNodesMiniMapLocation_BottomRight);
 		if (editable)
 			ImNodes::PopAttributeFlag();
+		const bool canvasHovered = ImNodes::IsEditorHovered();
 		ImNodes::EndNodeEditor();
 
 		if (!editable)
@@ -386,7 +387,7 @@ namespace MaterialGraphEditor
 
 		int hoveredNode = -1;
 		const bool nodeHovered = ImNodes::IsNodeHovered(&hoveredNode);
-		if (ImNodes::IsEditorHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+		if (canvasHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
 		{
 			if (nodeHovered)
 			{
