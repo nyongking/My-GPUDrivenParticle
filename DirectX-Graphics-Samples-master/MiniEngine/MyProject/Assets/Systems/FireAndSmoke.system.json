@@ -7,22 +7,9 @@
     {
       "name": "Smoke",
       "enabled": true,
-      "position": [
-        0,
-        0.45,
-        0
-      ],
-      "rotation": [
-        0,
-        0,
-        0,
-        1
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
+      "position": [0, 0.45, 0],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
       "emitter": {
         "format": "MyProject.Emitter",
         "version": 1,
@@ -39,23 +26,17 @@
           {
             "module": "InitializeParticle",
             "params": {
-              "Size": 0.4,
+              "Size": {
+                "min": 0.1,
+                "max": 0.2
+              },
               "Mass": 1,
               "Lifetime": {
                 "min": 2.5,
                 "max": 3.5
               },
-              "Pos": [
-                0,
-                0,
-                0
-              ],
-              "Color": [
-                0.22,
-                0.21,
-                0.2,
-                0.55
-              ]
+              "Pos": [0, 0, 0],
+              "Color": [0.22, 0.21, 0.2, 0.55]
             }
           },
           {
@@ -73,11 +54,7 @@
                 "max": 0.45
               },
               "ConeAngle": 15,
-              "ConeAxis": [
-                0,
-                1,
-                0
-              ],
+              "ConeAxis": [0, 1, 0],
               "InnerConeAngle": 0,
               "SpeedFalloff": 0,
               "Distribution": 1,
@@ -88,14 +65,8 @@
             "module": "InitializeSprite",
             "params": {
               "SpriteSize": {
-                "min": [
-                  0.25,
-                  0.25
-                ],
-                "max": [
-                  0.4,
-                  0.4
-                ],
+                "min": [0.25, 0.25],
+                "max": [0.4, 0.4],
                 "perComponent": false
               },
               "SpriteRotation": {
@@ -130,26 +101,14 @@
             "params": {
               "Strength": 0.4,
               "Frequency": 0.8,
-              "Offset": [
-                0,
-                0,
-                0
-              ],
-              "Pan": [
-                0,
-                -0.3,
-                0
-              ]
+              "Offset": [0, 0, 0],
+              "Pan": [0, -0.3, 0]
             }
           },
           {
             "module": "GravityForce",
             "params": {
-              "Gravity": [
-                0,
-                0.25,
-                0
-              ]
+              "Gravity": [0, 0.25, 0]
             }
           },
           {
@@ -163,35 +122,19 @@
             "module": "ScaleColor",
             "params": {
               "ScaleRGB": {
-                "value": [
-                  1,
-                  1,
-                  1
-                ],
+                "value": [1, 1, 1],
                 "curve": [
                   {
                     "time": 0,
-                    "value": [
-                      1.4,
-                      1.1,
-                      0.9
-                    ]
+                    "value": [1.4, 1.1, 0.9]
                   },
                   {
                     "time": 0.3,
-                    "value": [
-                      1,
-                      1,
-                      1
-                    ]
+                    "value": [1, 1, 1]
                   },
                   {
                     "time": 1,
-                    "value": [
-                      0.8,
-                      0.8,
-                      0.8
-                    ]
+                    "value": [0.8, 0.8, 0.8]
                   }
                 ],
                 "index": "Particles.NormalizedAge"
@@ -250,119 +193,33 @@
             }
           ],
           "materialParams": [
-            [
-              1,
-              1,
-              0,
-              0
-            ],
-            [
-              0.03,
-              0.06,
-              0,
-              0
-            ],
-            [
-              0.35,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ]
+            [1, 1, 0, 0],
+            [0.03, 0.06, 0, 0],
+            [0.35, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0]
           ],
           "materialLayers": [
             "Dissolve"
           ],
           "textureAlpha": "Straight",
           "blend": "Translucent",
-          "subImage": [
-            8,
-            8
-          ],
+          "subImage": [8, 8],
           "subUVBlend": true,
           "facing": "FaceCameraPlane",
           "alignment": "Unaligned",
-          "pivot": [
-            0.5,
-            0.5
-          ],
+          "pivot": [0.5, 0.5],
           "cameraOffset": 0,
           "velocityStretch": 0,
           "blendNear": 1,
@@ -370,20 +227,11 @@
           "bindings": {
             "Position": {
               "attribute": "Particles.Position",
-              "default": [
-                0,
-                0,
-                0
-              ]
+              "default": [0, 0, 0]
             },
             "Color": {
               "attribute": "Particles.Color",
-              "default": [
-                1,
-                1,
-                1,
-                1
-              ]
+              "default": [1, 1, 1, 1]
             },
             "Size": {
               "attribute": "Particles.Size",
@@ -395,10 +243,7 @@
             },
             "SpriteSize": {
               "attribute": "Particles.SpriteSize",
-              "default": [
-                0.2,
-                0.2
-              ]
+              "default": [0.2, 0.2]
             },
             "SpriteRotation": {
               "attribute": "Particles.SpriteRotation",
@@ -406,27 +251,15 @@
             },
             "Velocity": {
               "attribute": "Particles.Velocity",
-              "default": [
-                0,
-                0,
-                0
-              ]
+              "default": [0, 0, 0]
             },
             "SpriteFacing": {
               "attribute": "Particles.SpriteFacing",
-              "default": [
-                0,
-                1,
-                0
-              ]
+              "default": [0, 1, 0]
             },
             "SpriteAlignment": {
               "attribute": "Particles.SpriteAlignment",
-              "default": [
-                0,
-                1,
-                0
-              ]
+              "default": [0, 1, 0]
             },
             "ParticleParam0": {
               "attribute": "Particles.NormalizedAge",
@@ -443,22 +276,9 @@
     {
       "name": "Fire",
       "enabled": true,
-      "position": [
-        0,
-        0,
-        0
-      ],
-      "rotation": [
-        0,
-        0,
-        0,
-        1
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
       "emitter": {
         "format": "MyProject.Emitter",
         "version": 1,
@@ -479,24 +299,11 @@
               "Mass": 1,
               "Lifetime": 1,
               "Pos": {
-                "min": [
-                  0,
-                  0,
-                  0
-                ],
-                "max": [
-                  0,
-                  0,
-                  0
-                ],
+                "min": [0, 0, 0],
+                "max": [0, 0, 0],
                 "perComponent": true
               },
-              "Color": [
-                1,
-                0.475,
-                0.18,
-                1
-              ]
+              "Color": [1, 0.475, 0.18, 1]
             }
           },
           {
@@ -526,28 +333,16 @@
             "params": {
               "Strength": 0.2,
               "Frequency": 3,
-              "Offset": [
-                0,
-                1,
-                0
-              ],
-              "Pan": [
-                0,
-                0,
-                0
-              ]
+              "Offset": [0, 1, 0],
+              "Pan": [0, 0, 0]
             }
           },
           {
             "module": "AddVelocityInCone",
             "params": {
-              "Speed": 0.5,
+              "Speed": 0.7,
               "ConeAngle": 15,
-              "ConeAxis": [
-                0,
-                1,
-                0
-              ],
+              "ConeAxis": [0, 1, 0],
               "InnerConeAngle": 0,
               "SpeedFalloff": 0.5,
               "Distribution": 1,
@@ -565,14 +360,8 @@
             "module": "InitializeSprite",
             "params": {
               "SpriteSize": {
-                "min": [
-                  0.3,
-                  0.3
-                ],
-                "max": [
-                  0.45,
-                  0.45
-                ],
+                "min": [0.3, 0.3],
+                "max": [0.45, 0.45],
                 "perComponent": false
               },
               "SpriteRotation": {
@@ -585,35 +374,19 @@
             "module": "ScaleColor",
             "params": {
               "ScaleRGB": {
-                "value": [
-                  1,
-                  1,
-                  1
-                ],
+                "value": [1, 1, 1],
                 "curve": [
                   {
                     "time": 0,
-                    "value": [
-                      1.281,
-                      1.205,
-                      1
-                    ]
+                    "value": [1.281, 1.205, 1]
                   },
                   {
                     "time": 0.5,
-                    "value": [
-                      0.941,
-                      0.562,
-                      0.39
-                    ]
+                    "value": [0.941, 0.562, 0.39]
                   },
                   {
                     "time": 1,
-                    "value": [
-                      0.25,
-                      0.06,
-                      0
-                    ]
+                    "value": [0.25, 0.06, 0]
                   }
                 ],
                 "index": "Particles.NormalizedAge"
@@ -644,7 +417,7 @@
             },
             {
               "slot": "Tex0",
-              "path": "Assets/Textures/T_FireDistNoise.PNG",
+              "path": "Assets/Textures/Noise.png",
               "colorSpace": "Linear"
             },
             {
@@ -664,119 +437,173 @@
             }
           ],
           "materialParams": [
-            [
-              1,
-              1,
-              0,
-              0
-            ],
-            [
-              0.06,
-              0,
-              0,
-              0
-            ],
-            [
-              0.05,
-              0.05,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ]
+            [1, 1, 0, 0],
+            [0.06, 0, 0, 0],
+            [0.05, 0.05, 0, 0],
+            [1, 1, 0, 0],
+            [0, 0, 0, 0],
+            [1.3, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0]
           ],
           "materialLayers": [
-            "Distortion"
+            "Distortion",
+            "Pattern"
           ],
+          "materialGraph": {
+            "output": 11,
+            "nodes": [
+              {
+                "type": "QuadUV",
+                "pos": [270, 40],
+                "inputs": []
+              },
+              {
+                "type": "UVTransform",
+                "pos": [500, 40],
+                "inputs": [
+                  {
+                    "node": 0
+                  }
+                ],
+                "tilingOffset": [1, 1, 0, 0],
+                "scroll": [0.06, 0, 0, 0]
+              },
+              {
+                "type": "TextureSample",
+                "pos": [730, 40],
+                "inputs": [
+                  {
+                    "node": 1
+                  }
+                ],
+                "slot": 0
+              },
+              {
+                "type": "UnpackSigned",
+                "pos": [960, 40],
+                "inputs": [
+                  {
+                    "node": 2
+                  }
+                ]
+              },
+              {
+                "type": "Constant",
+                "pos": [960, 160],
+                "inputs": [],
+                "value": [0.05, 0.05, 0, 0]
+              },
+              {
+                "type": "Multiply",
+                "pos": [1190, 40],
+                "inputs": [
+                  {
+                    "node": 3
+                  },
+                  {
+                    "node": 4
+                  }
+                ]
+              },
+              {
+                "type": "BaseSample",
+                "pos": [1420, 40],
+                "inputs": [
+                  {
+                    "node": 5,
+                    "width": 2
+                  }
+                ]
+              },
+              {
+                "type": "QuadUV",
+                "pos": [960, 280],
+                "inputs": []
+              },
+              {
+                "type": "UVTransform",
+                "pos": [1190, 160],
+                "inputs": [
+                  {
+                    "node": 7
+                  }
+                ],
+                "tilingOffset": [1, 1, 0, 0],
+                "scroll": [0, 0, 0, 0]
+              },
+              {
+                "type": "TextureSample",
+                "pos": [1420, 160],
+                "inputs": [
+                  {
+                    "node": 8
+                  }
+                ],
+                "slot": 1
+              },
+              {
+                "type": "Multiply",
+                "pos": [1735, 57],
+                "inputs": [
+                  {
+                    "node": 6
+                  },
+                  {
+                    "node": 13
+                  }
+                ]
+              },
+              {
+                "type": "Append",
+                "pos": [1915, -80],
+                "inputs": [
+                  {
+                    "node": 10
+                  },
+                  {
+                    "node": 6,
+                    "swizzle": "w"
+                  }
+                ]
+              },
+              {
+                "type": "Constant",
+                "pos": [1392, 314],
+                "inputs": [],
+                "value": [1.3, 0, 0, 0]
+              },
+              {
+                "type": "Power",
+                "pos": [1636, 201],
+                "inputs": [
+                  {
+                    "node": 9,
+                    "swizzle": "x"
+                  },
+                  {
+                    "node": 12,
+                    "swizzle": "x"
+                  }
+                ]
+              }
+            ]
+          },
           "textureAlpha": "FromLuminance",
           "blend": "Translucent",
-          "subImage": [
-            6,
-            6
-          ],
+          "subImage": [6, 6],
           "subUVBlend": true,
           "facing": "FaceCameraPlane",
           "alignment": "Unaligned",
-          "pivot": [
-            0.5,
-            0.5
-          ],
+          "pivot": [0.5, 0.5],
           "cameraOffset": 0,
           "velocityStretch": 0,
           "blendNear": 1,
@@ -784,20 +611,11 @@
           "bindings": {
             "Position": {
               "attribute": "Particles.Position",
-              "default": [
-                0,
-                0,
-                0
-              ]
+              "default": [0, 0, 0]
             },
             "Color": {
               "attribute": "Particles.Color",
-              "default": [
-                1,
-                1,
-                1,
-                1
-              ]
+              "default": [1, 1, 1, 1]
             },
             "Size": {
               "attribute": "Particles.Size",
@@ -809,10 +627,7 @@
             },
             "SpriteSize": {
               "attribute": "Particles.SpriteSize",
-              "default": [
-                0.2,
-                0.2
-              ]
+              "default": [0.2, 0.2]
             },
             "SpriteRotation": {
               "attribute": "Particles.SpriteRotation",
@@ -820,27 +635,15 @@
             },
             "Velocity": {
               "attribute": "Particles.Velocity",
-              "default": [
-                0,
-                0,
-                0
-              ]
+              "default": [0, 0, 0]
             },
             "SpriteFacing": {
               "attribute": "Particles.SpriteFacing",
-              "default": [
-                0,
-                1,
-                0
-              ]
+              "default": [0, 1, 0]
             },
             "SpriteAlignment": {
               "attribute": "Particles.SpriteAlignment",
-              "default": [
-                0,
-                1,
-                0
-              ]
+              "default": [0, 1, 0]
             },
             "ParticleParam0": {
               "attribute": "Particles.NormalizedAge",
@@ -857,22 +660,9 @@
     {
       "name": "Embers",
       "enabled": true,
-      "position": [
-        0,
-        0.1,
-        0
-      ],
-      "rotation": [
-        0,
-        0,
-        0,
-        1
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
+      "position": [0, 0.1, 0],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
       "emitter": {
         "format": "MyProject.Emitter",
         "version": 1,
@@ -895,17 +685,8 @@
                 "min": 0.8,
                 "max": 1.8
               },
-              "Pos": [
-                0,
-                0,
-                0
-              ],
-              "Color": [
-                1,
-                0.55,
-                0.15,
-                1
-              ]
+              "Pos": [0, 0, 0],
+              "Color": [1, 0.55, 0.15, 1]
             }
           },
           {
@@ -923,11 +704,7 @@
                 "max": 1.6
               },
               "ConeAngle": 25,
-              "ConeAxis": [
-                0,
-                1,
-                0
-              ],
+              "ConeAxis": [0, 1, 0],
               "InnerConeAngle": 0,
               "SpeedFalloff": 0,
               "Distribution": 1,
@@ -938,14 +715,8 @@
             "module": "InitializeSprite",
             "params": {
               "SpriteSize": {
-                "min": [
-                  0.008,
-                  0.008
-                ],
-                "max": [
-                  0.016,
-                  0.016
-                ],
+                "min": [0.008, 0.008],
+                "max": [0.016, 0.016],
                 "perComponent": false
               },
               "SpriteRotation": 0
@@ -962,26 +733,14 @@
             "params": {
               "Strength": 1.5,
               "Frequency": 2.5,
-              "Offset": [
-                3,
-                0,
-                0
-              ],
-              "Pan": [
-                0,
-                -0.5,
-                0
-              ]
+              "Offset": [3, 0, 0],
+              "Pan": [0, -0.5, 0]
             }
           },
           {
             "module": "GravityForce",
             "params": {
-              "Gravity": [
-                0,
-                -0.4,
-                0
-              ]
+              "Gravity": [0, -0.4, 0]
             }
           },
           {
@@ -995,35 +754,19 @@
             "module": "ScaleColor",
             "params": {
               "ScaleRGB": {
-                "value": [
-                  1,
-                  1,
-                  1
-                ],
+                "value": [1, 1, 1],
                 "curve": [
                   {
                     "time": 0,
-                    "value": [
-                      2,
-                      1.6,
-                      1.2
-                    ]
+                    "value": [2, 1.6, 1.2]
                   },
                   {
                     "time": 0.4,
-                    "value": [
-                      1.2,
-                      0.7,
-                      0.35
-                    ]
+                    "value": [1.2, 0.7, 0.35]
                   },
                   {
                     "time": 1,
-                    "value": [
-                      0,
-                      0,
-                      0
-                    ]
+                    "value": [0, 0, 0]
                   }
                 ],
                 "index": "Particles.NormalizedAge"
@@ -1061,117 +804,31 @@
             }
           ],
           "materialParams": [
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ],
-            [
-              0,
-              0,
-              0,
-              0
-            ]
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0]
           ],
           "materialLayers": [],
           "textureAlpha": "FromLuminance",
           "blend": "Additive",
-          "subImage": [
-            1,
-            1
-          ],
+          "subImage": [1, 1],
           "subUVBlend": false,
           "facing": "FaceCameraPlane",
           "alignment": "VelocityAligned",
-          "pivot": [
-            0.5,
-            0.5
-          ],
+          "pivot": [0.5, 0.5],
           "cameraOffset": 0,
           "velocityStretch": 0.015,
           "blendNear": 1,
@@ -1179,20 +836,11 @@
           "bindings": {
             "Position": {
               "attribute": "Particles.Position",
-              "default": [
-                0,
-                0,
-                0
-              ]
+              "default": [0, 0, 0]
             },
             "Color": {
               "attribute": "Particles.Color",
-              "default": [
-                1,
-                1,
-                1,
-                1
-              ]
+              "default": [1, 1, 1, 1]
             },
             "Size": {
               "attribute": "Particles.Size",
@@ -1204,10 +852,7 @@
             },
             "SpriteSize": {
               "attribute": "Particles.SpriteSize",
-              "default": [
-                0.2,
-                0.2
-              ]
+              "default": [0.2, 0.2]
             },
             "SpriteRotation": {
               "attribute": "Particles.SpriteRotation",
@@ -1215,27 +860,15 @@
             },
             "Velocity": {
               "attribute": "Particles.Velocity",
-              "default": [
-                0,
-                0,
-                0
-              ]
+              "default": [0, 0, 0]
             },
             "SpriteFacing": {
               "attribute": "Particles.SpriteFacing",
-              "default": [
-                0,
-                1,
-                0
-              ]
+              "default": [0, 1, 0]
             },
             "SpriteAlignment": {
               "attribute": "Particles.SpriteAlignment",
-              "default": [
-                0,
-                1,
-                0
-              ]
+              "default": [0, 1, 0]
             },
             "ParticleParam0": {
               "attribute": "Particles.NormalizedAge",
