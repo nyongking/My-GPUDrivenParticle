@@ -2,6 +2,7 @@
 #include "EffectSystem.h"
 
 #include "CommandListManager.h"
+#include "EmitterRenderList.h"
 #include "GraphicsCore.h"
 #include "Json.h"
 
@@ -136,7 +137,7 @@ void EffectSystem::OnSubmitted(uint64_t fence)
 		r->OnSubmitted(fence);
 }
 
-void EffectSystem::Render(GraphicsContext& gfx, const Math::Camera& camera)
+void EffectSystem::Render(GraphicsContext& gfx, const Math::Camera& camera, EmitterRenderList& emitterList)
 {
 	// 두 가지 방식 (m_GlobalSort)
 	//   공용 목록 : 모든 이미터의 파티클을 한 목록에 섞어 깊이 정렬 (머티리얼은 VM 인터프리터)
@@ -144,17 +145,12 @@ void EffectSystem::Render(GraphicsContext& gfx, const Math::Camera& camera)
 	const bool listReady = m_GlobalSort && m_Emitters.size() > 1 && m_ListCapacity == CapacityTotal() && m_ListCapacity > 0;
 	if (!listReady)
 	{
-		// 준 List: 이미터마다 각자 그리되 (자기 셰이더, 자기 파티클 정렬), 이미터 사이의 순서를 CPU 에서 정한다
-		//   정렬 키가 작은 것부터 -> 키가 같으면 카메라에서 먼 이미터부터 (EmitterDrawOrder.h)
-		//   반투명 / Additive 를 구분하지 않는다. 이미터 안에서는 SpriteRenderer 가 Additive 의 파티클 정렬만 건너뛴다
-		m_DrawOrder.Begin(camera);
+		// 준 List: 여기서는 그리지 않는다. 이미터를 목록에 넣기만 하고, 순서 정하기와 그리기는 EmitterRenderList 가 한다
 		for (Emitter& e : m_Emitters)
 		{
 			if (e.enabled)
-				m_DrawOrder.Add(e.runtime.get(), e.worldPosition, e.sortKey);
+				emitterList.Add(e.runtime.get(), e.worldPosition, e.sortKey);
 		}
-		for (const EmitterDrawOrder::Item& item : m_DrawOrder.Sorted())
-			item.runtime->Render(gfx, camera);
 		return;
 	}
 

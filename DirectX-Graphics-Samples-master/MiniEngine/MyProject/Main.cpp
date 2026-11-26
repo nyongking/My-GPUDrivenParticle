@@ -37,6 +37,7 @@
 #include "ModuleStackPanel.h"
 #include "MaterialGraphEditor.h"
 #include "EffectSystem.h"
+#include "EmitterRenderList.h"
 #include "EmitterAsset.h"
 #include <algorithm>
 #include <cmath>
@@ -83,6 +84,7 @@ private:
 
     // -----------
     EffectSystem    m_System;
+    EmitterRenderList m_EmitterList;    // 준 List: 이미터 단위로 순서를 정해서 그린다 (시스템 / 테스트 씬이 Add 만 한다)
     int             m_SelectedEmitter = 0;
     float3          m_EmitterPos = { 0.f, 0.f, 0.f };
 
@@ -270,10 +272,14 @@ void MyProject::RenderScene(void)
     QuadRenderer::BeginDraw(gfxContext, m_Camera.GetViewProjMatrix());
     m_Floor.Draw(gfxContext);
 
+    // 공용 목록 (Sort emitters together) 이면 Render 안에서 바로 그려지고,
+    // 아니면 이미터가 m_EmitterList 에 들어가서 아래에서 순서대로 그려진다
+    m_EmitterList.Begin(m_Camera);
     if (m_UseTestScene)
-        m_TestScene.Render(gfxContext, m_Camera);
+        m_TestScene.Render(gfxContext, m_Camera, m_EmitterList);
     else
-        m_System.Render(gfxContext, m_Camera);
+        m_System.Render(gfxContext, m_Camera, m_EmitterList);
+    m_EmitterList.Render(gfxContext);
 
     // Finish
     gfxContext.Finish();
