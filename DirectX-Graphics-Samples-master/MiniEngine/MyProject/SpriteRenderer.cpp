@@ -475,8 +475,6 @@ void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera,
 	if (!m_Ready || !emitter.Ready())
 		return;
 
-	{
-		ScopedTimer(L"Render Sprite (Single)", gfx);
 		gfx.TransitionResource(emitter.RenderBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 		gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
@@ -490,7 +488,9 @@ void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera,
 		gfx.TransitionResource(m_GpuSortBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
 
 		BindForDraw(gfx, camera, emitter.RenderBuffer(), emitter.ParticleBuffer(), m_GpuSortBuffer, sorted, sizeof(uint32_t) * 2);
+	{
 
+		ScopedTimer t(L"Render Sprite (Single)", gfx);
 		// 개수는 Finalize 가 Draw 인자 (6, alive, 0, 0) 로 써둔 것. CPU 는 개수를 몰라도 된다
 		gfx.DrawIndirect(emitter.DrawArgs());
 	}
@@ -522,13 +522,17 @@ void SpriteRenderer::SortOnGpu(GraphicsContext& gfx, const Math::Camera& camera,
 	cc.SetDynamicDescriptor(kSortKeyUAV, 0, m_GpuSortBuffer.GetUAV());
 	// 개수를 CPU 가 모르므로 capacity 기준으로 띄우고, alive 를 넘는 스레드는 바로 끝난다
 
-	ScopedTimer(L"Make SortKey (Single)", gfx);
-	cc.Dispatch((m_Capacity + kSortKeyGroupSize - 1) / kSortKeyGroupSize, 1, 1);
+	{
+		ScopedTimer t(L"Make SortKey (Single)", gfx);
+		cc.Dispatch((m_Capacity + kSortKeyGroupSize - 1) / kSortKeyGroupSize, 1, 1);
+	}
 
 	// 2) 정렬: 키 내림차순 = 카메라에서 먼 것부터 (CPU SortBackToFront 와 같은 순서)
 	//    BitonicSort 가 키 목록 UAV 배리어 / 개수 버퍼 SRV 전환을 직접 한다
-	ScopedTimer(L"Sort Particle (Single)", gfx);
-	BitonicSort::Sort(cc, m_GpuSortBuffer, countBuffer, kDrawArgsInstanceCountOffset, false, false);
+	{
+		ScopedTimer t(L"Sort Particle (Single)", gfx);
+		BitonicSort::Sort(cc, m_GpuSortBuffer, countBuffer, kDrawArgsInstanceCountOffset, false, false);
+	}
 }
 
 void SpriteRenderer::SubmitToList(GraphicsContext& gfx, ParticleRenderList& list, const EmitterInstance& emitter)

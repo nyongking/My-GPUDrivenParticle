@@ -380,13 +380,13 @@
     <None Include="Shaders\SpritePreset.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
-    <None Include="Shaders\SpriteMaterialCommon.hlsli">
-      <Filter>Shaders\Particle</Filter>
-    </None>
     <None Include="Shaders\MaterialVM.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
     <None Include="Shaders\MaterialVMDefs.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\CountSortCommon.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
   </ItemGroup>
@@ -467,6 +467,15 @@
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\ParticleUberParticleUpdateCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\CountSortHistogramCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\CountSortPrefixCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\CountSortScatterCS.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
   </ItemGroup>

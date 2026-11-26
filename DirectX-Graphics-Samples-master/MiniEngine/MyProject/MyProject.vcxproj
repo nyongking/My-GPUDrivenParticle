@@ -175,6 +175,7 @@
     <Image Include="StoreLogo.png" />
     <Image Include="WideLogo.png" />
     <None Include="packages.config" />
+    <None Include="Shaders\CountSortCommon.hlsli" />
     <None Include="Shaders\MaterialVM.hlsli" />
     <None Include="Shaders\MaterialVMDefs.hlsli" />
     <None Include="Shaders\ModuleCommon.hlsli" />
@@ -185,11 +186,34 @@
     <None Include="Shaders\ParticleListCommon.hlsli" />
     <None Include="Shaders\SpriteAlpha.hlsli" />
     <None Include="Shaders\SpritePreset.hlsli" />
-    <None Include="Shaders\SpriteMaterialCommon.hlsli" />
     <None Include="Shaders\SpriteFacing.hlsli" />
     <None Include="Shaders\ParticleUber.hlsli" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="Shaders\CountSortHistogramCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
+    </FxCompile>
+    <FxCompile Include="Shaders\CountSortPrefixCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
+    </FxCompile>
+    <FxCompile Include="Shaders\CountSortScatterCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.2</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.2</ShaderModel>
+    </FxCompile>
     <FxCompile Include="Shaders\DebugLinePS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Pixel</ShaderType>
