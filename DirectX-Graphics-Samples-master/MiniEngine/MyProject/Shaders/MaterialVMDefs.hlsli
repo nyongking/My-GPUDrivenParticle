@@ -1,7 +1,7 @@
 #ifndef MATERIAL_VM_DEFS_HLSLI
 #define MATERIAL_VM_DEFS_HLSLI
 
-#define MAX_REGS    8 // 중간에 저장되는 레지스터의 수
+#define MAX_REGS    16 // 중간에 저장되는 레지스터의 수
 #define MAX_INSTRS  256 // 최대 명령어 수
 
 #define OP_QUAD_UV          0   // 사각형 UV

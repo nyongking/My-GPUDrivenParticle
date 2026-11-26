@@ -1,0 +1,3262 @@
+{
+  "format": "MyProject.Emitter",
+  "version": 1,
+  "name": "Fire_New2_NodeStress",
+  "capacity": 10000,
+  "backend": "Gpu",
+  "modules": [
+    {
+      "module": "SpawnRate",
+      "params": {
+        "Rate": 500
+      }
+    },
+    {
+      "module": "InitializeParticle",
+      "params": {
+        "Size": 0.1,
+        "Mass": 1,
+        "Lifetime": 1,
+        "Pos": {
+          "min": [0, 0, 0],
+          "max": [0, 0, 0],
+          "perComponent": true
+        },
+        "Color": [1, 0.475, 0.18, 1]
+      }
+    },
+    {
+      "module": "ParticleState",
+      "params": {
+        "KillOnLifetime": true
+      }
+    },
+    {
+      "module": "SubUVAnimation",
+      "params": {
+        "StartFrame": 0,
+        "EndFrame": 35,
+        "Loop": false,
+        "FramesPerSecond": 30
+      }
+    },
+    {
+      "module": "SphereLocation",
+      "params": {
+        "Radius": 0.01,
+        "SurfaceOnly": false
+      }
+    },
+    {
+      "module": "CurlNoiseForce",
+      "params": {
+        "Strength": 0.2,
+        "Frequency": 3,
+        "Offset": [0, 1, 0],
+        "Pan": [0, 0, 0]
+      }
+    },
+    {
+      "module": "AddVelocityInCone",
+      "params": {
+        "Speed": 0.5,
+        "ConeAngle": 15,
+        "ConeAxis": [0, 1, 0],
+        "InnerConeAngle": 0,
+        "SpeedFalloff": 0.5,
+        "Distribution": 1,
+        "LocalSpace": false
+      }
+    },
+    {
+      "module": "SolveForceAndVelocity",
+      "params": {
+        "AccelLimit": 100,
+        "SpeedLimit": 10
+      }
+    },
+    {
+      "module": "InitializeSprite",
+      "params": {
+        "SpriteSize": [0.15, 0.15],
+        "SpriteRotation": {
+          "min": 30,
+          "max": -30
+        }
+      }
+    },
+    {
+      "module": "ScaleColor",
+      "params": {
+        "ScaleRGB": {
+          "value": [1, 1, 1],
+          "curve": [
+            {
+              "time": 0,
+              "value": [1.281, 1.205, 1]
+            },
+            {
+              "time": 0.5,
+              "value": [0.941, 0.562, 0.39]
+            },
+            {
+              "time": 1,
+              "value": [0.25, 0.06, 0]
+            }
+          ],
+          "index": "Particles.NormalizedAge"
+        },
+        "ScaleAlpha": {
+          "value": 1,
+          "curve": [
+            {
+              "time": 0,
+              "value": 1
+            },
+            {
+              "time": 1,
+              "value": 0
+            }
+          ],
+          "index": "Particles.NormalizedAge"
+        }
+      }
+    }
+  ],
+  "sprite": {
+    "textures": [
+      {
+        "slot": "Base",
+        "path": "Assets/Textures/T_Fire_subUV.PNG",
+        "colorSpace": "sRGB"
+      },
+      {
+        "slot": "Tex0",
+        "path": "Assets/Textures/T_FireDistNoise.PNG",
+        "colorSpace": "Linear"
+      },
+      {
+        "slot": "Tex1",
+        "path": "Assets/Textures/T_Fire_Tiled.PNG",
+        "colorSpace": "Linear"
+      },
+      {
+        "slot": "Tex2",
+        "path": "",
+        "colorSpace": "Linear"
+      },
+      {
+        "slot": "Tex3",
+        "path": "",
+        "colorSpace": "Linear"
+      }
+    ],
+    "materialParams": [
+      [0.03, 0.03, 0, 0],
+      [1, 0.8, 0.6, 0.4],
+      [0.2, -0.2, -0.5, -0.8],
+      [0.125, 0.5, 0.25, 0.02],
+      [1.15, 0.85, 0.6, 1],
+      [2, 0.9, 0.3, 0.6],
+      [1.03, 1, 0.97, 1],
+      [0.2, 0.6, 0.9, 0],
+      [1, 1, 0, 0],
+      [0.05, 0.05, 0, 0],
+      [2, 2, 0.3, 0.1],
+      [-0.03, 0.12, 0, 0],
+      [1, 1, 0, 0],
+      [0, 0.25, 0, 0],
+      [1.7, 1.7, 0.5, 0],
+      [0.04, 0.4, 0, 0]
+    ],
+    "materialLayers": [
+      "Distortion"
+    ],
+    "textureAlpha": "FromLuminance",
+    "blend": "Translucent",
+    "subImage": [6, 6],
+    "subUVBlend": true,
+    "facing": "FaceCameraPlane",
+    "alignment": "Unaligned",
+    "pivot": [0.5, 0.5],
+    "cameraOffset": 0,
+    "velocityStretch": 0,
+    "blendNear": 1,
+    "blendFar": 10,
+    "bindings": {
+      "Position": {
+        "attribute": "Particles.Position",
+        "default": [0, 0, 0]
+      },
+      "Color": {
+        "attribute": "Particles.Color",
+        "default": [1, 1, 1, 1]
+      },
+      "Size": {
+        "attribute": "Particles.Size",
+        "default": 0.1
+      },
+      "SubImageIndex": {
+        "attribute": "Particles.SubImageIndex",
+        "default": 0
+      },
+      "SpriteSize": {
+        "attribute": "Particles.SpriteSize",
+        "default": [0.2, 0.2]
+      },
+      "SpriteRotation": {
+        "attribute": "Particles.SpriteRotation",
+        "default": 0
+      },
+      "Velocity": {
+        "attribute": "Particles.Velocity",
+        "default": [0, 0, 0]
+      },
+      "SpriteFacing": {
+        "attribute": "Particles.SpriteFacing",
+        "default": [0, 1, 0]
+      },
+      "SpriteAlignment": {
+        "attribute": "Particles.SpriteAlignment",
+        "default": [0, 1, 0]
+      },
+      "ParticleParam0": {
+        "attribute": "Particles.NormalizedAge",
+        "default": 0
+      },
+      "ParticleParam1": {
+        "attribute": "",
+        "default": 0
+      }
+    },
+    "materialGraph": {
+      "output": 252,
+      "nodes": [
+        {
+          "type": "QuadUV",
+          "pos": [0, 0],
+          "inputs": []
+        },
+        {
+          "type": "ParticleParam",
+          "pos": [0, 110],
+          "inputs": []
+        },
+        {
+          "type": "Coverage",
+          "pos": [0, 220],
+          "inputs": []
+        },
+        {
+          "type": "Constant",
+          "pos": [0, 330],
+          "inputs": [],
+          "value": [0.03, 0.03, 0, 0]
+        },
+        {
+          "type": "Constant",
+          "pos": [0, 440],
+          "inputs": [],
+          "value": [1, 0.8, 0.6, 0.4]
+        },
+        {
+          "type": "Constant",
+          "pos": [0, 550],
+          "inputs": [],
+          "value": [0.2, -0.2, -0.5, -0.8]
+        },
+        {
+          "type": "Constant",
+          "pos": [0, 660],
+          "inputs": [],
+          "value": [0.125, 0.5, 0.25, 0.02]
+        },
+        {
+          "type": "Constant",
+          "pos": [0, 770],
+          "inputs": [],
+          "value": [1.15, 0.85, 0.6, 1]
+        },
+        {
+          "type": "Constant",
+          "pos": [0, 880],
+          "inputs": [],
+          "value": [2, 0.9, 0.3, 0.6]
+        },
+        {
+          "type": "Constant",
+          "pos": [0, 990],
+          "inputs": [],
+          "value": [1.03, 1, 0.97, 1]
+        },
+        {
+          "type": "Constant",
+          "pos": [0, 1100],
+          "inputs": [],
+          "value": [0.2, 0.6, 0.9, 0]
+        },
+        {
+          "type": "UVTransform",
+          "pos": [180, 0],
+          "inputs": [
+            {
+              "node": 0
+            }
+          ],
+          "tilingOffset": [1, 1, 0, 0],
+          "scroll": [0.05, 0.05, 0, 0]
+        },
+        {
+          "type": "UVTransform",
+          "pos": [180, 110],
+          "inputs": [
+            {
+              "node": 0
+            }
+          ],
+          "tilingOffset": [2, 2, 0.3, 0.1],
+          "scroll": [-0.03, 0.12, 0, 0]
+        },
+        {
+          "type": "UVTransform",
+          "pos": [180, 220],
+          "inputs": [
+            {
+              "node": 0
+            }
+          ],
+          "tilingOffset": [1, 1, 0, 0],
+          "scroll": [0, 0.25, 0, 0]
+        },
+        {
+          "type": "UVTransform",
+          "pos": [180, 330],
+          "inputs": [
+            {
+              "node": 0
+            }
+          ],
+          "tilingOffset": [1.7, 1.7, 0.5, 0],
+          "scroll": [0.04, 0.4, 0, 0]
+        },
+        {
+          "type": "Add",
+          "pos": [360, 0],
+          "inputs": [
+            {
+              "node": 11
+            },
+            {
+              "node": 12,
+              "swizzle": "yxzw"
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [360, 110],
+          "inputs": [
+            {
+              "node": 12
+            },
+            {
+              "node": 0,
+              "swizzle": "yxzw"
+            }
+          ]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [360, 220],
+          "inputs": [
+            {
+              "node": 11,
+              "width": 2
+            }
+          ],
+          "slot": 0
+        },
+        {
+          "type": "UnpackSigned",
+          "pos": [540, 0],
+          "inputs": [
+            {
+              "node": 17
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [720, 0],
+          "inputs": [
+            {
+              "node": 18
+            },
+            {
+              "node": 3
+            }
+          ]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [360, 330],
+          "inputs": [
+            {
+              "node": 12,
+              "width": 2
+            }
+          ],
+          "slot": 0
+        },
+        {
+          "type": "UnpackSigned",
+          "pos": [540, 110],
+          "inputs": [
+            {
+              "node": 20
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [720, 110],
+          "inputs": [
+            {
+              "node": 21
+            },
+            {
+              "node": 3
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [900, 0],
+          "inputs": [
+            {
+              "node": 19
+            },
+            {
+              "node": 22
+            }
+          ]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [540, 220],
+          "inputs": [
+            {
+              "node": 15,
+              "width": 2
+            }
+          ],
+          "slot": 0
+        },
+        {
+          "type": "UnpackSigned",
+          "pos": [720, 220],
+          "inputs": [
+            {
+              "node": 24
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [900, 110],
+          "inputs": [
+            {
+              "node": 25
+            },
+            {
+              "node": 3
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [1080, 0],
+          "inputs": [
+            {
+              "node": 23
+            },
+            {
+              "node": 26
+            }
+          ]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [540, 330],
+          "inputs": [
+            {
+              "node": 16,
+              "width": 2
+            }
+          ],
+          "slot": 0
+        },
+        {
+          "type": "UnpackSigned",
+          "pos": [720, 330],
+          "inputs": [
+            {
+              "node": 28
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [900, 220],
+          "inputs": [
+            {
+              "node": 29
+            },
+            {
+              "node": 3
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [1260, 0],
+          "inputs": [
+            {
+              "node": 27
+            },
+            {
+              "node": 30
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 0],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 4,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "BaseSample",
+          "pos": [1620, 0],
+          "inputs": [
+            {
+              "node": 32,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 110],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 4,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "BaseSample",
+          "pos": [1620, 110],
+          "inputs": [
+            {
+              "node": 34,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [1800, 0],
+          "inputs": [
+            {
+              "node": 33
+            },
+            {
+              "node": 35
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 220],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 4,
+              "swizzle": "z"
+            }
+          ]
+        },
+        {
+          "type": "BaseSample",
+          "pos": [1620, 220],
+          "inputs": [
+            {
+              "node": 37,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [1980, 0],
+          "inputs": [
+            {
+              "node": 36
+            },
+            {
+              "node": 38
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 330],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 4,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "BaseSample",
+          "pos": [1620, 330],
+          "inputs": [
+            {
+              "node": 40,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [2160, 0],
+          "inputs": [
+            {
+              "node": 39
+            },
+            {
+              "node": 41
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 440],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 5,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "BaseSample",
+          "pos": [1620, 440],
+          "inputs": [
+            {
+              "node": 43,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [2340, 0],
+          "inputs": [
+            {
+              "node": 42
+            },
+            {
+              "node": 44
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 550],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 5,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "BaseSample",
+          "pos": [1620, 550],
+          "inputs": [
+            {
+              "node": 46,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [2520, 0],
+          "inputs": [
+            {
+              "node": 45
+            },
+            {
+              "node": 47
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 660],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 5,
+              "swizzle": "z"
+            }
+          ]
+        },
+        {
+          "type": "BaseSample",
+          "pos": [1620, 660],
+          "inputs": [
+            {
+              "node": 49,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [2700, 0],
+          "inputs": [
+            {
+              "node": 48
+            },
+            {
+              "node": 50
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 770],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 5,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "BaseSample",
+          "pos": [1620, 770],
+          "inputs": [
+            {
+              "node": 52,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [2880, 0],
+          "inputs": [
+            {
+              "node": 51
+            },
+            {
+              "node": 53
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [3060, 0],
+          "inputs": [
+            {
+              "node": 54
+            },
+            {
+              "node": 6,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 880],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 4,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [1620, 880],
+          "inputs": [
+            {
+              "node": 13
+            },
+            {
+              "node": 56,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [1800, 110],
+          "inputs": [
+            {
+              "node": 57,
+              "width": 2
+            }
+          ],
+          "slot": 1
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 990],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 5,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [1620, 990],
+          "inputs": [
+            {
+              "node": 13
+            },
+            {
+              "node": 59,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [1800, 220],
+          "inputs": [
+            {
+              "node": 60,
+              "width": 2
+            }
+          ],
+          "slot": 1
+        },
+        {
+          "type": "Add",
+          "pos": [1980, 110],
+          "inputs": [
+            {
+              "node": 61
+            },
+            {
+              "node": 6,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [2160, 110],
+          "inputs": [
+            {
+              "node": 58
+            },
+            {
+              "node": 62
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 1100],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 4,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [1620, 1100],
+          "inputs": [
+            {
+              "node": 14
+            },
+            {
+              "node": 64,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [1800, 330],
+          "inputs": [
+            {
+              "node": 65,
+              "width": 2
+            }
+          ],
+          "slot": 1
+        },
+        {
+          "type": "Add",
+          "pos": [1980, 220],
+          "inputs": [
+            {
+              "node": 66
+            },
+            {
+              "node": 6,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [2340, 110],
+          "inputs": [
+            {
+              "node": 63
+            },
+            {
+              "node": 67
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [1440, 1210],
+          "inputs": [
+            {
+              "node": 31
+            },
+            {
+              "node": 5,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [1620, 1210],
+          "inputs": [
+            {
+              "node": 14
+            },
+            {
+              "node": 69,
+              "width": 2
+            }
+          ]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [1800, 440],
+          "inputs": [
+            {
+              "node": 70,
+              "width": 2
+            }
+          ],
+          "slot": 1
+        },
+        {
+          "type": "Add",
+          "pos": [1980, 330],
+          "inputs": [
+            {
+              "node": 71
+            },
+            {
+              "node": 6,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [2520, 110],
+          "inputs": [
+            {
+              "node": 68
+            },
+            {
+              "node": 72
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [2700, 110],
+          "inputs": [
+            {
+              "node": 73,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "OneMinus",
+          "pos": [180, 440],
+          "inputs": [
+            {
+              "node": 1,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [3240, 0],
+          "inputs": [
+            {
+              "node": 55
+            },
+            {
+              "node": 7
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [3420, 0],
+          "inputs": [
+            {
+              "node": 55
+            },
+            {
+              "node": 76
+            },
+            {
+              "node": 75,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [2880, 110],
+          "inputs": [
+            {
+              "node": 74,
+              "swizzle": "x"
+            },
+            {
+              "node": 2,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [3060, 110],
+          "inputs": [
+            {
+              "node": 78
+            },
+            {
+              "node": 8,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [3240, 110],
+          "inputs": [
+            {
+              "node": 8
+            },
+            {
+              "node": 79,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [3600, 0],
+          "inputs": [
+            {
+              "node": 77
+            },
+            {
+              "node": 80
+            }
+          ]
+        },
+        {
+          "type": "Smoothstep",
+          "pos": [2880, 220],
+          "inputs": [
+            {
+              "node": 10,
+              "swizzle": "x"
+            },
+            {
+              "node": 10,
+              "swizzle": "y"
+            },
+            {
+              "node": 74,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [3780, 0],
+          "inputs": [
+            {
+              "node": 81
+            },
+            {
+              "node": 6,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [3960, 0],
+          "inputs": [
+            {
+              "node": 83
+            },
+            {
+              "node": 81
+            },
+            {
+              "node": 82,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [4140, 0],
+          "inputs": [
+            {
+              "node": 84
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [4320, 0],
+          "inputs": [
+            {
+              "node": 85
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [4500, 0],
+          "inputs": [
+            {
+              "node": 84
+            },
+            {
+              "node": 86
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [4680, 0],
+          "inputs": [
+            {
+              "node": 87
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [4860, 0],
+          "inputs": [
+            {
+              "node": 88
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [5040, 0],
+          "inputs": [
+            {
+              "node": 87
+            },
+            {
+              "node": 89
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [5220, 0],
+          "inputs": [
+            {
+              "node": 90
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [5400, 0],
+          "inputs": [
+            {
+              "node": 91
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [5580, 0],
+          "inputs": [
+            {
+              "node": 90
+            },
+            {
+              "node": 92
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [5760, 0],
+          "inputs": [
+            {
+              "node": 93
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [5940, 0],
+          "inputs": [
+            {
+              "node": 94
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [6120, 0],
+          "inputs": [
+            {
+              "node": 93
+            },
+            {
+              "node": 95
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [6300, 0],
+          "inputs": [
+            {
+              "node": 96
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [6480, 0],
+          "inputs": [
+            {
+              "node": 97
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [6660, 0],
+          "inputs": [
+            {
+              "node": 96
+            },
+            {
+              "node": 98
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [6840, 0],
+          "inputs": [
+            {
+              "node": 99
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [7020, 0],
+          "inputs": [
+            {
+              "node": 100
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [7200, 0],
+          "inputs": [
+            {
+              "node": 99
+            },
+            {
+              "node": 101
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [7380, 0],
+          "inputs": [
+            {
+              "node": 102
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [7560, 0],
+          "inputs": [
+            {
+              "node": 103
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [7740, 0],
+          "inputs": [
+            {
+              "node": 102
+            },
+            {
+              "node": 104
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [7920, 0],
+          "inputs": [
+            {
+              "node": 105
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [8100, 0],
+          "inputs": [
+            {
+              "node": 106
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [8280, 0],
+          "inputs": [
+            {
+              "node": 105
+            },
+            {
+              "node": 107
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [8460, 0],
+          "inputs": [
+            {
+              "node": 108
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [8640, 0],
+          "inputs": [
+            {
+              "node": 109
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [8820, 0],
+          "inputs": [
+            {
+              "node": 108
+            },
+            {
+              "node": 110
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [9000, 0],
+          "inputs": [
+            {
+              "node": 111
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [9180, 0],
+          "inputs": [
+            {
+              "node": 112
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [9360, 0],
+          "inputs": [
+            {
+              "node": 111
+            },
+            {
+              "node": 113
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [9540, 0],
+          "inputs": [
+            {
+              "node": 114
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [9720, 0],
+          "inputs": [
+            {
+              "node": 115
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [9900, 0],
+          "inputs": [
+            {
+              "node": 114
+            },
+            {
+              "node": 116
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [10080, 0],
+          "inputs": [
+            {
+              "node": 117
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [10260, 0],
+          "inputs": [
+            {
+              "node": 118
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [10440, 0],
+          "inputs": [
+            {
+              "node": 117
+            },
+            {
+              "node": 119
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [10620, 0],
+          "inputs": [
+            {
+              "node": 120
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [10800, 0],
+          "inputs": [
+            {
+              "node": 121
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [10980, 0],
+          "inputs": [
+            {
+              "node": 120
+            },
+            {
+              "node": 122
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [11160, 0],
+          "inputs": [
+            {
+              "node": 123
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [11340, 0],
+          "inputs": [
+            {
+              "node": 124
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [11520, 0],
+          "inputs": [
+            {
+              "node": 123
+            },
+            {
+              "node": 125
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [11700, 0],
+          "inputs": [
+            {
+              "node": 126
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [11880, 0],
+          "inputs": [
+            {
+              "node": 127
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [12060, 0],
+          "inputs": [
+            {
+              "node": 126
+            },
+            {
+              "node": 128
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [12240, 0],
+          "inputs": [
+            {
+              "node": 129
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [12420, 0],
+          "inputs": [
+            {
+              "node": 130
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [12600, 0],
+          "inputs": [
+            {
+              "node": 129
+            },
+            {
+              "node": 131
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [12780, 0],
+          "inputs": [
+            {
+              "node": 132
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [12960, 0],
+          "inputs": [
+            {
+              "node": 133
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [13140, 0],
+          "inputs": [
+            {
+              "node": 132
+            },
+            {
+              "node": 134
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [13320, 0],
+          "inputs": [
+            {
+              "node": 135
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [13500, 0],
+          "inputs": [
+            {
+              "node": 136
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [13680, 0],
+          "inputs": [
+            {
+              "node": 135
+            },
+            {
+              "node": 137
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [13860, 0],
+          "inputs": [
+            {
+              "node": 138
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [14040, 0],
+          "inputs": [
+            {
+              "node": 139
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [14220, 0],
+          "inputs": [
+            {
+              "node": 138
+            },
+            {
+              "node": 140
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [14400, 0],
+          "inputs": [
+            {
+              "node": 141
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [14580, 0],
+          "inputs": [
+            {
+              "node": 142
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [14760, 0],
+          "inputs": [
+            {
+              "node": 141
+            },
+            {
+              "node": 143
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [14940, 0],
+          "inputs": [
+            {
+              "node": 144
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [15120, 0],
+          "inputs": [
+            {
+              "node": 145
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [15300, 0],
+          "inputs": [
+            {
+              "node": 144
+            },
+            {
+              "node": 146
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [15480, 0],
+          "inputs": [
+            {
+              "node": 147
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [15660, 0],
+          "inputs": [
+            {
+              "node": 148
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [15840, 0],
+          "inputs": [
+            {
+              "node": 147
+            },
+            {
+              "node": 149
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [16020, 0],
+          "inputs": [
+            {
+              "node": 150
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [16200, 0],
+          "inputs": [
+            {
+              "node": 151
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [16380, 0],
+          "inputs": [
+            {
+              "node": 150
+            },
+            {
+              "node": 152
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [16560, 0],
+          "inputs": [
+            {
+              "node": 153
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [16740, 0],
+          "inputs": [
+            {
+              "node": 154
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [16920, 0],
+          "inputs": [
+            {
+              "node": 153
+            },
+            {
+              "node": 155
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [17100, 0],
+          "inputs": [
+            {
+              "node": 156
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [17280, 0],
+          "inputs": [
+            {
+              "node": 157
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [17460, 0],
+          "inputs": [
+            {
+              "node": 156
+            },
+            {
+              "node": 158
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [17640, 0],
+          "inputs": [
+            {
+              "node": 159
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [17820, 0],
+          "inputs": [
+            {
+              "node": 160
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [18000, 0],
+          "inputs": [
+            {
+              "node": 159
+            },
+            {
+              "node": 161
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [18180, 0],
+          "inputs": [
+            {
+              "node": 162
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [18360, 0],
+          "inputs": [
+            {
+              "node": 163
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [18540, 0],
+          "inputs": [
+            {
+              "node": 162
+            },
+            {
+              "node": 164
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [18720, 0],
+          "inputs": [
+            {
+              "node": 165
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [18900, 0],
+          "inputs": [
+            {
+              "node": 166
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [19080, 0],
+          "inputs": [
+            {
+              "node": 165
+            },
+            {
+              "node": 167
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [19260, 0],
+          "inputs": [
+            {
+              "node": 168
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [19440, 0],
+          "inputs": [
+            {
+              "node": 169
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [19620, 0],
+          "inputs": [
+            {
+              "node": 168
+            },
+            {
+              "node": 170
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [19800, 0],
+          "inputs": [
+            {
+              "node": 171
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [19980, 0],
+          "inputs": [
+            {
+              "node": 172
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [20160, 0],
+          "inputs": [
+            {
+              "node": 171
+            },
+            {
+              "node": 173
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [20340, 0],
+          "inputs": [
+            {
+              "node": 174
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [20520, 0],
+          "inputs": [
+            {
+              "node": 175
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [20700, 0],
+          "inputs": [
+            {
+              "node": 174
+            },
+            {
+              "node": 176
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [20880, 0],
+          "inputs": [
+            {
+              "node": 177
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [21060, 0],
+          "inputs": [
+            {
+              "node": 178
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [21240, 0],
+          "inputs": [
+            {
+              "node": 177
+            },
+            {
+              "node": 179
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [21420, 0],
+          "inputs": [
+            {
+              "node": 180
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [21600, 0],
+          "inputs": [
+            {
+              "node": 181
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [21780, 0],
+          "inputs": [
+            {
+              "node": 180
+            },
+            {
+              "node": 182
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [21960, 0],
+          "inputs": [
+            {
+              "node": 183
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [22140, 0],
+          "inputs": [
+            {
+              "node": 184
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [22320, 0],
+          "inputs": [
+            {
+              "node": 183
+            },
+            {
+              "node": 185
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [22500, 0],
+          "inputs": [
+            {
+              "node": 186
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [22680, 0],
+          "inputs": [
+            {
+              "node": 187
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [22860, 0],
+          "inputs": [
+            {
+              "node": 186
+            },
+            {
+              "node": 188
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [23040, 0],
+          "inputs": [
+            {
+              "node": 189
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [23220, 0],
+          "inputs": [
+            {
+              "node": 190
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [23400, 0],
+          "inputs": [
+            {
+              "node": 189
+            },
+            {
+              "node": 191
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [23580, 0],
+          "inputs": [
+            {
+              "node": 192
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [23760, 0],
+          "inputs": [
+            {
+              "node": 193
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [23940, 0],
+          "inputs": [
+            {
+              "node": 192
+            },
+            {
+              "node": 194
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [24120, 0],
+          "inputs": [
+            {
+              "node": 195
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [24300, 0],
+          "inputs": [
+            {
+              "node": 196
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [24480, 0],
+          "inputs": [
+            {
+              "node": 195
+            },
+            {
+              "node": 197
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [24660, 0],
+          "inputs": [
+            {
+              "node": 198
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [24840, 0],
+          "inputs": [
+            {
+              "node": 199
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [25020, 0],
+          "inputs": [
+            {
+              "node": 198
+            },
+            {
+              "node": 200
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [25200, 0],
+          "inputs": [
+            {
+              "node": 201
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [25380, 0],
+          "inputs": [
+            {
+              "node": 202
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [25560, 0],
+          "inputs": [
+            {
+              "node": 201
+            },
+            {
+              "node": 203
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [25740, 0],
+          "inputs": [
+            {
+              "node": 204
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [25920, 0],
+          "inputs": [
+            {
+              "node": 205
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [26100, 0],
+          "inputs": [
+            {
+              "node": 204
+            },
+            {
+              "node": 206
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [26280, 0],
+          "inputs": [
+            {
+              "node": 207
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [26460, 0],
+          "inputs": [
+            {
+              "node": 208
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [26640, 0],
+          "inputs": [
+            {
+              "node": 207
+            },
+            {
+              "node": 209
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [26820, 0],
+          "inputs": [
+            {
+              "node": 210
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [27000, 0],
+          "inputs": [
+            {
+              "node": 211
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [27180, 0],
+          "inputs": [
+            {
+              "node": 210
+            },
+            {
+              "node": 212
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [27360, 0],
+          "inputs": [
+            {
+              "node": 213
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [27540, 0],
+          "inputs": [
+            {
+              "node": 214
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [27720, 0],
+          "inputs": [
+            {
+              "node": 213
+            },
+            {
+              "node": 215
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [27900, 0],
+          "inputs": [
+            {
+              "node": 216
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [28080, 0],
+          "inputs": [
+            {
+              "node": 217
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [28260, 0],
+          "inputs": [
+            {
+              "node": 216
+            },
+            {
+              "node": 218
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [28440, 0],
+          "inputs": [
+            {
+              "node": 219
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [28620, 0],
+          "inputs": [
+            {
+              "node": 220
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [28800, 0],
+          "inputs": [
+            {
+              "node": 219
+            },
+            {
+              "node": 221
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [28980, 0],
+          "inputs": [
+            {
+              "node": 222
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [29160, 0],
+          "inputs": [
+            {
+              "node": 223
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [29340, 0],
+          "inputs": [
+            {
+              "node": 222
+            },
+            {
+              "node": 224
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [29520, 0],
+          "inputs": [
+            {
+              "node": 225
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [29700, 0],
+          "inputs": [
+            {
+              "node": 226
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [29880, 0],
+          "inputs": [
+            {
+              "node": 225
+            },
+            {
+              "node": 227
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [30060, 0],
+          "inputs": [
+            {
+              "node": 228
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [30240, 0],
+          "inputs": [
+            {
+              "node": 229
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [30420, 0],
+          "inputs": [
+            {
+              "node": 228
+            },
+            {
+              "node": 230
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [30600, 0],
+          "inputs": [
+            {
+              "node": 231
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [30780, 0],
+          "inputs": [
+            {
+              "node": 232
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [30960, 0],
+          "inputs": [
+            {
+              "node": 231
+            },
+            {
+              "node": 233
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [31140, 0],
+          "inputs": [
+            {
+              "node": 234
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [31320, 0],
+          "inputs": [
+            {
+              "node": 235
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [31500, 0],
+          "inputs": [
+            {
+              "node": 234
+            },
+            {
+              "node": 236
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [31680, 0],
+          "inputs": [
+            {
+              "node": 237
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [31860, 0],
+          "inputs": [
+            {
+              "node": 238
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [32040, 0],
+          "inputs": [
+            {
+              "node": 237
+            },
+            {
+              "node": 239
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [32220, 0],
+          "inputs": [
+            {
+              "node": 240
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [32400, 0],
+          "inputs": [
+            {
+              "node": 241
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [32580, 0],
+          "inputs": [
+            {
+              "node": 240
+            },
+            {
+              "node": 242
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [32760, 0],
+          "inputs": [
+            {
+              "node": 243
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [32940, 0],
+          "inputs": [
+            {
+              "node": 244
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [33120, 0],
+          "inputs": [
+            {
+              "node": 243
+            },
+            {
+              "node": 245
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [33300, 0],
+          "inputs": [
+            {
+              "node": 246
+            },
+            {
+              "node": 9
+            }
+          ]
+        },
+        {
+          "type": "Saturate",
+          "pos": [33480, 0],
+          "inputs": [
+            {
+              "node": 247
+            }
+          ]
+        },
+        {
+          "type": "Lerp",
+          "pos": [33660, 0],
+          "inputs": [
+            {
+              "node": 246
+            },
+            {
+              "node": 248
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ]
+        },
+        {
+          "type": "Add",
+          "pos": [2880, 330],
+          "inputs": [
+            {
+              "node": 74,
+              "swizzle": "x"
+            },
+            {
+              "node": 6,
+              "swizzle": "y"
+            }
+          ]
+        },
+        {
+          "type": "Multiply",
+          "pos": [3240, 220],
+          "inputs": [
+            {
+              "node": 55,
+              "swizzle": "w"
+            },
+            {
+              "node": 250,
+              "swizzle": "x"
+            }
+          ]
+        },
+        {
+          "type": "Append",
+          "pos": [33840, 0],
+          "inputs": [
+            {
+              "node": 249
+            },
+            {
+              "node": 251,
+              "swizzle": "x"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
