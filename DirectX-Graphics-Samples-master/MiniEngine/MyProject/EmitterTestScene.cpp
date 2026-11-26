@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "EmitterTestScene.h"
 
+#include "EmitterRenderList.h"
+
 #include "EmitterAsset.h"
 #include "ModuleLibrary.h"
 
@@ -281,7 +283,7 @@ void EmitterTestScene::OnSubmitted(uint64_t fence)
 		item.runtime->OnSubmitted(fence);
 }
 
-void EmitterTestScene::Render(GraphicsContext& gfx, const Math::Camera& camera)
+void EmitterTestScene::Render(GraphicsContext& gfx, const Math::Camera& camera, EmitterRenderList& emitterList)
 {
 	if (m_Items.empty())
 		return;
@@ -304,13 +306,9 @@ void EmitterTestScene::Render(GraphicsContext& gfx, const Math::Camera& camera)
 		return;
 	}
 
-	// 준 List: 이미터마다 각자 그리되, 이미터 사이의 순서는 카메라에서 먼 이미터부터 (EmitterDrawOrder.h)
-	//   테스트 씬은 정렬 키를 쓰지 않는다 (전부 0)
-	m_DrawOrder.Begin(camera);
+	// 준 List: 여기서는 그리지 않고 목록에 넣기만 한다. 테스트 씬은 정렬 키를 쓰지 않는다 (전부 0 -> 거리순)
 	for (Item& item : m_Items)
-		m_DrawOrder.Add(item.runtime.get(), item.owner.position, 0);
-	for (const EmitterDrawOrder::Item& item : m_DrawOrder.Sorted())
-		item.runtime->Render(gfx, camera);
+		emitterList.Add(item.runtime.get(), item.owner.position, 0);
 }
 
 uint32_t EmitterTestScene::AliveTotal() const

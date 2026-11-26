@@ -1,5 +1,4 @@
 #pragma once
-#include "EmitterDrawOrder.h"
 #include "EmitterRuntime.h"
 
 #include <cstdint>
@@ -27,6 +26,8 @@ constexpr uint32_t kMaxModuleCombos = 32;
 uint32_t                ComboModuleBits(uint32_t combo);      // bit0 Sphere, 1 Cone, 2 Gravity, 3 Solve, 4 SubUV
 std::string             ComboName(uint32_t combo);
 std::vector<ModuleDesc> MakeComboStack(uint32_t combo, float spawnRate);
+
+class EmitterRenderList;
 
 class EmitterTestScene
 {
@@ -64,7 +65,8 @@ public:
 
 	void Tick(ComputeContext& ctx, float deltaTime);
 	void OnSubmitted(uint64_t fence);
-	void Render(GraphicsContext& gfx, const Math::Camera& camera);
+	// 전체 정렬이 꺼져 있으면 그리지 않고 emitterList 에 넣기만 한다 (EmitterRenderList.h)
+	void Render(GraphicsContext& gfx, const Math::Camera& camera, EmitterRenderList& emitterList);
 
 	void SetStageMajor(bool stageMajor) { m_StageMajor = stageMajor; }
 	bool StageMajor() const { return m_StageMajor; }
@@ -104,7 +106,6 @@ private:
 
 	bool               m_GlobalSort = true;
 	bool               m_GatherCulling = true;
-	EmitterDrawOrder   m_DrawOrder;       // 준 List: 이미터 사이의 그리는 순서
 	ParticleRenderList m_RenderList;      // 반투명 (정렬). 크기 = 이미터 capacity 합 (Build 에서 잡음)
 	ParticleRenderList m_AdditiveList;    // Additive (정렬 안 함). 블렌드 모드가 실행 중에 바뀌므로 같은 크기
 };
