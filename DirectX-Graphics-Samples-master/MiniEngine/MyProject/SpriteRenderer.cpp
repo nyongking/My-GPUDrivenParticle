@@ -22,6 +22,12 @@
 
 
 #include "CompiledShaders/ParticleSpritePS.h"
+#include "CompiledShaders/SpritePresetNonePS.h"
+#include "CompiledShaders/SpritePresetPatternPS.h"
+#include "CompiledShaders/SpritePresetTintPS.h"
+#include "CompiledShaders/SpritePresetDissolvePS.h"
+#include "CompiledShaders/SpritePresetDistortionPS.h"
+#include "CompiledShaders/SpritePresetGlowPS.h"
 #include "CompiledShaders/ParticleSpriteVS.h"
 #include "CompiledShaders/ParticleSortKeyCS.h"
 
@@ -146,6 +152,30 @@ namespace
 		s_SoftCircle.Create2D(kSize * sizeof(uint32_t), kSize, kSize, DXGI_FORMAT_R8G8B8A8_UNORM, texels.data());
 	}
 		
+	// Preset 모드의 효과별 픽셀 셰이더 (ParticleMaterial::Effect 순서 그대로).
+	//   효과마다 셰이더가 따로라서 그릴 때 EffectMode 분기가 없다.
+	//   Preset 을 늘릴 때: Effect 에 항목 추가 -> Shaders/SpritePreset<이름>PS.hlsl 작성 -> 여기에 한 줄
+	struct PresetShader
+	{
+		ParticleMaterial::Effect effect;
+		const char*              file;      // UI 표시용
+		const void*              ps;
+		size_t                   size;
+	};
+	const PresetShader kPresetShaders[] =
+	{
+		{ ParticleMaterial::Effect::None,       "SpritePresetNonePS.hlsl",       g_pSpritePresetNonePS,       sizeof(g_pSpritePresetNonePS) },
+		{ ParticleMaterial::Effect::Pattern,    "SpritePresetPatternPS.hlsl",    g_pSpritePresetPatternPS,    sizeof(g_pSpritePresetPatternPS) },
+		{ ParticleMaterial::Effect::Tint,       "SpritePresetTintPS.hlsl",       g_pSpritePresetTintPS,       sizeof(g_pSpritePresetTintPS) },
+		{ ParticleMaterial::Effect::Dissolve,   "SpritePresetDissolvePS.hlsl",   g_pSpritePresetDissolvePS,   sizeof(g_pSpritePresetDissolvePS) },
+		{ ParticleMaterial::Effect::Distortion, "SpritePresetDistortionPS.hlsl", g_pSpritePresetDistortionPS, sizeof(g_pSpritePresetDistortionPS) },
+		{ ParticleMaterial::Effect::Glow,       "SpritePresetGlowPS.hlsl",       g_pSpritePresetGlowPS,       sizeof(g_pSpritePresetGlowPS) },
+	};
+	static_assert(sizeof(kPresetShaders) / sizeof(kPresetShaders[0]) == size_t(ParticleMaterial::Effect::Count),
+		"kPresetShaders 는 Effect 마다 한 줄 (순서도 같게)");
+
+	GraphicsPSO s_PresetPSO[size_t(ParticleMaterial::Effect::Count)];
+
 	uint32_t	RoundUp4(uint32_t v) { return (v + 3u) & ~3u; } // 4단위로 끊는다.
 	float3		ToFloat3(const Math::Vector3& v) { return { float(v.GetX()), float(v.GetY()), float(v.GetZ()) }; }
 
@@ -187,6 +217,15 @@ namespace
 		s_PSO.SetPixelShader(g_pParticleSpritePS, sizeof(g_pParticleSpritePS));
 		s_PSO.Finalize();
 
+		// Preset: 기본 PSO 와 같은 설정에 픽셀 셰이더만 효과별 것으로
+		for (size_t i = 0; i < size_t(ParticleMaterial::Effect::Count); ++i)
+		{
+			ASSERT(size_t(kPresetShaders[i].effect) == i, "kPresetShaders 순서가 Effect 와 다름");
+			s_PresetPSO[i] = s_PSO;
+			s_PresetPSO[i].SetPixelShader(kPresetShaders[i].ps, kPresetShaders[i].size);
+			s_PresetPSO[i].Finalize();
+		}
+
 		// b0 = SortKeyConstants, t0 = 렌더 구조체, t1 = 개수 버퍼(DrawArgs), u0 = 정렬 목록
 		s_SortKeyRootSig.Reset(kNumSortKeyRootParams, 0);
 		s_SortKeyRootSig[kSortKeyCB].InitAsConstants(0, sizeof(SortKeyConstants) / 4);
@@ -212,6 +251,19 @@ void SpriteRenderer::CreateMaterialPSO(GraphicsPSO& pso, const void* ps, size_t 
 	pso = s_PSO;
 	pso.SetPixelShader(ps, size);
 	pso.Finalize();
+}
+
+const GraphicsPSO& SpriteRenderer::PresetPSO(ParticleMaterial::Effect effect)
+{
+	InitializePipeline();
+	const size_t i = (effect < ParticleMaterial::Effect::Count) ? size_t(effect) : 0;
+	return s_PresetPSO[i];
+}
+
+const char* SpriteRenderer::PresetShaderName(ParticleMaterial::Effect effect)
+{
+	const size_t i = (effect < ParticleMaterial::Effect::Count) ? size_t(effect) : 0;
+	return kPresetShaders[i].file;
 }
 
 RendererDesc SpriteRenderer::Desc()
@@ -617,7 +669,7 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 
 		const void* instrData = &kEmptyInstr;
 		size_t      instrBytes = sizeof(MaterialInstr);
-		// 생성된 PS 는 명령어를 읽지 않는다 (b3 / t7 은 빈 값만 묶어 둔다)
+		// Preset / 생성된 PS 는 명령어를 읽지 않는다 (b3 / t7 은 빈 값만 묶어 둔다)
 		if (m_Material && !m_MaterialPSO)
 		{
 			const MaterialProgram& program = m_Material->Program();

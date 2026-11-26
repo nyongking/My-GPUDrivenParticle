@@ -70,6 +70,8 @@ public:
 	bool MoveMaterialLayer(uint32_t index, int direction);
 	bool SetMaterialLayers(const std::vector<ParticleMaterial::Effect>& layers);
 	bool SetMaterialLayerEffect(uint32_t index, ParticleMaterial::Effect effect);
+	// 효과 층이 둘 이상이면 그래프(Custom) 로 넘긴다. 에셋을 불러온 뒤 (값까지 넣은 뒤) 부른다
+	void ConvertMaterialLayersToGraph();
 	void SetMaterialGraph(const MaterialGraph& graph);
 	void SetMaterialGraphLayout(const MaterialGraph& graph);
 	void ClearMaterialGraph();
@@ -102,7 +104,16 @@ public:
 	const UberEmitterData& Uber() const { return m_Uber; }
 	bool			HasGeneratedProgram() const { return m_GpuProgram != nullptr; }
 
-	// Generated 방식 머티리얼 (그래프마다 만든 픽셀 셰이더). 없으면 기본 PS (EffectMode 분기 / VM) 로 그린다
+	// 지금 스프라이트를 그리는 픽셀 셰이더의 종류
+	//   Preset      : 효과마다 고정된 셰이더 (Shaders/SpritePreset*PS.hlsl)       <- 머티리얼이 Preset 모드
+	//   Generated   : 그래프에서 만든 셰이더 (MaterialGpuProgram)                 <- 머티리얼이 Custom 모드
+	//   Interpreter : 기본 PS (EffectMode 분기 / VM). Material mode = Interpreted 이거나 생성에 실패했을 때
+	enum class MaterialShaderKind { Interpreter, Preset, Generated };
+	MaterialShaderKind MaterialShader() const
+	{
+		if (m_MaterialPreset)	return MaterialShaderKind::Preset;
+		return m_MaterialProgram ? MaterialShaderKind::Generated : MaterialShaderKind::Interpreter;
+	}
 	bool			HasGeneratedMaterial() const { return m_MaterialProgram != nullptr; }
 	const std::string& GeneratedMaterialSource() const;
 	const std::string& GeneratedMaterialError() const { return m_MaterialProgramError; }
@@ -156,7 +167,8 @@ private:
 	GpuEmitterInstance                  m_Gpu;
 	SpriteRenderer                      m_GpuRenderer;
 
-	std::shared_ptr<MaterialGpuProgram> m_MaterialProgram;              // nullptr = 기본 PS 로 그림
+	std::shared_ptr<MaterialGpuProgram> m_MaterialProgram;              // Custom: 생성된 셰이더 (nullptr = 없음)
+	bool                                m_MaterialPreset = false;       // Preset: 효과별 고정 셰이더로 그리는 중
 	bool                                m_MaterialProgramTried = false; // 아래 revision 으로 만들어 봤는지 (실패해도 매 프레임 다시 하지 않는다)
 	uint32_t                            m_MaterialProgramRevision = 0;
 	std::string                         m_MaterialProgramError;

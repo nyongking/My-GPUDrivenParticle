@@ -421,7 +421,7 @@ namespace
 				runtime.SetMaterialGraphLayout(graph);
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Back to layers"))
+			if (ImGui::Button("Back to preset"))
 			{
 				runtime.ClearMaterialGraph();
 				ImGui::End();
@@ -464,116 +464,112 @@ namespace
 
 			const ParticleMaterial& material = runtime.Material();
 
-			ImGui::Checkbox("Graph Editor", &s_ShowGraphEditor);
+			// ---- 모드: Preset (효과 하나, 고정 셰이더) / Custom (그래프, 생성된 셰이더) ----
+			const bool custom = material.GetMode() == ParticleMaterial::Mode::Custom;
+			ImGui::TextUnformatted("Mode:");
 			ImGui::SameLine();
-			if (material.HasCustomGraph())
+			if (ImGui::RadioButton("Preset", !custom) && custom)
+				runtime.ClearMaterialGraph();
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("One effect, drawn with that effect's own fixed pixel shader.\n"
+					"Switching back from Custom discards the graph (params reset to the preset defaults).");
+			ImGui::SameLine();
+			if (ImGui::RadioButton("Custom", custom) && !custom)
 			{
-				if (ImGui::Button("Back to layers"))
-					runtime.ClearMaterialGraph();
-				if (ImGui::IsItemHovered())
-					ImGui::SetTooltip("Discard the custom graph and draw with the effect layers again.\nParam slots reset to the layer defaults.");
-				ImGui::SameLine();
-				ImGui::TextDisabled("(custom graph)");
-			}
-			else if (ImGui::Button("Edit as graph"))
-			{
+				// 지금 Preset 을 그대로 그래프로 옮겨서 시작한다
 				runtime.SetMaterialGraph(material.LayersAsGraph());
 				s_ShowGraphEditor = true;
 			}
-
-			if (!material.HasCustomGraph())
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("Node graph, drawn with a pixel shader generated for that graph.\n"
+					"Starts from the current preset as a graph.");
+			if (custom)
 			{
-				ImGui::Text("Effect Layers (%u / %u)", uint32_t(material.Layers().size()), ParticleMaterial::kMaxLayers);
+				ImGui::SameLine();
+				ImGui::Checkbox("Graph Editor", &s_ShowGraphEditor);
+			}
+
+			if (!custom)
+			{
+				// Preset: 효과 하나를 고른다 (None 포함)
+				const char* presetNames[uint32_t(Effect::Count)];
+				for (uint32_t i = 0; i < uint32_t(Effect::Count); ++i)
+					presetNames[i] = ParticleMaterial::EffectName(Effect(i));
+
+				int preset = static_cast<int>(material.GetEffect());
+				ImGui::SetNextItemWidth(160.f);
+				if (ImGui::Combo("Preset", &preset, presetNames, static_cast<int>(Effect::Count)))
+					runtime.SetMaterialEffect(Effect(preset));
 				if (ImGui::IsItemHovered())
-					ImGui::SetTooltip("Applied top to bottom: each layer's result is the next layer's base color.\n"
-						"Coverage (shape alpha) is always the original sprite shape.\n"
-						"Pattern: color x Tex.r / Tint: color x Tex.rgb / Dissolve: Tex = mask, progress = ParticleParam0\n"
-						"Distortion: first layer only (re-reads the base texture), later layers read the shifted UV / Glow: Tex x Tex -> add color\n"
-						"Limits: 4 layers, 4 effect textures, 16 param slots");
+					ImGui::SetTooltip("Pattern: color x Tex.r / Tint: color x Tex.rgb / Dissolve: Tex = mask, progress = NormalizedAge\n"
+						"Distortion: shifts the base texture UV / Glow: Tex x Tex -> add color");
 
-			for (uint32_t i = 0; i < uint32_t(material.LayerLayouts().size()); ++i)
-			{
-				const ParticleMaterial::LayerLayout l = material.LayerLayouts()[i];	// 복사: 아래에서 층이 바뀌면 목록이 바뀐다
-				bool edited = false;
-				ImGui::PushID(static_cast<int>(i));
-				int effect = static_cast<int>(l.effect) - 1;
-				ImGui::SetNextItemWidth(120.f);
-				if (ImGui::Combo("##effect", &effect, names, static_cast<int>(numEffects)))
+				// 그 효과가 쓰는 입력값 / 텍스처 칸
+				for (const ParticleMaterial::LayerLayout& l : material.LayerLayouts())
 				{
-					runtime.SetMaterialLayerEffect(i, Effect(effect + 1));		// 실패해도(한도) 이유는 LayerError 로 보인다
-					edited = true;
-				}
-				ImGui::SameLine();
-				if (ImGui::ArrowButton("##up", ImGuiDir_Up))
-				{
-					runtime.MoveMaterialLayer(i, -1);		// 실패해도(한도) 이유는 LayerError 로 보인다
-					edited = true;
-				}
-				ImGui::SameLine();
-				if (ImGui::ArrowButton("##down", ImGuiDir_Down))
-				{
-					runtime.MoveMaterialLayer(i, +1);		// 실패해도(한도) 이유는 LayerError 로 보인다
-					edited = true;
-				}
-				ImGui::SameLine();
-				if (ImGui::SmallButton("Remove"))
-				{
-					runtime.RemoveMaterialLayer(i);		// 실패해도(한도) 이유는 LayerError 로 보인다
-					edited = true;
-				}
-				ImGui::SameLine();
-				if (l.textureCount == 0)
-					ImGui::TextDisabled("params [%u ~ %u]", l.paramBase, l.paramBase + l.paramCount - 1);
-				else if (l.textureCount == 1)
-					ImGui::TextDisabled("params [%u ~ %u]  Tex%u", l.paramBase, l.paramBase + l.paramCount - 1, l.textureBase);
-				else
-					ImGui::TextDisabled("params [%u ~ %u]  Tex%u, Tex%u", l.paramBase, l.paramBase + l.paramCount - 1, l.textureBase, l.textureBase + 1);
-				
-				for (uint32_t t = 0; t < l.textureCount; ++t)
-				{
-					if (!material.SlotTexture(ParticleMaterial::kTexture0 + l.textureBase + t).path.empty())
-						continue;
 					ImGui::SameLine();
-					ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Tex%u empty", l.textureBase + t);
+					if (l.textureCount == 0)
+						ImGui::TextDisabled("params [%u ~ %u]", l.paramBase, l.paramBase + l.paramCount - 1);
+					else if (l.textureCount == 1)
+						ImGui::TextDisabled("params [%u ~ %u]  Tex%u", l.paramBase, l.paramBase + l.paramCount - 1, l.textureBase);
+					else
+						ImGui::TextDisabled("params [%u ~ %u]  Tex%u, Tex%u", l.paramBase, l.paramBase + l.paramCount - 1, l.textureBase, l.textureBase + 1);
+
+					for (uint32_t t = 0; t < l.textureCount; ++t)
+					{
+						if (!material.SlotTexture(ParticleMaterial::kTexture0 + l.textureBase + t).path.empty())
+							continue;
+						ImGui::SameLine();
+						ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Tex%u empty", l.textureBase + t);
+					}
 				}
-				
-				ImGui::PopID();
-				if (edited)
-					break;		// 목록이 바뀌었으니 이번 프레임은 여기까지
+
+				// 효과를 하나 더 섞기: Preset 은 효과 하나까지라서, 섞은 결과는 그래프(Custom) 가 된다
+				if (material.GetEffect() != Effect::None)
+				{
+					static int s_AddEffect = 0;		// 섞을 효과 (UI 상태만)
+					ImGui::SetNextItemWidth(160.f);
+					ImGui::Combo("##addEffect", &s_AddEffect, names, static_cast<int>(numEffects));
+					ImGui::SameLine();
+					if (ImGui::Button("Combine -> Custom"))
+					{
+						if (runtime.AddMaterialLayer(Effect(s_AddEffect + 1)))
+							s_ShowGraphEditor = true;
+					}
+					if (ImGui::IsItemHovered())
+						ImGui::SetTooltip("Stack another effect on top of this preset.\n"
+							"A preset is one effect, so the combined result becomes a Custom graph.");
+				}
+				if (!material.LayerError().empty())
+					ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", material.LayerError().c_str());
 			}
 
+			// ---- 지금 그리는 픽셀 셰이더 (Interpreted 는 Main 창의 "Material mode" 에서 고른다) ----
+			switch (runtime.MaterialShader())
 			{
-				static int s_AddEffect = 0;		// 추가할 효과 (UI 상태만)
-				ImGui::SetNextItemWidth(120.f);
-				ImGui::Combo("##addEffect", &s_AddEffect, names, static_cast<int>(numEffects));
-				ImGui::SameLine();
-				if (ImGui::Button("Add Layer"))
-					runtime.AddMaterialLayer(Effect(s_AddEffect + 1));
-			}
-			if (!material.LayerError().empty())
-				ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", material.LayerError().c_str());
-			}
-
-			// ---- Generated 방식 상태 (모드는 Main 창의 "Material mode") ----
-			if (MaterialGpuProgram::Mode() == MaterialShaderMode::Generated)
-			{
-				if (runtime.HasGeneratedMaterial())
-					ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.5f, 1.f), "Pixel shader: generated for this graph");
-				else
-					ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Pixel shader: interpreter (generated build failed)");
-
-				const std::string& genError = runtime.GeneratedMaterialError();
-				if (!genError.empty())
-					ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", genError.c_str());
-
-				if (runtime.HasGeneratedMaterial() && ImGui::TreeNode("Generated PS Source"))
+			case EmitterRuntime::MaterialShaderKind::Preset:
+				ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.5f, 1.f), "Pixel shader: preset (%s)", SpriteRenderer::PresetShaderName(material.GetEffect()));
+				break;
+			case EmitterRuntime::MaterialShaderKind::Generated:
+				ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.5f, 1.f), "Pixel shader: generated for this graph");
+				if (ImGui::TreeNode("Generated PS Source"))
 				{
 					ImGui::TextUnformatted(runtime.GeneratedMaterialSource().c_str());
 					ImGui::TreePop();
 				}
+				break;
+			default:
+				if (MaterialGpuProgram::Mode() == MaterialShaderMode::Generated)
+					ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Pixel shader: interpreter (generated build failed)");
+				else
+					ImGui::TextDisabled("Pixel shader: interpreter (Material mode = Interpreted)");
+				break;
 			}
-			else
-				ImGui::TextDisabled("Pixel shader: interpreter (Material mode = Interpreted)");
+			{
+				const std::string& genError = runtime.GeneratedMaterialError();
+				if (!genError.empty())
+					ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", genError.c_str());
+			}
 
 			// 아래 설정은 Interpreted 방식과 공용 렌더 목록에만 쓰인다
 			bool useVM = runtime.Material().UseVM();

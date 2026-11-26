@@ -353,6 +353,12 @@ bool EmitterRuntime::SetMaterialLayerEffect(uint32_t index, ParticleMaterial::Ef
 	return m_Material.SetLayerEffect(index, effect);
 }
 
+void EmitterRuntime::ConvertMaterialLayersToGraph()
+{
+	if (!m_Material.HasCustomGraph() && m_Material.Layers().size() > 1)
+		m_Material.ConvertLayersToCustomGraph();
+}
+
 void EmitterRuntime::SetMaterialGraph(const MaterialGraph& graph)
 {
 	m_Material.SetCustomGraph(graph);
@@ -626,6 +632,7 @@ void EmitterRuntime::SetMaterialProgram(std::shared_ptr<MaterialGpuProgram> prog
 {
 	// PSO 자체는 MiniEngine 이 끝까지 갖고 있으므로, 지난 프레임이 쓰던 것을 바꿔도 GPU 를 기다릴 필요가 없다
 	m_MaterialProgram = std::move(program);
+	m_MaterialPreset = false;
 
 	const GraphicsPSO* pso = m_MaterialProgram ? &m_MaterialProgram->PSO() : nullptr;
 	m_CpuRenderer.SetMaterialPSO(pso);
@@ -655,6 +662,19 @@ void EmitterRuntime::SyncMaterialProgram()
 	m_MaterialProgramRevision = revision;
 	m_MaterialProgramError.clear();
 
+	// ---- Preset: 효과 하나 -> 그 효과의 고정 셰이더 (빌드할 때 컴파일된 것, 여기서 만들 것이 없다) ----
+	if (m_Material.GetMode() == ParticleMaterial::Mode::Preset && m_Material.Layers().size() <= 1)
+	{
+		SetMaterialProgram(nullptr);
+
+		const GraphicsPSO* pso = &SpriteRenderer::PresetPSO(m_Material.GetEffect());
+		m_CpuRenderer.SetMaterialPSO(pso);
+		m_GpuRenderer.SetMaterialPSO(pso);
+		m_MaterialPreset = true;
+		return;
+	}
+
+	// ---- Custom: 그래프에서 셰이더를 만든다 (이미 만든 것이 있으면 그것을 쓴다) ----
 	const std::string name = "Main";
 	const GeneratedShader generated = GenerateMaterialShader(m_Material.CurrentGraph(), name + ".material.generated.hlsl");
 

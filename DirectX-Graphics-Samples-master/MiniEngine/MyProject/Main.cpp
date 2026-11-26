@@ -340,7 +340,8 @@ void MyProject::UpdateImGui(float deltaT)
         int mode = int(MaterialGpuProgram::Mode());
         ImGui::TextUnformatted("Material mode:");
         ImGui::SameLine();
-        const bool a = ImGui::RadioButton("Generated##material", &mode, int(MaterialShaderMode::Generated));
+        // Generated = 머티리얼마다 전용 셰이더 (Preset: 효과별 고정 셰이더 / Custom: 그래프에서 생성)
+        const bool a = ImGui::RadioButton("Shader (preset / generated)##material", &mode, int(MaterialShaderMode::Generated));
         ImGui::SameLine();
         const bool b = ImGui::RadioButton("Interpreted##material", &mode, int(MaterialShaderMode::Interpreted));
         if (a || b)

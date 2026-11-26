@@ -119,9 +119,16 @@ public:
 
     void SetMaterial(const ParticleMaterial* material) { m_Material = material; }
 
-    // Generated 방식: 그래프마다 만든 픽셀 셰이더의 PSO 로 그린다 (nullptr = 기본 PSO, EffectMode 분기 / VM)
-    //   포인터가 가리키는 PSO 는 MaterialGpuProgram 이 갖고 있다. 공용 렌더 목록에는 영향이 없다
+    // 머티리얼 전용 픽셀 셰이더의 PSO 로 그린다 (nullptr = 기본 PSO: EffectMode 분기 / VM 인터프리터)
+    //   Preset : PresetPSO(effect)                (효과마다 고정된 셰이더)
+    //   Custom : MaterialGpuProgram 이 가진 PSO   (그래프마다 만든 셰이더)
+    //   공용 렌더 목록에는 영향이 없다
     void SetMaterialPSO(const GraphicsPSO* pso) { m_MaterialPSO = pso; }
+
+    // Preset 모드: 효과마다 고정된 픽셀 셰이더 (Shaders/SpritePreset*PS.hlsl) 의 PSO. 프로그램이 끝날 때까지 살아 있다
+    //   Preset 을 늘릴 때는 SpriteRenderer.cpp 의 kPresetShaders 표에 추가한다
+    static const GraphicsPSO& PresetPSO(ParticleMaterial::Effect effect);
+    static const char* PresetShaderName(ParticleMaterial::Effect effect);   // UI 표시용 (셰이더 파일 이름)
     // 기본 PSO 와 같은 설정에 픽셀 셰이더만 바꾼 PSO 를 만든다. ps 는 PSO 를 쓰는 동안 살아 있어야 한다
     static void CreateMaterialPSO(GraphicsPSO& pso, const void* ps, size_t size);
 

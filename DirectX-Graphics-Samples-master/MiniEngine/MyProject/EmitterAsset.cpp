@@ -358,6 +358,10 @@ namespace
 
 	void ApplyMaterialLayers(EmitterRuntime& runtime, const EmitterAsset& asset)
 	{
+		// 그래프가 없는 에셋: 이전에 쓰던 그래프를 먼저 내린다 (Preset 으로 돌아간다)
+		if (!asset.hasMaterialGraph)
+			runtime.ClearMaterialGraph();
+
 		if (!runtime.SetMaterialLayers(asset.materialLayers))
 		{
 			Utility::Printf("[EmitterAsset] '%s': material layers rejected (%s) -> no effect\n", asset.name.c_str(),
@@ -370,8 +374,15 @@ namespace
 				Utility::Printf("[EmitterAsset] '%s': material graph does not compile (%s) -> base color\n", asset.name.c_str(),
 					runtime.Material().ProgramError().c_str());
 		}
-		else
-			runtime.ClearMaterialGraph();
+	}
+
+	// 머티리얼 전체: 효과 / 그래프 -> 값 -> (층이 둘 이상인 예전 에셋이면) Custom 그래프로 전환
+	//   Preset 은 효과 하나까지라서, 여러 층은 값이 들어간 뒤에 그래프로 옮긴다
+	void ApplyMaterial(EmitterRuntime& runtime, const EmitterAsset& asset)
+	{
+		ApplyMaterialLayers(runtime, asset);
+		ApplyMaterialParams(runtime, asset);
+		runtime.ConvertMaterialLayersToGraph();
 	}
 }
 
@@ -402,8 +413,7 @@ bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset, std::
 {
 	runtime.ReplaceDescription(asset.modules, asset.sprite, asset.capacity, asset.backend);
 	runtime.SetSpriteSettings(asset.settings);
-	ApplyMaterialLayers(runtime, asset);
-	ApplyMaterialParams(runtime, asset);
+	ApplyMaterial(runtime, asset);
 	return ApplyTextures(runtime, asset, failedTextures);
 }
 
@@ -419,8 +429,7 @@ bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& ass
 
 	// 둘 다 재시작이 필요 없는 값이라 시작한 뒤에 넣는다
 	runtime.SetSpriteSettings(asset.settings);
-	ApplyMaterialLayers(runtime, asset);
-	ApplyMaterialParams(runtime, asset);
+	ApplyMaterial(runtime, asset);
 
 	std::vector<std::string> failed;
 	if (!ApplyTextures(runtime, asset, &failed))

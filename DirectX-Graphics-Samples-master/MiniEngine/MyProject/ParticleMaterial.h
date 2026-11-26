@@ -125,6 +125,12 @@ public:
 	static const char*	EffectName(Effect effect);
 	static uint32_t		NumParams(Effect effect);
 
+	// 머티리얼을 그리는 두 가지 방식
+	//   Preset : 효과 하나 (Effect). 효과마다 고정된 픽셀 셰이더 파일이 있다 (Shaders/SpritePreset*PS.hlsl)
+	//   Custom : 그래프. MaterialShaderGenerator 가 그래프마다 픽셀 셰이더를 만든다
+	// 효과를 둘 이상 섞으면 Preset 으로는 표현할 수 없으므로 Custom (섞은 결과의 그래프) 으로 넘어간다
+	enum class Mode : uint32_t { Preset, Custom };
+
 	// 단순 Effect Preset에 따른 Material 설계
 	static MaterialProgram	BuildEffectProgram(Effect effect);
 	static uint32_t		NumEffectTextures(Effect effect);
@@ -166,6 +172,10 @@ public:
 	bool						SetLayers(const std::vector<Effect>& layers);
 	const std::string& LayerError() const { return m_LayerError; }
 	bool						NeedsVM() const { return m_UseVM || m_Layers.size() > 1 || m_CustomGraph != nullptr; }
+
+	Mode						GetMode() const { return m_CustomGraph ? Mode::Custom : Mode::Preset; }
+	// 지금의 효과 층을 그대로 그래프로 옮기고 Custom 으로 넘어간다 (층 목록은 비운다, 값 / 텍스처는 유지)
+	void						ConvertLayersToCustomGraph();
 
 	bool						HasCustomGraph() const { return m_CustomGraph != nullptr; }
 	const MaterialGraph*		CustomGraph() const { return m_CustomGraph.get(); }

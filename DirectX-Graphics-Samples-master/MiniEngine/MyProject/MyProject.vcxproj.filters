@@ -377,6 +377,9 @@
     <None Include="Shaders\SpriteAlpha.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
+    <None Include="Shaders\SpritePreset.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
     <None Include="Shaders\SpriteMaterialCommon.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
@@ -434,6 +437,24 @@
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\EmitterFinalizeCS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\SpritePresetNonePS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\SpritePresetPatternPS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\SpritePresetTintPS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\SpritePresetDissolvePS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\SpritePresetDistortionPS.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\SpritePresetGlowPS.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\ParticleSpritePS.hlsl">

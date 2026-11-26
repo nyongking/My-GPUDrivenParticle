@@ -508,7 +508,25 @@ bool ParticleMaterial::AddLayer(Effect effect)
 	layers.push_back(effect);
 
 	from.push_back(-1);
-	return ApplyLayers(layers, from, false);
+	if (!ApplyLayers(layers, from, false))
+		return false;
+
+	// Preset 은 효과 하나까지. 둘 이상 섞은 것은 고정 셰이더가 없으므로 그래프(Custom) 로 넘긴다
+	if (m_Layers.size() > 1)
+		ConvertLayersToCustomGraph();
+	return true;
+}
+
+void ParticleMaterial::ConvertLayersToCustomGraph()
+{
+	if (m_CustomGraph)
+		return;
+
+	// 지금 값(m_Params) 이 Constant / UVTransform 노드에 들어간 그래프. 텍스처 슬롯은 그대로 쓴다
+	const MaterialGraph graph = LayersAsGraph();
+	m_Layers.clear();
+	m_LayerLayouts.clear();
+	SetCustomGraph(graph);
 }
 
 bool ParticleMaterial::RemoveLayer(uint32_t index)
