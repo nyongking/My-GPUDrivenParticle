@@ -332,6 +332,24 @@ void MyProject::UpdateImGui(float deltaT)
     ImGui::SliderFloat("Rotate (deg/s)", &m_RotateSpeedDeg, 0.f, 360.f);
     ImGui::Checkbox("Move up/down (velocity)", &m_MoveOwner);
 
+    {
+        // 머티리얼(픽셀 셰이더) 방식. 전역 설정이라 일반 이미터 / Test scene 모두에 적용된다
+        //   공용 렌더 목록 (Global sort) 으로 그리는 이미터는 항상 Interpreted
+        ImGui::SeparatorText("Material");
+        ImGui::BeginDisabled(m_Recorder.IsBusy() || m_BenchRunning);      // 기록 중에는 조건 변경 금지
+        int mode = int(MaterialGpuProgram::Mode());
+        ImGui::TextUnformatted("Material mode:");
+        ImGui::SameLine();
+        const bool a = ImGui::RadioButton("Generated##material", &mode, int(MaterialShaderMode::Generated));
+        ImGui::SameLine();
+        const bool b = ImGui::RadioButton("Interpreted##material", &mode, int(MaterialShaderMode::Interpreted));
+        if (a || b)
+            MaterialGpuProgram::SetMode(MaterialShaderMode(mode));
+        const MaterialGpuProgram::Stats& ms = MaterialGpuProgram::GetStats();
+        ImGui::TextDisabled("(shaders: %u, builds: %u / %.1f ms, cache hits: %u)", ms.programs, ms.builds, ms.buildMs, ms.cacheHits);
+        ImGui::EndDisabled();
+    }
+
     if (!m_UseTestScene)
     {
         DrawSystemPanel(m_System, m_SelectedEmitter);
@@ -442,21 +460,6 @@ void MyProject::UpdateTestSceneImGui()
         }
         ImGui::SameLine();
         ImGui::TextDisabled("(%s)", UberGpuProgram::StatusText());
-    }
-
-    {
-        // 머티리얼(픽셀 셰이더) 방식. 공용 렌더 목록으로 그리는 이미터는 항상 Interpreted
-        int mode = int(MaterialGpuProgram::Mode());
-        ImGui::TextUnformatted("Material mode:");
-        ImGui::SameLine();
-        const bool a = ImGui::RadioButton("Generated##material", &mode, int(MaterialShaderMode::Generated));
-        ImGui::SameLine();
-        const bool b = ImGui::RadioButton("Interpreted##material", &mode, int(MaterialShaderMode::Interpreted));
-        if (a || b)
-            MaterialGpuProgram::SetMode(MaterialShaderMode(mode));
-        ImGui::SameLine();
-        const MaterialGpuProgram::Stats& ms = MaterialGpuProgram::GetStats();
-        ImGui::TextDisabled("(shaders: %u, builds: %u / %.1f ms, cache hits: %u)", ms.programs, ms.builds, ms.buildMs, ms.cacheHits);
     }
 
 
