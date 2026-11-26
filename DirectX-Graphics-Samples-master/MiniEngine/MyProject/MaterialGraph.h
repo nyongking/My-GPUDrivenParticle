@@ -42,9 +42,16 @@ struct MaterialNode
 	MaterialNodeType          type = MaterialNodeType::QuadUV;
 	std::vector<MaterialLink> inputs;
 	float4                    values[2] = {};
+	uint32_t                  width = 4;		// Constant 전용: 값의 성분 수 (1 ~ 4 = float ~ float4)
+	float4                    pinValues[3] = {};	// 연결하지 않은 입력 핀의 값 (핀의 너비는 MaterialNodePinWidth)
 	uint32_t                  textureSlot = 0;
 	float2						pos = { 0.f, 0.f };
 };
+
+// 노드를 만들 때는 이것을 쓴다: pinValues 를 그 핀의 기본값으로 채운다 (Multiply b = 1, Lerp t = 0.5 ...)
+MaterialNode MakeMaterialNode(MaterialNodeType type);
+// 연결하지 않은 핀이 받는 상수의 성분 수. 0 = 상수를 받지 않는 핀 (UV 핀: 비어 있으면 QuadUV)
+uint32_t     MaterialNodePinWidth(MaterialNodeType type, uint32_t pin);
 
 struct MaterialGraph
 {
@@ -73,13 +80,16 @@ struct MaterialCompileResult
 
 	// ---- Generated 방식(MaterialShaderGenerator)용: 칸 배정 전의 명령어 목록 ----
 	//   ssa[k].dst == k, srcA/B/C = 앞선 명령어 번호. 값 하나 = 변수 하나라 Reg 8 칸 제한이 없다
-	//   ok 가 false 여도 ssaOk 가 true 일 수 있다 (VM 의 Reg 칸 수만 넘은 경우)
+	//   ok 가 false 여도 ssaOk 가 true 일 수 있다 (VM 의 Reg 칸 수 / 값 칸 수만 넘은 경우)
 	bool                       ssaOk = false;
 	std::vector<MaterialInstr> ssa;
 	std::vector<uint32_t>      ssaInputs;	// 명령어가 실제로 읽는 입력 수 (0 ~ 3)
 	std::vector<MaterialSsaInfo> ssaInfo;	// ssa 와 같은 길이: 결과 / 입력의 성분 수
-	std::vector<int>           ssaAuto;		// >= 0 이면 빈 핀 기본값 (autoValues 번호). 셰이더에 숫자로 직접 쓴다
+	std::vector<int>           ssaAuto;		// >= 0 이면 연결하지 않은 핀의 값 (autoValues 번호). 셰이더에 숫자로 직접 쓴다
 	std::vector<float4>        autoValues;
+	//   노드 값: Constant = ssaValues[2k], UVTransform = ssaValues[2k] (tiling.xy offset.zw) / [2k + 1] (scroll.xy)
+	//   Generated 방식은 이 값을 셰이더에 숫자로 직접 쓴다 (params 칸을 쓰지 않으므로 칸 수 제한도 없다)
+	std::vector<float4>        ssaValues;	// ssa 길이의 2 배
 	int                        ssaOutput = -1;	// 출력 명령어 번호. -1 = 출력 없음 (base color)
 };
 

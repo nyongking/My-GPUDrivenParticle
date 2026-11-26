@@ -405,6 +405,7 @@ namespace
 		ImGui::SetNextWindowSize(ImVec2(960.f, 560.f), ImGuiCond_FirstUseEver);
 		if (!ImGui::Begin("Material Graph", &s_ShowGraphEditor))
 		{
+			runtime.EndMaterialLiveEdit();
 			ImGui::End();
 			return;
 		}
@@ -442,9 +443,16 @@ namespace
 		const MaterialCompileResult compiled = CompileMaterialGraph(graph);
 		const std::string editorId = std::string(editable ? "edit#" : "view#") + std::to_string(reinterpret_cast<uintptr_t>(&runtime));
 		const uint32_t change = MaterialGraphEditor::Draw(editorId.c_str(), graph, compiled, editable);
+		// kGraph = 구성이 바뀌었거나 값을 놓음 -> 셰이더를 다시 만든다
+		// kValue = 값을 드래그하는 중 -> 값만 넣고 인터프리터로 미리 본다 (놓으면 kGraph 가 온다)
 		if (editable && (change & MaterialGraphEditor::kGraph))
 			runtime.SetMaterialGraph(graph);
-		else if (editable && (change & MaterialGraphEditor::kLayout))
+		else if (editable && (change & MaterialGraphEditor::kValue))
+			runtime.SetMaterialGraph(graph, true);
+		else if (runtime.MaterialLiveEdit() && !ImGui::IsAnyItemActive())
+			runtime.EndMaterialLiveEdit();		// 놓은 것을 못 받은 경우 (드래그 중에 창이 가려지는 등)
+
+		if (editable && (change & MaterialGraphEditor::kLayout))
 			runtime.SetMaterialGraphLayout(graph);
 
 		ImGui::End();
@@ -559,7 +567,9 @@ namespace
 				}
 				break;
 			default:
-				if (MaterialGpuProgram::Mode() == MaterialShaderMode::Generated)
+				if (runtime.MaterialLiveEdit())
+					ImGui::TextDisabled("Pixel shader: interpreter (editing a value; generated on release)");
+				else if (MaterialGpuProgram::Mode() == MaterialShaderMode::Generated)
 					ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Pixel shader: interpreter (generated build failed)");
 				else
 					ImGui::TextDisabled("Pixel shader: interpreter (Material mode = Interpreted)");
@@ -622,7 +632,8 @@ namespace
 
 		if (runtime.Material().HasCustomGraph())
 		{
-			ImGui::TextDisabled("Param values are edited on the Constant / UVTransform nodes (Material Graph window).");
+			ImGui::TextDisabled("Values are edited on the nodes and their unlinked pins (Material Graph window).\n"
+				"They are written into the generated shader as constants.");
 			ImGui::TreePop();
 			return;
 		}
@@ -1047,6 +1058,8 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 
 	if (s_ShowGraphEditor)
 		DrawMaterialGraphWindow(runtime);
+	else
+		runtime.EndMaterialLiveEdit();
 }
 
 namespace

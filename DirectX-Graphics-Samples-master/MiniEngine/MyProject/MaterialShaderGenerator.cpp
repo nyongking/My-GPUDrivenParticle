@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 
 namespace
 {
@@ -30,8 +31,14 @@ namespace
 		if (!std::isfinite(v))
 			v = 0.f;
 
+		// 같은 float 로 다시 읽히는 가장 짧은 표기 (0.1f 를 0.100000001f 로 쓰지 않는다)
 		char buf[40];
-		snprintf(buf, sizeof(buf), "%.9g", v);
+		for (int digits = 1; digits <= 9; ++digits)
+		{
+			snprintf(buf, sizeof(buf), "%.*g", digits, v);
+			if (strtof(buf, nullptr) == v)
+				break;
+		}
 
 		std::string s = buf;
 		if (s.find_first_of(".e") == std::string::npos)
@@ -52,9 +59,9 @@ namespace
 		return s + ")";
 	}
 
-	std::string ParamText(uint32_t k)
+	std::string Float2Text(float x, float y)
 	{
-		return "MaterialParams[" + std::to_string(k) + "]";
+		return "float2(" + FloatText(x) + ", " + FloatText(y) + ")";
 	}
 
 	// 입력 하나를 읽는 식
@@ -165,7 +172,7 @@ GeneratedShader GenerateMaterialShader(const MaterialCompileResult& compiled, co
 	}
 
 	const size_t count = compiled.ssa.size();
-	if (compiled.ssaInfo.size() != count || compiled.ssaInputs.size() != count)
+	if (compiled.ssaInfo.size() != count || compiled.ssaInputs.size() != count || compiled.ssaValues.size() != count * 2)
 	{
 		out.errors.push_back("ssa 타입 정보의 길이가 다름");
 		return out;
@@ -204,17 +211,9 @@ GeneratedShader GenerateMaterialShader(const MaterialCompileResult& compiled, co
 		const int autoIndex = (k < compiled.ssaAuto.size()) ? compiled.ssaAuto[k] : -1;
 		const bool isAuto = autoIndex >= 0 && static_cast<size_t>(autoIndex) < compiled.autoValues.size();
 
-		// ---- 값 칸 / 텍스처 슬롯 범위 ----
-		if (op == MaterialOp::Const && !isAuto && I.param >= ParticleMaterial::kMaxParams)
-		{
-			out.errors.push_back(who + ": 값 칸 " + std::to_string(I.param) + " 는 없음");
-			return out;
-		}
-		if (op == MaterialOp::UVTransform && I.param + 1 >= ParticleMaterial::kMaxParams)
-		{
-			out.errors.push_back(who + ": 값 칸 " + std::to_string(I.param) + " ~ " + std::to_string(I.param + 1) + " 는 없음");
-			return out;
-		}
+		// ---- 노드 값 (숫자로 직접 쓴다) / 텍스처 슬롯 범위 ----
+		const float4& value0 = compiled.ssaValues[2 * k];
+		const float4& value1 = compiled.ssaValues[2 * k + 1];
 		if (op == MaterialOp::Sample && I.param >= ParticleMaterial::kNumEffectTextures)
 		{
 			out.errors.push_back(who + ": 텍스처 슬롯 " + std::to_string(I.param) + " 는 없음");
@@ -231,17 +230,14 @@ GeneratedShader GenerateMaterialShader(const MaterialCompileResult& compiled, co
 		case MaterialOp::Coverage:  expr = "i.coverage";       natural = 1; break;
 		case MaterialOp::Particle:  expr = "i.particleParams"; natural = 2; break;
 		case MaterialOp::Const:
-			if (isAuto)
-				expr = LiteralText(compiled.autoValues[autoIndex], width);
-			else
-			{
-				expr = ParamText(I.param);
-				natural = 4;
-			}
+			// 연결하지 않은 핀의 값 / Constant 노드의 값: 둘 다 결과 타입 그대로의 숫자
+			//   예) const float v3 = 3.0f;   const float4 v7 = float4(1.0f, 0.5f, 0.0f, 1.0f);
+			expr = LiteralText(isAuto ? compiled.autoValues[autoIndex] : value0, width);
 			break;
 		case MaterialOp::UVTransform:
-			expr = AsUV(a) + " * " + ParamText(I.param) + ".xy + " + ParamText(I.param) + ".zw + "
-				+ ParamText(I.param + 1) + ".xy * Time";
+			// uv * tiling + offset + scroll * Time
+			expr = AsUV(a) + " * " + Float2Text(value0.x, value0.y) + " + " + Float2Text(value0.z, value0.w) + " + "
+				+ Float2Text(value1.x, value1.y) + " * Time";
 			natural = 2;
 			break;
 		case MaterialOp::Sample:

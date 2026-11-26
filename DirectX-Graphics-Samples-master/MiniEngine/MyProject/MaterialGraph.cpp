@@ -164,6 +164,23 @@ namespace
 		return d;
 	}
 
+	// 성분 width 개짜리 값을 float4 한 칸(VM 의 값 칸)에 담는 모양으로 맞춘다. Generated 방식의 읽기 규칙과 같다:
+	//   숫자 하나는 네 자리 모두 같은 값, 그 밖에는 없는 성분이 0
+	float4 FitValue(const float4& v, uint32_t width)
+	{
+		if (width <= 1)
+			return { v.x, v.x, v.x, v.x };
+		float4 out = v;
+		if (width < 4) out.w = 0.f;
+		if (width < 3) out.z = 0.f;
+		return out;
+	}
+
+	uint32_t ConstantWidth(const MaterialNode& n)
+	{
+		return (std::max)(1u, (std::min)(n.width, 4u));
+	}
+
 	struct InputInfo
 	{
 		uint32_t reg = 0;
@@ -203,8 +220,28 @@ namespace
 				return Failed(result);
 			}
 
+			// ---- 노드 값: Generated 방식은 이 값을 셰이더에 숫자로 직접 쓴다 ----
+			std::vector<float4> ssaValues(m_Instrs.size() * 2, float4{ 0.f, 0.f, 0.f, 0.f });
+			for (size_t k = 0; k < m_Instrs.size(); ++k)
+			{
+				if (m_InstrNode[k] < 0)
+					continue;
+				const MaterialNode& n = m_Graph.nodes[m_InstrNode[k]];
+				if (n.type == MaterialNodeType::Constant)
+					ssaValues[2 * k] = FitValue(n.values[0], ConstantWidth(n));
+				else if (n.type == MaterialNodeType::UVTransform)
+				{
+					ssaValues[2 * k] = n.values[0];
+					ssaValues[2 * k + 1] = n.values[1];
+				}
+				else if (n.type == MaterialNodeType::TextureSample)
+					m_Instrs[k].param = n.textureSlot;
+			}
+
+			// ---- 값 칸 (VM / Preset 이 읽는 MaterialParams): VM 만의 제한이라, 넘어도 ssa 는 남긴다 ----
+			bool paramsOk = true;
 			std::vector<int> slotOf(m_Graph.nodes.size(), -1);
-			for (size_t id = 0; id < m_Graph.nodes.size(); ++id)
+			for (size_t id = 0; paramsOk && id < m_Graph.nodes.size(); ++id)
 			{
 				if (m_RegOf[id] < 0)
 					continue;
@@ -215,25 +252,36 @@ namespace
 					continue;
 
 				if (!ReserveParams(result, count, "노드 n" + std::to_string(id)))
-					return Failed(result);
+				{
+					paramsOk = false;
+					break;
+				}
 
 				slotOf[id] = static_cast<int>(result.params.size());
 
-				for (uint32_t k = 0; k < count; ++k)
-					result.params.push_back(n.values[k]);
+				if (n.type == MaterialNodeType::Constant)
+					result.params.push_back(FitValue(n.values[0], ConstantWidth(n)));
+				else
+				{
+					for (uint32_t k = 0; k < count; ++k)
+						result.params.push_back(n.values[k]);
+				}
 			}
 			result.graphParamCount = static_cast<uint32_t>(result.params.size());
 
 			std::vector<int> autoSlot(m_AutoValues.size(), -1);
-			for (size_t a = 0; a < m_AutoValues.size(); ++a)
+			for (size_t a = 0; paramsOk && a < m_AutoValues.size(); ++a)
 			{
-				if (!ReserveParams(result, 1, "빈 핀 기본값"))
-					return Failed(result);
+				if (!ReserveParams(result, 1, "연결하지 않은 핀의 값"))
+				{
+					paramsOk = false;
+					break;
+				}
 				autoSlot[a] = static_cast<int>(result.params.size());
 				result.params.push_back(m_AutoValues[a]);
 			}
 
-			for (size_t k = 0; k < m_Instrs.size(); ++k)
+			for (size_t k = 0; paramsOk && k < m_Instrs.size(); ++k)
 			{
 				if (m_InstrAuto[k] >= 0)
 				{
@@ -245,8 +293,6 @@ namespace
 				const MaterialNode& n = m_Graph.nodes[m_InstrNode[k]];
 				if (ParamSlotsOf(n.type) > 0)
 					m_Instrs[k].param = static_cast<uint32_t>(slotOf[m_InstrNode[k]]);
-				else if (n.type == MaterialNodeType::TextureSample)
-					m_Instrs[k].param = n.textureSlot;
 			}
 
 			// 칸 배정 전 상태를 남긴다 (Generated 방식이 쓴다)
@@ -256,19 +302,25 @@ namespace
 			result.ssaInfo = m_InstrInfo;
 			result.ssaAuto = m_InstrAuto;
 			result.autoValues = m_AutoValues;
+			result.ssaValues = ssaValues;
 			result.ssaOutput = outputReg;
 			for (size_t id = 0; id < m_Graph.nodes.size(); ++id)
 				result.nodeWidth[id] = (m_RegOf[id] >= 0) ? m_Width[id] : 0u;
 
 			uint32_t regCount = 0;
-			const int outputPhys = AllocateRegisters(static_cast<uint32_t>(outputReg), regCount);
+			const int outputPhys = paramsOk ? AllocateRegisters(static_cast<uint32_t>(outputReg), regCount) : -1;
 			if (outputPhys < 0)
 			{
-				// Reg 칸 수는 VM 만의 제한: VM 프로그램만 실패로 두고 ssa / params 는 유지
+				// 값 칸 수 / Reg 칸 수는 VM 만의 제한: VM 프로그램만 실패로 두고 ssa 는 유지
 				result.ok = false;
 				result.error = m_Error;
 				result.program = MaterialProgram();
 				result.notes = m_Notes;
+				if (!paramsOk)
+				{
+					result.params.clear();
+					result.graphParamCount = 0;
+				}
 				return result;
 			}
 			result.regCount = regCount;
@@ -411,10 +463,11 @@ namespace
 			}
 			else
 			{
+				// 연결하지 않은 핀: 노드에 적어 둔 값 (에디터의 핀 옆 입력칸)
 				MaterialInstr I = {};
 				I.op = static_cast<uint32_t>(MaterialOp::Const);
 				I.swz = 0xE4E4E4u;
-				m_AutoValues.push_back(d.value);
+				m_AutoValues.push_back(FitValue(m_Graph.nodes[id].pinValues[pin], d.width));
 				reg = Emit(I, -1, static_cast<int>(m_AutoValues.size()) - 1, 0, d.width);
 			}
 			if (reg < 0)
@@ -424,7 +477,8 @@ namespace
 			out.swz = MaterialSwizzle::XYZW;
 			out.width = d.width;
 			out.autoFilled = true;
-			m_Notes.push_back(NodeText(id) + " 입력 " + PinName(pin) + " 가 비어 있어 기본값 " + d.text + " 사용");
+			if (d.quadUV)
+				m_Notes.push_back(NodeText(id) + " 입력 " + PinName(pin) + " 가 비어 있어 기본값 " + d.text + " 사용");
 			return true;
 		}
 
@@ -446,7 +500,7 @@ namespace
 			case MaterialNodeType::ParticleParam: return 2;
 			case MaterialNodeType::Coverage:      return 1;
 			case MaterialNodeType::BaseColor:     return 4;
-			case MaterialNodeType::Constant:      return 4;
+			case MaterialNodeType::Constant:      return ConstantWidth(m_Graph.nodes[id]);
 			case MaterialNodeType::UVTransform:   return CheckUV(id, 0, in[0]) ? 2u : 0u;
 			case MaterialNodeType::TextureSample: return CheckUV(id, 0, in[0]) ? 4u : 0u;
 			case MaterialNodeType::BaseSample:    return CheckUV(id, 0, in[0]) ? 4u : 0u;
@@ -588,6 +642,23 @@ namespace
 	};
 }
 
+uint32_t MaterialNodePinWidth(MaterialNodeType type, uint32_t pin)
+{
+	if (pin >= MaterialNodeInputCount(type))
+		return 0;
+	const PinDefault d = DefaultForPin(type, pin);
+	return d.quadUV ? 0u : d.width;
+}
+
+MaterialNode MakeMaterialNode(MaterialNodeType type)
+{
+	MaterialNode n;
+	n.type = type;
+	for (uint32_t pin = 0; pin < MaterialNodeInputCount(type) && pin < 3; ++pin)
+		n.pinValues[pin] = DefaultForPin(type, pin).value;
+	return n;
+}
+
 MaterialCompileResult CompileMaterialGraph(const MaterialGraph& graph)
 {
 	GraphCompiler compiler(graph);
@@ -602,8 +673,7 @@ namespace
 
 		int Add(MaterialNodeType type, std::vector<MaterialLink> inputs = {})
 		{
-			MaterialNode n;
-			n.type = type;
+			MaterialNode n = MakeMaterialNode(type);
 			n.inputs = std::move(inputs);
 			graph.nodes.push_back(n);
 			return static_cast<int>(graph.nodes.size()) - 1;
@@ -1080,8 +1150,24 @@ JsonValue MaterialGraphToJson(const MaterialGraph& graph)
 		}
 		jn.Set("inputs", std::move(inputs));
 
+		// 연결하지 않은 핀의 값 (상수를 받는 핀이 하나라도 있는 노드만)
+		const uint32_t pinCount = (std::min)(MaterialNodeInputCount(n.type), 3u);
+		bool hasPinValue = false;
+		for (uint32_t k = 0; k < pinCount; ++k)
+			hasPinValue |= MaterialNodePinWidth(n.type, k) != 0;
+		if (hasPinValue)
+		{
+			JsonValue pins = JsonValue::MakeArray();
+			for (uint32_t k = 0; k < pinCount; ++k)
+				pins.Push(Float4Json(n.pinValues[k]));
+			jn.Set("pinValues", std::move(pins));
+		}
+
 		if (n.type == MaterialNodeType::Constant)
+		{
 			jn.Set("value", Float4Json(n.values[0]));
+			jn.Set("valueWidth", JsonValue(n.width));
+		}
 		else if (n.type == MaterialNodeType::UVTransform)
 		{
 			jn.Set("tilingOffset", Float4Json(n.values[0]));
@@ -1110,12 +1196,24 @@ bool MaterialGraphFromJson(const JsonValue& json, MaterialGraph& out, std::vecto
 	{
 		const JsonValue& jn = nodes->At(id);
 		const std::string where = "materialGraph.nodes[" + std::to_string(id) + "]";
-		MaterialNode n;
+		MaterialNodeType nodeType = MaterialNodeType::Constant;
 		const JsonValue* type = jn.Find("type");
-		if (type == nullptr || !MaterialNodeTypeFromName(type->AsString(), n.type))
+		if (type == nullptr || !MaterialNodeTypeFromName(type->AsString(), nodeType))
 		{
 			warnings.push_back(where + ": unknown type '" + (type ? type->AsString() : std::string()) + "' -> Constant 0");
-			n.type = MaterialNodeType::Constant;
+			nodeType = MaterialNodeType::Constant;
+		}
+		// pinValues 는 핀의 기본값에서 시작한다 (이 항목이 없는 예전 파일은 그 값 그대로)
+		MaterialNode n = MakeMaterialNode(nodeType);
+		if (const JsonValue* pins = jn.Find("pinValues"))
+		{
+			const uint32_t pinCount = (std::min)(MaterialNodeInputCount(n.type), 3u);
+			for (uint32_t k = 0; pins->IsArray() && k < pinCount && k < uint32_t(pins->Size()); ++k)
+			{
+				float4 v = n.pinValues[k];
+				if (JsonFloats(&pins->At(k), &v.x, 4))
+					n.pinValues[k] = v;
+			}
 		}
 		float pos[2] = {};
 		if (JsonFloats(jn.Find("pos"), pos, 2))
@@ -1152,7 +1250,11 @@ bool MaterialGraphFromJson(const JsonValue& json, MaterialGraph& out, std::vecto
 		}
 
 		if (n.type == MaterialNodeType::Constant)
+		{
 			JsonFloats(jn.Find("value"), &n.values[0].x, 4);
+			if (const JsonValue* v = jn.Find("valueWidth"))	// 없으면 float4 (예전 파일)
+				n.width = (std::max)(1u, (std::min)(static_cast<uint32_t>(v->AsNumber(4.0)), 4u));
+		}
 		else if (n.type == MaterialNodeType::UVTransform)
 		{
 			JsonFloats(jn.Find("tilingOffset"), &n.values[0].x, 4);

@@ -359,9 +359,21 @@ void EmitterRuntime::ConvertMaterialLayersToGraph()
 		m_Material.ConvertLayersToCustomGraph();
 }
 
-void EmitterRuntime::SetMaterialGraph(const MaterialGraph& graph)
+void EmitterRuntime::SetMaterialGraph(const MaterialGraph& graph, bool liveEdit)
 {
 	m_Material.SetCustomGraph(graph);
+	if (liveEdit)
+		m_MaterialLiveEdit = true;
+	else
+		EndMaterialLiveEdit();
+}
+
+void EmitterRuntime::EndMaterialLiveEdit()
+{
+	if (!m_MaterialLiveEdit)
+		return;
+	m_MaterialLiveEdit = false;
+	m_MaterialProgramTried = false;		// 다음 SyncMaterialProgram 에서 지금 값으로 셰이더를 만든다
 }
 
 void EmitterRuntime::SetMaterialGraphLayout(const MaterialGraph& graph)
@@ -653,7 +665,19 @@ void EmitterRuntime::SyncMaterialProgram()
 		return;
 	}
 
-	// 그래프 구성이 그대로면 할 일 없음 (값만 바뀐 것은 revision 이 올라가도 소스가 같아서 캐시에서 바로 찾는다)
+	// ---- 값을 드래그하는 중: 값이 셰이더에 숫자로 들어가므로 매 프레임 소스가 달라진다. 놓을 때까지 만들지 않는다 ----
+	//   VM 프로그램이 있으면 인터프리터로 그려서 값이 바로 보이게 한다 (값을 MaterialParams 로 읽는다).
+	//   VM 한도를 넘는 그래프는 인터프리터로 그릴 수 없으므로, 놓을 때까지 직전 셰이더(직전 값)로 그린다
+	if (m_MaterialLiveEdit && m_Material.GetMode() == ParticleMaterial::Mode::Custom)
+	{
+		if (m_Material.ProgramError().empty() && (m_MaterialProgram || m_MaterialPreset))
+			SetMaterialProgram(nullptr);
+		m_MaterialProgramTried = false;
+		return;
+	}
+	m_MaterialLiveEdit = false;
+
+	// 그래프가 그대로면 할 일 없음 (값을 원래대로 되돌린 경우처럼 소스가 같으면 캐시에서 바로 찾는다)
 	const uint32_t revision = m_Material.GraphRevision();
 	if (m_MaterialProgramTried && revision == m_MaterialProgramRevision)
 		return;
