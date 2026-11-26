@@ -87,6 +87,8 @@ public:
 	// -------- Sprite 설정 -------
 	void SetSpriteSettings(const SpriteSettings& settings);
 	const SpriteSettings& GetSpriteSettings() const { return m_CpuRenderer.Settings(); }
+	// Additive 블렌드인가. 정렬하지 않고, 반투명 이미터를 다 그린 뒤에 묶어서 그린다 (EffectSystem / EmitterTestScene)
+	bool IsAdditive() const { return GetSpriteSettings().blend == SpriteBlendMode::Additive; }
 
 	// -------- Module 설정 -------
 	bool CanMoveModule(size_t moduleIndex, int direction) const;    // 같은 Stage 안에서만 이동

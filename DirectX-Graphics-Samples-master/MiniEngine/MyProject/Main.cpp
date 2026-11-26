@@ -440,9 +440,6 @@ void MyProject::UpdateTestSceneImGui()
         bool culling = m_TestScene.GatherCulling();
         if (ImGui::Checkbox("Gather culling", &culling))
             m_TestScene.SetGatherCulling(culling);
-        bool excludeAdditive = m_TestScene.ExcludeAdditiveFromSort();
-        if (ImGui::Checkbox("Exclude additive from sort", &excludeAdditive))
-            m_TestScene.SetExcludeAdditiveFromSort(excludeAdditive);
         ImGui::Unindent();
         ImGui::EndDisabled();
     }

@@ -141,6 +141,9 @@
     <ClCompile Include="EmitterGpuProgram.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
+    <ClCompile Include="EmitterDrawOrder.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
     <ClCompile Include="RenderParticle.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
@@ -277,6 +280,9 @@
       <Filter>Particle\Generator</Filter>
     </ClInclude>
     <ClInclude Include="EmitterGpuProgram.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="EmitterDrawOrder.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
     <ClInclude Include="RenderParticle.h">

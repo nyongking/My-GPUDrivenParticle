@@ -1193,7 +1193,7 @@ void DrawSystemPanel(EffectSystem& system, int& selected)
 		if (ImGui::Checkbox("Sort emitters together", &sortTogether))
 			system.SetGlobalSort(sortTogether);
 		if (ImGui::IsItemHovered())
-			ImGui::SetTooltip("On: all emitters' particles are depth-sorted in one list and drawn in one draw call\n(smoke in front of fire stays correct between emitters).\nOff: each emitter sorts and draws on its own, in list order.");
+			ImGui::SetTooltip("On: all emitters' particles are depth-sorted in one list and drawn in one draw call\n(smoke in front of fire stays correct between emitters). Materials run on the interpreter.\nOff: each emitter sorts and draws on its own, with its own shader.\nEmitters are ordered by sort key (larger = on top), then far to near by emitter position.");
 	}
 
 	int moveIndex = -1, moveDirection = 0, removeIndex = -1, duplicateIndex = -1;
@@ -1221,6 +1221,12 @@ void DrawSystemPanel(EffectSystem& system, int& selected)
 		ImGui::SameLine();
 		if (ImGui::SmallButton("X"))
 			removeIndex = static_cast<int>(i);
+		// 준 List 방식의 정렬 키: 클수록 나중에 = 더 위에 그려진다 (같으면 카메라에서 먼 이미터부터)
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(70.f);
+		ImGui::InputInt("##sortKey", &e.sortKey, 0);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("Sort key: emitters with a larger key are drawn later (on top).\nSame key: far to near by emitter position.\nUsed when \"Sort emitters together\" is off.");
 		ImGui::PopID();
 	}
 

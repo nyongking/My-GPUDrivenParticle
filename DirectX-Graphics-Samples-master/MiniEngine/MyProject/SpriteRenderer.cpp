@@ -373,7 +373,7 @@ void SpriteRenderer::Render(GraphicsContext& gfx, const Math::Camera& camera, co
 	UploadCpu(gfx, emitter);
 
 	// 2) 정렬 여부에 따라 정렬 + 업로드 버퍼
-	const bool sorted = (m_SortMode == SortMode::ViewDepth);
+	const bool sorted = ShouldSort();
 	if (sorted)
 		UploadSortedIndices(gfx, camera, emitter);
 	else
@@ -481,7 +481,7 @@ void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera,
 		gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 		// 정렬 (CPU 경로와 같은 조건). 개수를 CPU 로 읽지 않고 DrawArgs 의 alive 를 GPU 에서 바로 쓴다
-		const bool sorted = (m_SortMode == SortMode::ViewDepth);
+		const bool sorted = ShouldSort();
 		if (sorted)
 			SortOnGpu(gfx, camera, emitter);
 
