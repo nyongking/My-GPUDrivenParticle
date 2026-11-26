@@ -289,31 +289,27 @@ void EmitterTestScene::Render(GraphicsContext& gfx, const Math::Camera& camera)
 	// 전체 정렬: 모든 이미터 파티클을 한 목록에 모아 정렬 1번 + Draw 1번 (이미터 사이 앞뒤도 맞음)
 	if (m_GlobalSort && m_RenderList.ReservedCapacity() > 0)
 	{
-		// Additive 끼리는 그리는 순서가 결과에 영향이 없으므로 정렬 목록에서 뺀다
-		const bool splitAdditive = m_ExcludeAdditive && m_AdditiveList.ReservedCapacity() > 0;
-
+		// 반투명은 한 목록에서 깊이 정렬, Additive 는 따로 모아서 정렬 없이 그 뒤에 그린다
+		//   (Additive 끼리는 그리는 순서가 결과에 영향이 없다)
 		m_RenderList.SetCulling(m_GatherCulling);
 		m_RenderList.Begin(gfx, camera);
-		if (splitAdditive)
-		{
-			m_AdditiveList.SetCulling(m_GatherCulling);
-			m_AdditiveList.Begin(gfx, camera);
-		}
+		m_AdditiveList.SetCulling(m_GatherCulling);
+		m_AdditiveList.Begin(gfx, camera);
 
 		for (Item& item : m_Items)
-		{
-			const bool additive = item.runtime->GetSpriteSettings().blend == SpriteBlendMode::Additive;
-			item.runtime->SubmitTo(gfx, (splitAdditive && additive) ? m_AdditiveList : m_RenderList);
-		}
+			item.runtime->SubmitTo(gfx, item.runtime->IsAdditive() ? m_AdditiveList : m_RenderList);
 
 		m_RenderList.Render(gfx, true);
-		if (splitAdditive)
-			m_AdditiveList.Render(gfx, false);
+		m_AdditiveList.Render(gfx, false);
 		return;
 	}
 
-	// 이미터별: 각자 정렬해서 각자 그림 (이미터 사이 순서 = 그리는 순서)
+	// 준 List: 이미터마다 각자 그리되, 이미터 사이의 순서는 카메라에서 먼 이미터부터 (EmitterDrawOrder.h)
+	//   테스트 씬은 정렬 키를 쓰지 않는다 (전부 0)
+	m_DrawOrder.Begin(camera);
 	for (Item& item : m_Items)
+		m_DrawOrder.Add(item.runtime.get(), item.owner.position, 0);
+	for (const EmitterDrawOrder::Item& item : m_DrawOrder.Sorted())
 		item.runtime->Render(gfx, camera);
 }
 

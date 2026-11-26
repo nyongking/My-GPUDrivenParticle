@@ -87,32 +87,61 @@ namespace
 			n.inputs.pop_back();
 	}
 
-	bool DrawNodeValues(MaterialNode& n, bool editable)
+	// 숫자 입력 (성분 comps 개). 드래그하는 동안 kValue, 값을 놓으면 kGraph
+	uint32_t DragValue(const char* id, float* v, uint32_t comps, bool editable)
 	{
-		bool changed = false;
-		const float w = 170.f;
+		comps = (std::max)(1u, (std::min)(comps, 4u));
+		if (!editable)
+		{
+			std::string text;
+			char buf[32];
+			for (uint32_t c = 0; c < comps; ++c)
+			{
+				snprintf(buf, sizeof(buf), "%s%.2f", c ? ", " : "", v[c]);
+				text += buf;
+			}
+			if (comps > 1)
+				text = "(" + text + ")";
+			ImGui::TextUnformatted(text.c_str());
+			return MaterialGraphEditor::kNoChange;
+		}
+
+		uint32_t change = MaterialGraphEditor::kNoChange;
+		ImGui::SetNextItemWidth(20.f + 38.f * static_cast<float>(comps));
+		if (ImGui::DragScalarN(id, ImGuiDataType_Float, v, static_cast<int>(comps), 0.01f, nullptr, nullptr, "%.2f"))
+			change |= MaterialGraphEditor::kValue;
+		if (ImGui::IsItemDeactivatedAfterEdit())
+			change |= MaterialGraphEditor::kGraph;
+		return change;
+	}
+
+	uint32_t DrawNodeValues(MaterialNode& n, bool editable)
+	{
+		uint32_t changed = MaterialGraphEditor::kNoChange;
 		switch (n.type)
 		{
 		case MaterialNodeType::Constant:
-			ImGui::SetNextItemWidth(w);
+		{
+			// 값의 타입 (float ~ float4): 셰이더에 그 타입의 숫자로 들어간다
+			static const char* const kWidths[] = { "float", "float2", "float3", "float4" };
+			int width = static_cast<int>((std::max)(1u, (std::min)(n.width, 4u))) - 1;
 			if (editable)
-				changed |= ImGui::DragFloat4("##value", &n.values[0].x, 0.01f);
-			else
-				ImGui::Text("(%.2f, %.2f, %.2f, %.2f)", n.values[0].x, n.values[0].y, n.values[0].z, n.values[0].w);
+			{
+				ImGui::SetNextItemWidth(80.f);
+				if (ImGui::Combo("##width", &width, kWidths, IM_ARRAYSIZE(kWidths)))
+				{
+					n.width = static_cast<uint32_t>(width) + 1;
+					changed |= MaterialGraphEditor::kGraph;
+				}
+			}
+			changed |= DragValue("##value", &n.values[0].x, n.width, editable);
 			break;
+		}
 		case MaterialNodeType::UVTransform:
 			ImGui::TextDisabled("tiling.xy offset.zw");
-			ImGui::SetNextItemWidth(w);
-			if (editable)
-				changed |= ImGui::DragFloat4("##tile", &n.values[0].x, 0.01f);
-			else
-				ImGui::Text("(%.2f, %.2f, %.2f, %.2f)", n.values[0].x, n.values[0].y, n.values[0].z, n.values[0].w);
+			changed |= DragValue("##tile", &n.values[0].x, 4, editable);
 			ImGui::TextDisabled("scroll.xy (/s)");
-			ImGui::SetNextItemWidth(w);
-			if (editable)
-				changed |= ImGui::DragFloat2("##scroll", &n.values[1].x, 0.01f);
-			else
-				ImGui::Text("(%.2f, %.2f)", n.values[1].x, n.values[1].y);
+			changed |= DragValue("##scroll", &n.values[1].x, 2, editable);
 			break;
 		case MaterialNodeType::TextureSample:
 		{
@@ -124,7 +153,7 @@ namespace
 				if (ImGui::Combo("##slot", &slot, kSlots, IM_ARRAYSIZE(kSlots)))
 				{
 					n.textureSlot = static_cast<uint32_t>(slot);
-					changed = true;
+					changed |= MaterialGraphEditor::kGraph;
 				}
 			}
 			else
@@ -255,11 +284,24 @@ namespace MaterialGraphEditor
 						ImGui::TextDisabled("%s", text.c_str());
 					}
 				}
+				else if (k < 3)
+				{
+					// 연결하지 않은 핀: 값을 여기서 적는다 (셰이더에 숫자로 들어간다). UV 핀은 QuadUV
+					const uint32_t pinWidth = MaterialNodePinWidth(n.type, k);
+					ImGui::SameLine();
+					if (pinWidth == 0)
+						ImGui::TextDisabled("QuadUV");
+					else
+					{
+						ImGui::PushID(static_cast<int>(k));
+						change |= DragValue("##pin", &n.pinValues[k].x, pinWidth, editable);
+						ImGui::PopID();
+					}
+				}
 				ImNodes::EndInputAttribute();
 			}
 
-			if (DrawNodeValues(n, editable))
-				change |= kGraph;
+			change |= DrawNodeValues(n, editable);
 
 			ImNodes::BeginOutputAttribute(OutPin(id));
 			ImGui::Indent(110.f);
@@ -411,8 +453,7 @@ namespace MaterialGraphEditor
 			{
 				if (!ImGui::MenuItem(MaterialNodeTypeName(MaterialNodeType(t))))
 					continue;
-				MaterialNode n;
-				n.type = MaterialNodeType(t);
+				MaterialNode n = MakeMaterialNode(MaterialNodeType(t));
 				if (n.type == MaterialNodeType::UVTransform)
 					n.values[0] = { 1.f, 1.f, 0.f, 0.f };
 				n.pos = { (std::max)(ui.addPos.x, 1.f), (std::max)(ui.addPos.y, 1.f) };

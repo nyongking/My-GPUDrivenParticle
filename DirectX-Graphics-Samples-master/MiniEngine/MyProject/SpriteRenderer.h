@@ -115,6 +115,8 @@ public:
     void SubmitToListGpu(GraphicsContext& gfx, ParticleRenderList& list, GpuEmitterInstance& emitter);
 
     void SetSortMode(SortMode mode) { m_SortMode = mode; }
+    // 실제로 정렬해서 그리는가. Additive 는 더하기라 그리는 순서가 결과에 영향이 없으므로 정렬하지 않는다
+    bool ShouldSort() const { return m_SortMode == SortMode::ViewDepth && m_Settings.blend != SpriteBlendMode::Additive; }
     SortMode GetSortMode() const { return m_SortMode; }
 
     void SetMaterial(const ParticleMaterial* material) { m_Material = material; }

@@ -72,7 +72,12 @@ public:
 	bool SetMaterialLayerEffect(uint32_t index, ParticleMaterial::Effect effect);
 	// 효과 층이 둘 이상이면 그래프(Custom) 로 넘긴다. 에셋을 불러온 뒤 (값까지 넣은 뒤) 부른다
 	void ConvertMaterialLayersToGraph();
-	void SetMaterialGraph(const MaterialGraph& graph);
+	// liveEdit = 값을 드래그하는 중. Generated 방식은 값이 셰이더에 숫자로 들어가므로 값이 바뀌면 다시 컴파일해야 하는데,
+	//   드래그하는 동안에는 만들지 않고 인터프리터(값을 MaterialParams 로 읽는다)로 미리 본다.
+	//   값을 놓으면 liveEdit = false 로 한 번 더 부르거나 EndMaterialLiveEdit 를 부른다 -> 그때 셰이더를 한 번 만든다
+	void SetMaterialGraph(const MaterialGraph& graph, bool liveEdit = false);
+	void EndMaterialLiveEdit();
+	bool MaterialLiveEdit() const { return m_MaterialLiveEdit; }
 	void SetMaterialGraphLayout(const MaterialGraph& graph);
 	void ClearMaterialGraph();
 	void SetMaterialUseVM(bool use);
@@ -82,6 +87,8 @@ public:
 	// -------- Sprite 설정 -------
 	void SetSpriteSettings(const SpriteSettings& settings);
 	const SpriteSettings& GetSpriteSettings() const { return m_CpuRenderer.Settings(); }
+	// Additive 블렌드인가. 정렬하지 않고, 반투명 이미터를 다 그린 뒤에 묶어서 그린다 (EffectSystem / EmitterTestScene)
+	bool IsAdditive() const { return GetSpriteSettings().blend == SpriteBlendMode::Additive; }
 
 	// -------- Module 설정 -------
 	bool CanMoveModule(size_t moduleIndex, int direction) const;    // 같은 Stage 안에서만 이동
@@ -171,5 +178,6 @@ private:
 	bool                                m_MaterialPreset = false;       // Preset: 효과별 고정 셰이더로 그리는 중
 	bool                                m_MaterialProgramTried = false; // 아래 revision 으로 만들어 봤는지 (실패해도 매 프레임 다시 하지 않는다)
 	uint32_t                            m_MaterialProgramRevision = 0;
+	bool                                m_MaterialLiveEdit = false;     // 값을 드래그하는 중: 셰이더를 만들지 않고 인터프리터로 미리 본다
 	std::string                         m_MaterialProgramError;
 };

@@ -1,4 +1,5 @@
 #pragma once
+#include "EmitterDrawOrder.h"
 #include "EmitterRuntime.h"
 
 #include <cstdint>
@@ -76,9 +77,6 @@ public:
 	void SetGatherCulling(bool enable) { m_GatherCulling = enable; }
 	bool GatherCulling() const { return m_GatherCulling; }
 
-	// 전체 정렬 경로 전용. Additive 이미터는 따로 모아 정렬 없이 그림 (반투명 목록 다음)
-	void SetExcludeAdditiveFromSort(bool enable) { m_ExcludeAdditive = enable; }
-	bool ExcludeAdditiveFromSort() const { return m_ExcludeAdditive; }
 
 	bool                Empty() const { return m_Items.empty(); }
 	uint32_t            Count() const { return uint32_t(m_Items.size()); }
@@ -106,7 +104,7 @@ private:
 
 	bool               m_GlobalSort = true;
 	bool               m_GatherCulling = true;
-	bool               m_ExcludeAdditive = true;
+	EmitterDrawOrder   m_DrawOrder;       // 준 List: 이미터 사이의 그리는 순서
 	ParticleRenderList m_RenderList;      // 반투명 (정렬). 크기 = 이미터 capacity 합 (Build 에서 잡음)
 	ParticleRenderList m_AdditiveList;    // Additive (정렬 안 함). 블렌드 모드가 실행 중에 바뀌므로 같은 크기
 };

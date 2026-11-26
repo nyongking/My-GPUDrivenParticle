@@ -63,6 +63,7 @@
     <ClInclude Include="EmitterCompiler.h" />
     <ClInclude Include="EmitterGpuProgram.h" />
     <ClInclude Include="MaterialGpuProgram.h" />
+    <ClInclude Include="EmitterDrawOrder.h" />
     <ClInclude Include="RenderParticle.h" />
     <ClInclude Include="MaterialShaderGenerator.h" />
     <ClInclude Include="EmitterInstance.h" />
@@ -113,6 +114,7 @@
     <ClCompile Include="EmitterCompiler.cpp" />
     <ClCompile Include="EmitterGpuProgram.cpp" />
     <ClCompile Include="MaterialGpuProgram.cpp" />
+    <ClCompile Include="EmitterDrawOrder.cpp" />
     <ClCompile Include="RenderParticle.cpp" />
     <ClCompile Include="MaterialShaderGenerator.cpp" />
     <ClCompile Include="EmitterInstance.cpp" />

@@ -6,6 +6,7 @@
 #include "SystemTime.h"
 
 #include <fstream>
+#include <iterator>
 #include <unordered_map>
 
 namespace
@@ -68,6 +69,11 @@ std::shared_ptr<MaterialGpuProgram> MaterialGpuProgram::Acquire(const GeneratedS
 	if (!built)
 		return nullptr;
 
+	// 값이 소스에 숫자로 들어가므로 값을 바꿀 때마다 새 셰이더가 생긴다: 아무도 쓰지 않는 것은 여기서 내린다
+	//   (캐시만 잡고 있는 것 = use_count 1. 쓰는 쪽은 shared_ptr 를 잡고 있으므로 그리는 중인 것은 남는다)
+	for (auto it = s_Cache.begin(); it != s_Cache.end(); )
+		it = (it->second.use_count() == 1) ? s_Cache.erase(it) : std::next(it);
+
 	s_Cache[generated.source] = program;
 	s_Stats.programs = static_cast<uint32_t>(s_Cache.size());
 	return program;
@@ -117,7 +123,8 @@ bool MaterialGpuProgram::Build(const GeneratedShader& generated, const ShaderCom
 		return false;
 
 	// ---------- 2. 배치 확인: CPU 가 올리는 MaterialParams 크기와 같아야 한다 ----------
-	//   값 칸을 하나도 안 쓰는 그래프는 cbuffer 가 지워져서 반사 정보에 없다 (그 경우는 확인할 것이 없음)
+	//   생성된 셰이더는 값을 숫자로 직접 쓰므로 MaterialParams 를 읽지 않는다 -> cbuffer 가 지워져서 반사 정보에 없다
+	//   (그 경우는 확인할 것이 없음. 공용 헤더를 고쳐서 다시 읽게 됐을 때만 아래 확인이 돈다)
 	ConstantBufferInfo info;
 	if (compiler.ReflectConstantBuffer(r, "MaterialParamsCB", info))
 	{

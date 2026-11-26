@@ -48,6 +48,7 @@ int EffectSystem::DuplicateEmitter(size_t index)
 	if (added < 0)
 		return -1;
 	m_Emitters[added].enabled = src.enabled;
+	m_Emitters[added].sortKey = src.sortKey;
 	Emitter moved = std::move(m_Emitters[added]);
 	m_Emitters.erase(m_Emitters.begin() + added);
 	m_Emitters.insert(m_Emitters.begin() + index + 1, std::move(moved));
@@ -93,14 +94,21 @@ void EffectSystem::ApplyPending()
 		m_Retired.clear();
 	}
 
+	// 블렌드 모드는 실행 중에 바뀔 수 있어서 두 목록 모두 전체 capacity 만큼 잡는다
 	const uint32_t want = (m_Emitters.size() > 1) ? CapacityTotal() : 0u;
 	if (want != m_ListCapacity)
 	{
 		Graphics::g_CommandManager.IdleGPU();
 		if (want == 0)
+		{
 			m_RenderList.Shutdown();
+			m_AdditiveList.Shutdown();
+		}
 		else
+		{
 			m_RenderList.Reserve(want);
+			m_AdditiveList.Reserve(want);
+		}
 		m_ListCapacity = want;
 	}
 
@@ -115,7 +123,9 @@ void EffectSystem::Tick(ComputeContext& ctx, float deltaTime, const OwnerTransfo
 	{
 		if (!e.enabled)
 			continue;
-		e.runtime->Tick(ctx, deltaTime, ComposeOwnerTransform(systemTransform, e.local));
+		const OwnerTransform world = ComposeOwnerTransform(systemTransform, e.local);
+		e.worldPosition = world.position;       // 그릴 때 이미터 사이의 순서를 정하는 기준
+		e.runtime->Tick(ctx, deltaTime, world);
 		m_Ticked.push_back(e.runtime.get());
 	}
 }
@@ -128,24 +138,37 @@ void EffectSystem::OnSubmitted(uint64_t fence)
 
 void EffectSystem::Render(GraphicsContext& gfx, const Math::Camera& camera)
 {
+	// 두 가지 방식 (m_GlobalSort)
+	//   공용 목록 : 모든 이미터의 파티클을 한 목록에 섞어 깊이 정렬 (머티리얼은 VM 인터프리터)
+	//   준 List   : 이미터마다 따로 그리고 이미터 사이의 순서만 정한다 (머티리얼은 Preset / Custom 셰이더)
 	const bool listReady = m_GlobalSort && m_Emitters.size() > 1 && m_ListCapacity == CapacityTotal() && m_ListCapacity > 0;
 	if (!listReady)
 	{
+		// 준 List: 이미터마다 각자 그리되 (자기 셰이더, 자기 파티클 정렬), 이미터 사이의 순서를 CPU 에서 정한다
+		//   정렬 키가 작은 것부터 -> 키가 같으면 카메라에서 먼 이미터부터 (EmitterDrawOrder.h)
+		//   반투명 / Additive 를 구분하지 않는다. 이미터 안에서는 SpriteRenderer 가 Additive 의 파티클 정렬만 건너뛴다
+		m_DrawOrder.Begin(camera);
 		for (Emitter& e : m_Emitters)
 		{
 			if (e.enabled)
-				e.runtime->Render(gfx, camera);
+				m_DrawOrder.Add(e.runtime.get(), e.worldPosition, e.sortKey);
 		}
+		for (const EmitterDrawOrder::Item& item : m_DrawOrder.Sorted())
+			item.runtime->Render(gfx, camera);
 		return;
 	}
 
+	// 공용 목록: 반투명은 이미터 구분 없이 깊이 정렬, Additive 는 모으기만 해서 그 뒤에 그린다
+	//   (Additive 끼리는 순서가 결과에 영향이 없어서 정렬하지 않는다)
 	m_RenderList.Begin(gfx, camera);
+	m_AdditiveList.Begin(gfx, camera);
 	for (Emitter& e : m_Emitters)
 	{
 		if (e.enabled)
-			e.runtime->SubmitTo(gfx, m_RenderList);
+			e.runtime->SubmitTo(gfx, e.runtime->IsAdditive() ? m_AdditiveList : m_RenderList);
 	}
 	m_RenderList.Render(gfx, true);
+	m_AdditiveList.Render(gfx, false);
 }
 
 void EffectSystem::Shutdown()
@@ -161,6 +184,7 @@ void EffectSystem::Shutdown()
 	m_Retired.clear();
 	m_Ticked.clear();
 	m_RenderList.Shutdown();
+	m_AdditiveList.Shutdown();
 	m_ListCapacity = 0;
 }
 
@@ -190,6 +214,7 @@ SystemAsset EffectSystem::Capture(const std::string& name) const
 		SystemEmitterAsset se;
 		se.name = e.name;
 		se.enabled = e.enabled;
+		se.sortKey = e.sortKey;
 		se.local = e.local;
 		se.emitter = CaptureEmitterAsset(*e.runtime, e.name);
 		a.emitters.push_back(std::move(se));
@@ -213,6 +238,7 @@ bool EffectSystem::Load(const SystemAsset& asset, std::vector<std::string>* fail
 			continue;
 		}
 		m_Emitters[added].enabled = se.enabled;
+		m_Emitters[added].sortKey = se.sortKey;
 	}
 	return ok;
 }
@@ -259,6 +285,7 @@ std::string SystemAssetToJson(const SystemAsset& a)
 		JsonValue je = JsonValue::MakeObject();
 		je.Set("name", JsonValue(se.name));
 		je.Set("enabled", JsonValue(se.enabled));
+		je.Set("sortKey", JsonValue(se.sortKey));
 		je.Set("position", Floats(&se.local.position.x, 3));
 		je.Set("rotation", Floats(&se.local.rotation.x, 4));
 		je.Set("scale", Floats(&se.local.scale.x, 3));
@@ -316,6 +343,8 @@ bool SystemAssetFromJson(const std::string& text, SystemAsset& out, std::string&
 			se.name = "Emitter " + std::to_string(i);
 		if (const JsonValue* v = je.Find("enabled"))
 			se.enabled = v->AsBool(true);
+		if (const JsonValue* v = je.Find("sortKey"))
+			se.sortKey = static_cast<int>(v->AsNumber(0.0));
 		ReadFloats(je.Find("position"), &se.local.position.x, 3, where + ".position", warnings);
 		ReadFloats(je.Find("rotation"), &se.local.rotation.x, 4, where + ".rotation", warnings);
 		ReadFloats(je.Find("scale"), &se.local.scale.x, 3, where + ".scale", warnings);
