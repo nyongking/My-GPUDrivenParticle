@@ -1187,15 +1187,6 @@ void DrawSystemPanel(EffectSystem& system, int& selected)
 		ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f), "%s", w.c_str());
 
 	ImGui::Text("Alive : %u / %u  (%u emitters)", system.AliveTotal(), system.CapacityTotal(), uint32_t(system.Count()));
-	if (system.Count() > 1)
-	{
-		bool sortTogether = system.GlobalSort();
-		if (ImGui::Checkbox("Sort emitters together", &sortTogether))
-			system.SetGlobalSort(sortTogether);
-		if (ImGui::IsItemHovered())
-			ImGui::SetTooltip("On: all emitters' particles are depth-sorted in one list and drawn in one draw call\n(smoke in front of fire stays correct between emitters). Materials run on the interpreter.\nOff: each emitter sorts and draws on its own, with its own shader.\nEmitters are ordered by sort key (larger = on top), then far to near by emitter position.");
-	}
-
 	int moveIndex = -1, moveDirection = 0, removeIndex = -1, duplicateIndex = -1;
 	for (size_t i = 0; i < system.Count(); ++i)
 	{
@@ -1226,7 +1217,7 @@ void DrawSystemPanel(EffectSystem& system, int& selected)
 		ImGui::SetNextItemWidth(70.f);
 		ImGui::InputInt("##sortKey", &e.sortKey, 0);
 		if (ImGui::IsItemHovered())
-			ImGui::SetTooltip("Sort key: emitters with a larger key are drawn later (on top).\nSame key: far to near by emitter position.\nUsed when \"Sort emitters together\" is off.");
+			ImGui::SetTooltip("Sort key: emitters with a larger key are drawn later (on top).\nSame key: far to near by emitter position.\nUsed by the Emitter list render mode.");
 		ImGui::PopID();
 	}
 

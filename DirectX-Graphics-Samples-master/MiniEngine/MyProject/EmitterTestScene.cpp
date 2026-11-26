@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "EmitterTestScene.h"
 
-#include "EmitterRenderList.h"
+#include "ParticleRenderer.h"
 
 #include "EmitterAsset.h"
 #include "ModuleLibrary.h"
@@ -197,16 +197,6 @@ bool EmitterTestScene::Build(const Settings& settings)
 		m_Items.push_back(std::move(item));
 	}
 
-	// 공용 렌더 목록: 모든 이미터가 꽉 차도 들어가는 크기 (Shutdown 에서 GPU idle 을 거쳤으므로 다시 만들어도 안전)
-	uint32_t listCapacity = 0;
-	for (const Item& item : m_Items)
-		listCapacity += item.runtime->Capacity();
-	if (!m_Items.empty())
-	{
-		m_RenderList.Reserve(listCapacity);
-		m_AdditiveList.Reserve(listCapacity);
-	}
-
 	m_LastBuild.created = uint32_t(m_Items.size());
 	m_LastBuild.setupMs = SystemTime::TimeBetweenTicks(startTick, SystemTime::GetCurrentTick()) * 1000.0;
 	m_LastBuild.shaderBuildMs = EmitterGpuProgram::GetStats().buildMs;
@@ -227,8 +217,6 @@ void EmitterTestScene::Shutdown()
 	for (Item& item : m_Items)
 		item.runtime->Shutdown();
 	m_Items.clear();
-	m_RenderList.Shutdown();
-	m_AdditiveList.Shutdown();
 }
 
 void EmitterTestScene::Tick(ComputeContext& ctx, float deltaTime)
@@ -283,32 +271,11 @@ void EmitterTestScene::OnSubmitted(uint64_t fence)
 		item.runtime->OnSubmitted(fence);
 }
 
-void EmitterTestScene::Render(GraphicsContext& gfx, const Math::Camera& camera, EmitterRenderList& emitterList)
+void EmitterTestScene::Submit(GraphicsContext& gfx, ParticleRenderer& renderer)
 {
-	if (m_Items.empty())
-		return;
-
-	// 전체 정렬: 모든 이미터 파티클을 한 목록에 모아 정렬 1번 + Draw 1번 (이미터 사이 앞뒤도 맞음)
-	if (m_GlobalSort && m_RenderList.ReservedCapacity() > 0)
-	{
-		// 반투명은 한 목록에서 깊이 정렬, Additive 는 따로 모아서 정렬 없이 그 뒤에 그린다
-		//   (Additive 끼리는 그리는 순서가 결과에 영향이 없다)
-		m_RenderList.SetCulling(m_GatherCulling);
-		m_RenderList.Begin(gfx, camera);
-		m_AdditiveList.SetCulling(m_GatherCulling);
-		m_AdditiveList.Begin(gfx, camera);
-
-		for (Item& item : m_Items)
-			item.runtime->SubmitTo(gfx, item.runtime->IsAdditive() ? m_AdditiveList : m_RenderList);
-
-		m_RenderList.Render(gfx, true);
-		m_AdditiveList.Render(gfx, false);
-		return;
-	}
-
-	// 준 List: 여기서는 그리지 않고 목록에 넣기만 한다. 테스트 씬은 정렬 키를 쓰지 않는다 (전부 0 -> 거리순)
+	// 테스트 씬은 정렬 키를 쓰지 않는다 (전부 0 -> EmitterList 방식에서는 거리순)
 	for (Item& item : m_Items)
-		emitterList.Add(item.runtime.get(), item.owner.position, 0);
+		renderer.Add(gfx, item.runtime.get(), item.owner.position, 0);
 }
 
 uint32_t EmitterTestScene::AliveTotal() const

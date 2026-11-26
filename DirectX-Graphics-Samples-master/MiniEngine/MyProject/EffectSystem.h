@@ -2,7 +2,6 @@
 
 #include "EmitterAsset.h"
 #include "OwnerTransform.h"
-#include "ParticleRenderList.h"
 
 #include <cstdint>
 #include <memory>
@@ -10,7 +9,7 @@
 #include <vector>
 
 class ComputeContext;
-class EmitterRenderList;
+class ParticleRenderer;
 class GraphicsContext;
 namespace Math { class Camera; }
 
@@ -28,7 +27,6 @@ struct SystemAsset
 	static const uint32_t kVersion = 1;
 
 	std::string                     name;
-	bool                            globalSort = true;
 	std::vector<SystemEmitterAsset> emitters;
 };
 
@@ -41,6 +39,7 @@ const char*              SystemAssetDirectory();
 std::string              SystemAssetPath(const std::string& name);
 std::vector<std::string> ListSystemAssets();
 
+// 이미터 여러 개를 모아 둔 것 (JSON 으로 저장 / 로드). 시뮬레이션은 이미터마다 돌리고, 그리기는 ParticleRenderer 에 맡긴다
 class EffectSystem
 {
 public:
@@ -48,7 +47,7 @@ public:
 	{
 		std::string                     name;
 		bool                            enabled = true;
-		// EmitterRenderList 에 넘기는 정렬 키: 클수록 나중에 = 더 위에 그려진다 (EmitterRenderList.h)
+		// 렌더러에 넘기는 정렬 키 (EmitterList 방식에서 쓰인다): 클수록 나중에 = 더 위에 그려진다
 		int                             sortKey = 0;
 		OwnerTransform                  local;
 		float3                          worldPosition = { 0.f, 0.f, 0.f };   // 마지막 Tick 의 월드 위치 (순서 계산용)
@@ -74,13 +73,9 @@ public:
 	void ApplyPending();
 	void Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& systemTransform);
 	void OnSubmitted(uint64_t fence);
-	// 준 List (GlobalSort 가 꺼져 있거나 이미터 1개): 그리지 않고 emitterList 에 넣기만 한다 -> 그리는 것은 목록의 주인이 한다
-	// 공용 목록 (GlobalSort)                        : 여기서 바로 그린다
-	void Render(GraphicsContext& gfx, const Math::Camera& camera, EmitterRenderList& emitterList);
+	// 그리지 않는다. 켜져 있는 이미터를 렌더러에 넘기기만 한다 (어떤 방식으로 그릴지는 ParticleRenderer 가 정한다)
+	void Submit(GraphicsContext& gfx, ParticleRenderer& renderer);
 	void Shutdown();
-
-	void SetGlobalSort(bool enable) { m_GlobalSort = enable; }
-	bool GlobalSort() const { return m_GlobalSort; }
 
 	uint32_t AliveTotal() const;
 	uint32_t CapacityTotal() const;
@@ -94,10 +89,6 @@ private:
 	std::vector<std::unique_ptr<EmitterRuntime>>  m_Retired;
 	std::vector<EmitterRuntime*>                  m_Ticked;
 
-	bool               m_GlobalSort = true;
-	ParticleRenderList m_RenderList;       // 반투명: 이미터 구분 없이 깊이 정렬
-	ParticleRenderList m_AdditiveList;     // Additive: 정렬 없이 반투명 다음에 그린다
-	uint32_t           m_ListCapacity = 0;
 	std::string        m_LastError;
 
 	void Retire(std::unique_ptr<EmitterRuntime> runtime);

@@ -2,7 +2,7 @@
 #include "EffectSystem.h"
 
 #include "CommandListManager.h"
-#include "EmitterRenderList.h"
+#include "ParticleRenderer.h"
 #include "GraphicsCore.h"
 #include "Json.h"
 
@@ -95,24 +95,6 @@ void EffectSystem::ApplyPending()
 		m_Retired.clear();
 	}
 
-	// 블렌드 모드는 실행 중에 바뀔 수 있어서 두 목록 모두 전체 capacity 만큼 잡는다
-	const uint32_t want = (m_Emitters.size() > 1) ? CapacityTotal() : 0u;
-	if (want != m_ListCapacity)
-	{
-		Graphics::g_CommandManager.IdleGPU();
-		if (want == 0)
-		{
-			m_RenderList.Shutdown();
-			m_AdditiveList.Shutdown();
-		}
-		else
-		{
-			m_RenderList.Reserve(want);
-			m_AdditiveList.Reserve(want);
-		}
-		m_ListCapacity = want;
-	}
-
 	for (Emitter& e : m_Emitters)
 		e.runtime->ApplyPending();
 }
@@ -137,39 +119,18 @@ void EffectSystem::OnSubmitted(uint64_t fence)
 		r->OnSubmitted(fence);
 }
 
-void EffectSystem::Render(GraphicsContext& gfx, const Math::Camera& camera, EmitterRenderList& emitterList)
+void EffectSystem::Submit(GraphicsContext& gfx, ParticleRenderer& renderer)
 {
-	// 두 가지 방식 (m_GlobalSort)
-	//   공용 목록 : 모든 이미터의 파티클을 한 목록에 섞어 깊이 정렬 (머티리얼은 VM 인터프리터)
-	//   준 List   : 이미터마다 따로 그리고 이미터 사이의 순서만 정한다 (머티리얼은 Preset / Custom 셰이더)
-	const bool listReady = m_GlobalSort && m_Emitters.size() > 1 && m_ListCapacity == CapacityTotal() && m_ListCapacity > 0;
-	if (!listReady)
-	{
-		// 준 List: 여기서는 그리지 않는다. 이미터를 목록에 넣기만 하고, 순서 정하기와 그리기는 EmitterRenderList 가 한다
-		for (Emitter& e : m_Emitters)
-		{
-			if (e.enabled)
-				emitterList.Add(e.runtime.get(), e.worldPosition, e.sortKey);
-		}
-		return;
-	}
-
-	// 공용 목록: 반투명은 이미터 구분 없이 깊이 정렬, Additive 는 모으기만 해서 그 뒤에 그린다
-	//   (Additive 끼리는 순서가 결과에 영향이 없어서 정렬하지 않는다)
-	m_RenderList.Begin(gfx, camera);
-	m_AdditiveList.Begin(gfx, camera);
 	for (Emitter& e : m_Emitters)
 	{
 		if (e.enabled)
-			e.runtime->SubmitTo(gfx, e.runtime->IsAdditive() ? m_AdditiveList : m_RenderList);
+			renderer.Add(gfx, e.runtime.get(), e.worldPosition, e.sortKey);
 	}
-	m_RenderList.Render(gfx, true);
-	m_AdditiveList.Render(gfx, false);
 }
 
 void EffectSystem::Shutdown()
 {
-	if (m_Emitters.empty() && m_Retired.empty() && m_ListCapacity == 0)
+	if (m_Emitters.empty() && m_Retired.empty())
 		return;
 	Graphics::g_CommandManager.IdleGPU();
 	for (Emitter& e : m_Emitters)
@@ -179,9 +140,6 @@ void EffectSystem::Shutdown()
 		r->Shutdown();
 	m_Retired.clear();
 	m_Ticked.clear();
-	m_RenderList.Shutdown();
-	m_AdditiveList.Shutdown();
-	m_ListCapacity = 0;
 }
 
 uint32_t EffectSystem::AliveTotal() const
@@ -204,7 +162,6 @@ SystemAsset EffectSystem::Capture(const std::string& name) const
 {
 	SystemAsset a;
 	a.name = name;
-	a.globalSort = m_GlobalSort;
 	for (const Emitter& e : m_Emitters)
 	{
 		SystemEmitterAsset se;
@@ -221,7 +178,6 @@ SystemAsset EffectSystem::Capture(const std::string& name) const
 bool EffectSystem::Load(const SystemAsset& asset, std::vector<std::string>* failures)
 {
 	Clear();
-	m_GlobalSort = asset.globalSort;
 	bool ok = true;
 	for (const SystemEmitterAsset& se : asset.emitters)
 	{
@@ -273,7 +229,6 @@ std::string SystemAssetToJson(const SystemAsset& a)
 	root.Set("format", JsonValue(kSystemFormat));
 	root.Set("version", JsonValue(SystemAsset::kVersion));
 	root.Set("name", JsonValue(a.name));
-	root.Set("globalSort", JsonValue(a.globalSort));
 
 	JsonValue emitters = JsonValue::MakeArray();
 	for (const SystemEmitterAsset& se : a.emitters)
@@ -319,8 +274,7 @@ bool SystemAssetFromJson(const std::string& text, SystemAsset& out, std::string&
 	SystemAsset a;
 	if (const JsonValue* v = root.Find("name"))
 		a.name = v->AsString();
-	if (const JsonValue* v = root.Find("globalSort"))
-		a.globalSort = v->AsBool(true);
+	// 예전 파일의 "globalSort" 는 읽지 않는다: 렌더 방식은 시스템이 아니라 전역 설정 (ParticleRenderer)
 
 	const JsonValue* emitters = root.Find("emitters");
 	if (emitters == nullptr || !emitters->IsArray())
