@@ -37,7 +37,7 @@
 #include "ModuleStackPanel.h"
 #include "MaterialGraphEditor.h"
 #include "EffectSystem.h"
-#include "EmitterRenderList.h"
+#include "ParticleRenderer.h"
 #include "EmitterAsset.h"
 #include <algorithm>
 #include <cmath>
@@ -84,7 +84,7 @@ private:
 
     // -----------
     EffectSystem    m_System;
-    EmitterRenderList m_EmitterList;    // 준 List: 이미터 단위로 순서를 정해서 그린다 (시스템 / 테스트 씬이 Add 만 한다)
+    ParticleRenderer m_Renderer;
     int             m_SelectedEmitter = 0;
     float3          m_EmitterPos = { 0.f, 0.f, 0.f };
 
@@ -183,6 +183,7 @@ void MyProject::Cleanup(void)
     // Free up resources in an orderly fashion
     m_TestScene.Shutdown();
     m_System.Shutdown();
+    m_Renderer.Shutdown();
     MaterialGpuProgram::ClearCache();
     CurveLibrary::Shutdown();      // 이미터가 다 내려간 뒤 (Shutdown 이 GPU 를 기다린다)
     ParticleTextures::Shutdown();
@@ -205,6 +206,7 @@ void MyProject::Update(float deltaT)
     m_CameraController->Update(deltaT);
 
     m_System.ApplyPending();
+    m_Renderer.Reserve(m_UseTestScene ? m_TestScene.CapacityTotal() : uint32_t(m_System.CapacityTotal()));
 
     // 타임 스톱: 시뮬레이션 / 소유자 시간을 0 으로 (Tick 은 그대로 돌려 펜스 / 버퍼 흐름 유지). Step 은 한 프레임만 진행
     const bool  advance = !m_TimeStop || m_StepOnce;
@@ -272,14 +274,12 @@ void MyProject::RenderScene(void)
     QuadRenderer::BeginDraw(gfxContext, m_Camera.GetViewProjMatrix());
     m_Floor.Draw(gfxContext);
 
-    // 공용 목록 (Sort emitters together) 이면 Render 안에서 바로 그려지고,
-    // 아니면 이미터가 m_EmitterList 에 들어가서 아래에서 순서대로 그려진다
-    m_EmitterList.Begin(m_Camera);
+    m_Renderer.Begin(gfxContext, m_Camera);
     if (m_UseTestScene)
-        m_TestScene.Render(gfxContext, m_Camera, m_EmitterList);
+        m_TestScene.Submit(gfxContext, m_Renderer);
     else
-        m_System.Render(gfxContext, m_Camera, m_EmitterList);
-    m_EmitterList.Render(gfxContext);
+        m_System.Submit(gfxContext, m_Renderer);
+    m_Renderer.Render(gfxContext);
 
     // Finish
     gfxContext.Finish();
@@ -340,9 +340,57 @@ void MyProject::UpdateImGui(float deltaT)
 
     {
         // 머티리얼(픽셀 셰이더) 방식. 전역 설정이라 일반 이미터 / Test scene 모두에 적용된다
-        //   공용 렌더 목록 (Global sort) 으로 그리는 이미터는 항상 Interpreted
-        ImGui::SeparatorText("Material");
+        //   렌더 방식이 Shared list 면 항상 Interpreted
+        // 파티클 전체 설정: 이미터 / 시스템이 아니라 여기서 정한다 (일반 이미터, Test scene 모두에 적용)
+        ImGui::SeparatorText("Particle Settings");
         ImGui::BeginDisabled(m_Recorder.IsBusy() || m_BenchRunning);      // 기록 중에는 조건 변경 금지
+
+        {
+            // 렌더 방식 (ParticleRenderer.h)
+            int render = int(m_Renderer.Mode());
+            ImGui::TextUnformatted("Render mode:");
+            ImGui::SameLine();
+            bool changed = ImGui::RadioButton("Shared list", &render, int(ParticleRenderMode::SharedList));
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("All particles of all emitters in one list, depth-sorted per particle, one draw call.\nTranslucent (sorted) first, then additive (unsorted). Materials run on the interpreter.");
+            ImGui::SameLine();
+            changed |= ImGui::RadioButton("Emitter list", &render, int(ParticleRenderMode::EmitterList));
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Each emitter draws on its own with its own shader.\nEmitters are ordered by sort key (larger = on top), then far to near by emitter position.");
+            ImGui::SameLine();
+            changed |= ImGui::RadioButton("Sprite", &render, int(ParticleRenderMode::Sprite));
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Each emitter draws on its own with its own shader, in list order (no ordering between emitters).");
+            if (changed)
+                m_Renderer.SetMode(ParticleRenderMode(render));
+
+            // 공용 목록에서만 의미가 있다
+            ImGui::BeginDisabled(m_Renderer.Mode() != ParticleRenderMode::SharedList);
+            ImGui::Indent();
+            bool culling = m_Renderer.Culling();
+            if (ImGui::Checkbox("Gather culling", &culling))
+                m_Renderer.SetCulling(culling);
+            ImGui::Unindent();
+            ImGui::EndDisabled();
+        }
+
+        {
+            // 시뮬레이션 (컴퓨트) 방식
+            int sim = int(UberGpuProgram::Mode());
+            ImGui::TextUnformatted("Sim mode:");
+            ImGui::SameLine();
+            const bool a = ImGui::RadioButton("Generated##sim", &sim, int(GpuSimMode::Generated));
+            ImGui::SameLine();
+            const bool c = ImGui::RadioButton("Uber##sim", &sim, int(GpuSimMode::Uber));
+            if (a || c)
+            {
+                UberGpuProgram::SetMode(GpuSimMode(sim));
+                strcpy_s(m_RecordTag, UberGpuProgram::ModeName(GpuSimMode(sim)));
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(%s)", UberGpuProgram::StatusText());
+        }
+
         int mode = int(MaterialGpuProgram::Mode());
         ImGui::TextUnformatted("Material mode:");
         ImGui::SameLine();
@@ -434,37 +482,6 @@ void MyProject::UpdateTestSceneImGui()
             m_TestScene.SetStageMajor(stageMajor);
     }
 
-    {
-        // 렌더: 이미터 사이까지 섞어서 정렬 (한 목록, Draw 1번) / 이미터마다 따로 정렬 (Draw N번)
-        bool globalSort = m_TestScene.GlobalSort();
-        if (ImGui::Checkbox("Global particle sort (across emitters)", &globalSort))
-            m_TestScene.SetGlobalSort(globalSort);
-
-        // 전체 정렬 경로에서만 의미가 있다
-        ImGui::BeginDisabled(!globalSort);
-        ImGui::Indent();
-        bool culling = m_TestScene.GatherCulling();
-        if (ImGui::Checkbox("Gather culling", &culling))
-            m_TestScene.SetGatherCulling(culling);
-        ImGui::Unindent();
-        ImGui::EndDisabled();
-    }
-
-    {
-        int mode = int(UberGpuProgram::Mode());
-        ImGui::TextUnformatted("Sim mode:");
-        ImGui::SameLine();
-        const bool a = ImGui::RadioButton("Generated", &mode, int(GpuSimMode::Generated));
-        ImGui::SameLine();
-        const bool c = ImGui::RadioButton("Uber", &mode, int(GpuSimMode::Uber));
-        if (a || c)
-        {
-            UberGpuProgram::SetMode(GpuSimMode(mode));
-            strcpy_s(m_RecordTag, UberGpuProgram::ModeName(GpuSimMode(mode)));
-        }
-        ImGui::SameLine();
-        ImGui::TextDisabled("(%s)", UberGpuProgram::StatusText());
-    }
 
 
     // N 바로 고르기 (누르면 바로 다시 만든다)

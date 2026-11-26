@@ -14,8 +14,7 @@
 //   반투명 / Additive 를 구분하지 않는다: 연기 뒤의 불꽃이 먼저 그려져야 연기에 가려지기 때문.
 //   이미터 "안" 의 파티클 정렬은 SpriteRenderer 가 한다 (반투명 = 깊이 정렬, Additive = 정렬 없음)
 //
-//   이미터를 가진 쪽 (EffectSystem, EmitterTestScene) 은 Add 만 한다. 목록은 그 바깥 (Main) 이 하나 갖는다
-//   -> 여러 시스템의 이미터가 한 목록에서 같이 정렬된다
+//   ParticleRenderer 가 갖고 쓴다 (렌더 방식이 EmitterList / Sprite 일 때). Sprite 는 SetSorted(false) 로 정렬만 끈 것
 
 #include "AttributeType.h"
 
@@ -33,6 +32,10 @@ public:
 	void Add(EmitterRuntime* runtime, const float3& worldPosition, int sortKey = 0);
 	void Render(GraphicsContext& gfx);      // 정렬 후 순서대로 EmitterRuntime::Render. 목록은 비워진다
 
+	// false 면 순서를 정하지 않고 Add 한 순서대로 그린다 (Sprite 방식)
+	void SetSorted(bool sorted) { m_Sorted = sorted; }
+	bool Sorted() const { return m_Sorted; }
+
 	uint32_t EmitterCount() const { return uint32_t(m_Items.size()); }
 
 private:
@@ -47,4 +50,5 @@ private:
 	float3              m_CamPosition = { 0.f, 0.f, 0.f };
 	float3              m_CamForward = { 0.f, 0.f, 1.f };
 	std::vector<Item>   m_Items;
+	bool                m_Sorted = true;
 };

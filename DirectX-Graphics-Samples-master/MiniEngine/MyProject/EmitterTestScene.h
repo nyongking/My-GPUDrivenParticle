@@ -27,7 +27,7 @@ uint32_t                ComboModuleBits(uint32_t combo);      // bit0 Sphere, 1 
 std::string             ComboName(uint32_t combo);
 std::vector<ModuleDesc> MakeComboStack(uint32_t combo, float spawnRate);
 
-class EmitterRenderList;
+class ParticleRenderer;
 
 class EmitterTestScene
 {
@@ -65,19 +65,11 @@ public:
 
 	void Tick(ComputeContext& ctx, float deltaTime);
 	void OnSubmitted(uint64_t fence);
-	// 전체 정렬이 꺼져 있으면 그리지 않고 emitterList 에 넣기만 한다 (EmitterRenderList.h)
-	void Render(GraphicsContext& gfx, const Math::Camera& camera, EmitterRenderList& emitterList);
+	// 그리지 않는다. 이미터를 렌더러에 넘기기만 한다 (ParticleRenderer.h)
+	void Submit(GraphicsContext& gfx, ParticleRenderer& renderer);
 
 	void SetStageMajor(bool stageMajor) { m_StageMajor = stageMajor; }
 	bool StageMajor() const { return m_StageMajor; }
-
-	// true = 모든 이미터의 파티클을 한 목록에서 정렬해서 한 번에 그림 / false = 이미터마다 따로 정렬, 따로 그림
-	void SetGlobalSort(bool globalSort) { m_GlobalSort = globalSort; }
-	bool GlobalSort() const { return m_GlobalSort; }
-
-	// 전체 정렬 경로 전용. Gather 에서 화면 밖 / 투명 / 크기 0 파티클을 빼고 정렬
-	void SetGatherCulling(bool enable) { m_GatherCulling = enable; }
-	bool GatherCulling() const { return m_GatherCulling; }
 
 
 	bool                Empty() const { return m_Items.empty(); }
@@ -104,8 +96,4 @@ private:
 	bool			  m_StageMajor = false;
 	std::vector<GpuEmitterInstance*> m_StagedScratch;
 
-	bool               m_GlobalSort = true;
-	bool               m_GatherCulling = true;
-	ParticleRenderList m_RenderList;      // 반투명 (정렬). 크기 = 이미터 capacity 합 (Build 에서 잡음)
-	ParticleRenderList m_AdditiveList;    // Additive (정렬 안 함). 블렌드 모드가 실행 중에 바뀌므로 같은 크기
 };

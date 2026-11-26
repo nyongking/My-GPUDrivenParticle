@@ -144,6 +144,9 @@
     <ClCompile Include="EmitterRenderList.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
+    <ClCompile Include="ParticleRenderer.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
     <ClCompile Include="RenderParticle.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
@@ -283,6 +286,9 @@
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
     <ClInclude Include="EmitterRenderList.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleRenderer.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
     <ClInclude Include="RenderParticle.h">

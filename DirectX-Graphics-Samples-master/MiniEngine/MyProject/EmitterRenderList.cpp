@@ -36,13 +36,16 @@ void EmitterRenderList::Render(GraphicsContext& gfx)
 	if (!m_Camera)
 		return;
 
-	// stable: 키와 거리가 모두 같으면 Add 한 순서를 지킨다 -> 프레임마다 순서가 뒤바뀌지 않는다
-	std::stable_sort(m_Items.begin(), m_Items.end(), [](const Item& a, const Item& b)
-		{
-			if (a.sortKey != b.sortKey)
-				return a.sortKey < b.sortKey;   // 키가 큰 것이 나중 = 위
-			return a.depth > b.depth;           // 먼 것부터
-		});
+	if (m_Sorted)
+	{
+		// stable: 키와 거리가 모두 같으면 Add 한 순서를 지킨다 -> 프레임마다 순서가 뒤바뀌지 않는다
+		std::stable_sort(m_Items.begin(), m_Items.end(), [](const Item& a, const Item& b)
+			{
+				if (a.sortKey != b.sortKey)
+					return a.sortKey < b.sortKey;   // 키가 큰 것이 나중 = 위
+				return a.depth > b.depth;           // 먼 것부터
+			});
+	}
 
 	for (const Item& item : m_Items)
 		item.runtime->Render(gfx, *m_Camera);
