@@ -500,7 +500,7 @@ JsonValue EmitterAssetToJsonValue(const EmitterAsset& a)
 	for (const RenderBinding& b : a.sprite.bindings)
 	{
 		JsonValue jb = JsonValue::MakeObject();
-		jb.Set("attribute", JsonValue(b.attribute));   // 빈 문자열 = 항상 기본값
+		// 읽는 속성은 고정이라 기본값만 저장한다 (예전 파일의 "attribute" 는 읽을 때 무시)
 		jb.Set("default", EncodeValue(b.type, b.defaultValue.data()));
 		bindings.Set(b.slot, std::move(jb));
 	}
@@ -744,11 +744,12 @@ bool EmitterAssetFromJsonValue(const JsonValue& root, EmitterAsset& out, std::st
 					[&](const RenderBinding& b) { return b.slot == member.first; });
 				if (it == a.sprite.bindings.end())
 				{
-					warnings.push_back("unknown binding slot '" + member.first + "' -> ignored");
+					// 예전 파일의 칸 (SpriteSize / ParticleParam0 / ParticleParam1): 지금은 렌더 구조체의 고정 필드
+					if (member.first != "SpriteSize" && member.first != "ParticleParam0" && member.first != "ParticleParam1")
+						warnings.push_back("unknown binding slot '" + member.first + "' -> ignored");
 					continue;
 				}
-				if (const JsonValue* attr = member.second.Find("attribute"))
-					it->attribute = attr->AsString();   // 쓰는 모듈이 없으면 런타임이 기본값으로 그린다
+				// "attribute" 는 읽지 않는다: 렌더러가 읽는 속성은 고정 (RenderParticle.h)
 				if (const JsonValue* def = member.second.Find("default"))
 				{
 					std::vector<uint8_t> value(it->type->size);

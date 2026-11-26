@@ -1,3 +1,5 @@
+#include "RenderParticle.hlsli"
+
 #define GROUP_SIZE 64
 
 cbuffer EngineConstants : register(b0)
@@ -11,13 +13,19 @@ cbuffer EngineConstants : register(b0)
     float3 OwnerVelocity;
     float _pad1;
     row_major float4x4 OwnerLocalToWorld;
-}; 
+    RenderParticle DefaultRender; // 112  새 파티클의 렌더 값 (CPU 가 정한 기본값, 모듈이 덮어쓴다)
+}; // 176
 
+// 파티클 값은 두 버퍼에 나뉘어 있다 (둘 다 In -> Out 으로 넘어가며 죽은 파티클을 건너뛴다)
+//   ParticlesIn / Out : 가변 속성. SoA, 이미터마다 다른 레이아웃 (offset 으로 접근)
+//   RenderIn / Out    : 렌더링에 필요한 고정 구조체. VS 가 Out 을 그대로 읽는다
 RWByteAddressBuffer ParticlesIn : register(u0);
 RWByteAddressBuffer ParticlesOut : register(u1);
 RWByteAddressBuffer Counters : register(u2);
 RWByteAddressBuffer EmitterData : register(u3);
 RWByteAddressBuffer IndirectArgs : register(u4);
+RWStructuredBuffer<RenderParticle> RenderIn : register(u5);
+RWStructuredBuffer<RenderParticle> RenderOut : register(u6);
 
 // Counters에서 읽는 주소 공간
 #define COUNTER_ALIVE_IN      0   // ParticlesIn 에 들어 있는 개수

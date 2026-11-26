@@ -4,6 +4,7 @@
 #include "ModuleDesc.h"
 #include "ParticleRenderList.h"
 #include "ParticleSorter.h"
+#include "RenderParticle.h"
 #include "TextureManager.h"
 
 #include <cstdint>
@@ -77,22 +78,26 @@ class SpriteRenderer
 {
 public:
     // 칸 순서 = Desc() 의 bindings 순서
-    //   SpriteSize 가 연결되어 있지 않으면 (Size * 2, Size * 2) 로 그린다 (Size = 반지름, 기존 크기 그대로)
+    //   파티클 값은 고정 렌더 구조체 (RenderParticle.h) 에서 읽는다. 어느 속성을 읽을지는 고정이고,
+    //   여기서 정하는 것은 "아무 모듈도 그 속성을 쓰지 않을 때의 값" (기본값) 뿐이다.
+    //   kSpriteFacing / kSpriteAlignment 만 예외: 일부 모드에서만 쓰여서 가변 속성 버퍼(SoA) 에서 offset 으로 읽는다
     enum BindingSlot
     {
         kPosition, kColor, kSize, kSubImageIndex,
-        kSpriteSize,        // float2 가로 / 세로 전체 길이
         kSpriteRotation,    // float  도
         kVelocity,          // float3 VelocityAligned 용
-        kSpriteFacing,      // float3 CustomFacingVector 용 (연결이 없으면 기본값이 상수 벡터)
+        kSpriteFacing,      // float3 CustomFacingVector 용 (속성이 없으면 기본값이 상수 벡터)
         kSpriteAlignment,   // float3 CustomAlignment 용
-        kParticleParam0,    // float  기본 연결 = Particles.NormalizedAge
-        kParticleParam1,    // float  기본 연결 없음 (기본값). 파티클마다 다른 값을 줄 속성을 연결
-        kNumSlots
+        kNumSlots,
+        kNumRenderSlots = kSpriteFacing     // 이 앞까지가 렌더 구조체의 필드
     };
 
-    // SpriteRenderer의 기본값에 해당하는 Desc, 이미터마다 원하는 바인딩이 다를 경우 직접 RendererDesc를 지정해야 한다.
+    // SpriteRenderer 의 칸 목록 + 기본값. 연결되는 속성은 고정이다 (attribute 는 바꿔도 반영되지 않는다)
     static RendererDesc Desc();
+
+    // desc 의 기본값 -> 렌더 구조체 한 개. 시뮬레이션이 새 파티클을 이 값에서 시작한다 (모듈이 덮어쓴다)
+    //   SpriteSize 는 항상 "없음" (-1): SpriteSize 를 쓰는 모듈이 없으면 Size * 2 로 그린다
+    static RenderParticleData RenderDefaults(const RendererDesc& desc);
 
     bool Initialize(const EmitterInstance& emitter, const RendererDesc& desc);
     void Shutdown();
@@ -131,11 +136,15 @@ public:
 private:
     void UploadSortedIndices(GraphicsContext& gfx, const Math::Camera& camera, const EmitterInstance& emitter);
 
-    // 레이아웃에서 Position / Color / Size offset 을 꺼낸다 (CPU / GPU 공통)
+    // CPU 이미터의 결과를 GPU 버퍼로 올린다 (렌더 구조체는 항상, 가변 속성은 Facing / Alignment 를 읽을 때만)
+    void UploadCpu(GraphicsContext& gfx, const EmitterInstance& emitter);
+
+    // 가변 속성 레이아웃에서 SpriteFacing / SpriteAlignment 의 offset 을 꺼낸다 (CPU / GPU 공통)
     bool ReadLayout(const Block& layout, uint32_t capacity, const RendererDesc& desc);
     // 상수 버퍼 / 루트 시그니처 / PSO / SRV 묶기 (CPU / GPU 공통). 그리기 호출만 따로
-    //   sortedIndices = t1 (ByteAddressBuffer), sortStride = 정렬 목록 한 칸의 바이트 (CPU 4 = uint, GPU 8 = uint2(index, key))
-    void BindForDraw(GraphicsContext& gfx, const Math::Camera& camera, ByteAddressBuffer& particles,
+    //   render = t0 (렌더 구조체), sortedIndices = t1, particles = t2 (가변 속성 SoA)
+    //   sortStride = 정렬 목록 한 칸의 바이트 (CPU 4 = uint, GPU 8 = uint2(index, key))
+    void BindForDraw(GraphicsContext& gfx, const Math::Camera& camera, StructuredBuffer& render, ByteAddressBuffer& particles,
         ByteAddressBuffer& sortedIndices, bool sorted, uint32_t sortStride);
     // GPU 정렬: 깊이 키 생성(ParticleSortKeyCS) -> BitonicSort 내림차순 (먼 것부터 = back-to-front)
     void SortOnGpu(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter);
@@ -150,21 +159,16 @@ private:
     const GraphicsPSO*      m_MaterialPSO = nullptr;
     
 
-    ByteAddressBuffer   m_ParticleBuffer;
+    StructuredBuffer    m_RenderBuffer;         // CPU: 렌더 구조체 업로드용 (GPU 이미터는 이미터의 버퍼를 그대로 읽는다)
+    ByteAddressBuffer   m_ParticleBuffer;       // CPU: 가변 속성 (SoA) 업로드용
     ByteAddressBuffer   m_SortedIndexBuffer;    // CPU: 정렬된 인덱스 (uint)
     ByteAddressBuffer   m_GpuSortBuffer;        // GPU: 정렬 목록 uint2(index, key) x capacity (BitonicSort 가 RW raw 로 씀)
 
     uint32_t            m_BufferBytes;
-    uint32_t            m_Offsets[kNumSlots] = {};
-    float3              m_DefaultPosition = { 0.f, 0.f, 0.f };
-    float4              m_DefaultColor = { 1.f, 1.f, 1.f, 1.f };
-    float               m_DefaultSize = 0.1f;
-    float               m_DefaultSubImage = 0.f;
-    float               m_DefaultSpriteRotation = 0.f;
-    float3              m_DefaultVelocity = { 0.f, 0.f, 0.f };
+    uint32_t            m_FacingOffset = kNoAttribute;      // 가변 속성 버퍼의 Particles.SpriteFacing
+    uint32_t            m_AlignmentOffset = kNoAttribute;   // 가변 속성 버퍼의 Particles.SpriteAlignment
     float3              m_DefaultSpriteFacing = { 0.f, 1.f, 0.f };
     float3              m_DefaultSpriteAlignment = { 0.f, 1.f, 0.f };
-    float2              m_DefaultParticleParams = { 0.f, 0.f };
 
     SpriteSettings      m_Settings;
 

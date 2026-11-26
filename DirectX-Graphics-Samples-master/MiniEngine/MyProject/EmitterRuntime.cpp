@@ -289,18 +289,6 @@ void EmitterRuntime::Restart()
 	Request(Pending::Restart);
 }
 
-void EmitterRuntime::SetBindingAttribute(size_t bindingIndex, const std::string& attribute)
-{
-	RenderBinding& b = m_SpriteDesc.bindings[bindingIndex];
-	if (b.attribute == attribute)
-		return;
-
-	// 칸 연결이 바뀌면 Trim 대상(레이아웃)과 렌더러 offset 이 바뀐다.
-	// 레이아웃이 같아도 렌더러가 offset 을 다시 읽어야 하므로 Preserve 가 아니라 Restart
-	b.attribute = attribute;
-	Request(Pending::Restart);
-}
-
 void EmitterRuntime::SetBindingDefault(size_t bindingIndex, const std::vector<uint8_t>& value)
 {
 	RenderBinding& b = m_SpriteDesc.bindings[bindingIndex];
@@ -310,9 +298,19 @@ void EmitterRuntime::SetBindingDefault(size_t bindingIndex, const std::vector<ui
 	b.defaultValue = value;
 	m_AppliedSpriteDesc.bindings[bindingIndex].defaultValue = value;   // 재컴파일과 무관한 값
 
-	// 상수 버퍼 값이라 바로 반영 (실행 중이 아닌 쪽도 같이 맞춰 둔다)
+	ApplyRenderDefaults();
+}
+
+void EmitterRuntime::ApplyRenderDefaults()
+{
+	// Facing / Alignment 벡터: VS 의 상수 버퍼 값이라 바로 반영 (실행 중이 아닌 쪽도 같이 맞춰 둔다)
 	m_CpuRenderer.SetDefaults(m_SpriteDesc);
 	m_GpuRenderer.SetDefaults(m_SpriteDesc);
+
+	// 렌더 구조체의 기본값: 시뮬레이션이 새 파티클을 이 값에서 시작한다 (이미 살아 있는 파티클은 그대로)
+	const RenderParticleData defaults = SpriteRenderer::RenderDefaults(m_SpriteDesc);
+	m_Cpu.SetRenderDefaults(defaults);
+	m_Gpu.SetRenderDefaults(defaults);
 }
 
 bool EmitterRuntime::SetMaterialTexture(uint32_t slot, const MaterialTexture& texture)
@@ -388,31 +386,6 @@ void EmitterRuntime::SetSpriteSettings(const SpriteSettings& settings)
 	m_GpuRenderer.SetSettings(settings);
 }
 
-std::vector<std::string> EmitterRuntime::BindableAttributes(const TypeInfo* type) const
-{
-	std::vector<std::string> out;
-	auto add = [&](const std::string& name)
-		{
-			if (std::find(out.begin(), out.end(), name) == out.end())
-				out.push_back(name);
-		};
-
-	// 적용된 스택에서 누가 "쓰는" 속성만 (안 쓰는 속성은 연결해도 기본값이 됨)
-	for (const ModuleDesc& m : m_AppliedModules)
-	{
-		for (const Usage& u : m.writes)
-		{
-			const AttributeKey k = AttributeKey::Parse(u.attr);
-			if (k.ns != Namespace::Particles || k.mod != Modifier::None || u.type != type)
-				continue;
-
-			add(k.Full());
-			add("Particles.Previous." + k.name);   // 엔진이 복사해서 채움
-			add("Particles.Initial." + k.name);
-		}
-	}
-	return out;
-}
 
 void EmitterRuntime::ApplyPending()
 {
@@ -565,6 +538,9 @@ bool EmitterRuntime::RebuildRestart()
 	// 여기까지 성공해야 실행 중인 이미터를 내린다
 	Graphics::g_CommandManager.IdleGPU();
 	ShutdownActive();
+
+	// 새 파티클의 렌더 값 (CPU 이미터는 Initialize 에서 버퍼를 이 값으로 채운다)
+	ApplyRenderDefaults();
 
 	if (m_Backend == EmitterBackend::Cpu)
 	{

@@ -2,7 +2,7 @@
 
 #define NO_ATTRIBUTE 0xFFFFFFFF
 
-// RenderParticle: 64 바이트 (C++ ParticleRenderList::kRenderParticleBytes)
+// ListParticle: 64 바이트 (C++ ParticleRenderList::kRenderParticleBytes)
 //   빌보드 방향은 Gather 가 미리 계산한다 (이미터마다 Facing / Alignment 가 달라도 VS 는 같은 식)
 //   0  float3 Center     12 float SubImage
 //   16 float4 Color
@@ -10,7 +10,7 @@
 //   48 float3 AxisY      60 (pad)
 #define RENDER_PARTICLE_BYTES 64
 
-struct RenderParticle
+struct ListParticle
 {
     float3 Center; // 사각형 중심 (피벗 / 카메라 오프셋 적용 후)
     float SubImage;
@@ -31,7 +31,7 @@ float2 UnpackHalf2(uint u)
     return float2(f16tof32(u & 0xFFFF), f16tof32(u >> 16));
 }
 
-void StoreRenderParticle(RWByteAddressBuffer buf, uint slot, RenderParticle p)
+void StoreListParticle(RWByteAddressBuffer buf, uint slot, ListParticle p)
 {
     const uint a = slot * RENDER_PARTICLE_BYTES;
     buf.Store4(a + 0, uint4(asuint(p.Center), asuint(p.SubImage)));
@@ -40,14 +40,14 @@ void StoreRenderParticle(RWByteAddressBuffer buf, uint slot, RenderParticle p)
     buf.Store4(a + 48, uint4(asuint(p.AxisY), PackHalf2(p.Params)));
 }
 
-RenderParticle LoadRenderParticle(ByteAddressBuffer buf, uint slot)
+ListParticle LoadListParticle(ByteAddressBuffer buf, uint slot)
 {
     const uint a = slot * RENDER_PARTICLE_BYTES;
     const uint4 v0 = buf.Load4(a + 0);
     const uint4 v1 = buf.Load4(a + 16);
     const uint4 v2 = buf.Load4(a + 32);
     const uint4 v3 = buf.Load4(a + 48);
-    RenderParticle p;
+    ListParticle p;
     p.Center = asfloat(v0.xyz);
     p.SubImage = asfloat(v0.w);
     p.Color = asfloat(v1);

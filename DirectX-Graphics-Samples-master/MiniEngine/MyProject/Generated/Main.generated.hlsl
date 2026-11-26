@@ -6,21 +6,24 @@
 //     M2_SphereLocation           ParticleSpawn   
 //     M3_ParticleState            ParticleUpdate  
 //     M4_SolveForceandVelocity    ParticleUpdate  
+//     M5_SubUVAnimation           ParticleUpdate  
 // =====================================================================
 
 #include "ModuleCommon.hlsli"
 
 // =====================================================================
 // 1. Layout offsets (particle buffer: SoA column start = offset * Capacity)
+//    Render attributes live in the fixed struct RenderParticle (RenderParticle.hlsli), not here
 // =====================================================================
-static const uint OFS_Particles_Position               = 0;   // float3
-static const uint OFS_Particles_Color                  = 12;   // float4
-static const uint OFS_Particles_Size                   = 28;   // float
-static const uint OFS_Particles_Lifetime               = 32;   // float
-static const uint OFS_Particles_Age                    = 36;   // float
-static const uint OFS_Particles_NormalizedAge          = 40;   // float
-static const uint OFS_Particles_Velocity               = 44;   // float3
-static const uint OFS_Particles_Acceleration           = 56;   // float3
+// Particles.Position : RenderParticle.Position
+// Particles.Color : RenderParticle.Color
+// Particles.Size : RenderParticle.Size
+// Particles.NormalizedAge : RenderParticle.NormalizedAge
+// Particles.Velocity : RenderParticle.Velocity
+// Particles.SubImageIndex : RenderParticle.SubImageIndex
+static const uint OFS_Particles_Lifetime               = 0;   // float
+static const uint OFS_Particles_Age                    = 4;   // float
+static const uint OFS_Particles_Acceleration           = 8;   // float3
 // Particles.Mass : trimmed (nobody reads it) -> no offset, still in struct
 
 static const uint OFS_Emitter_SpawnCount               = 0;   // uint
@@ -32,20 +35,21 @@ static const uint OFS_Emitter_SpawnRemainder           = 4;   // float
 cbuffer ModuleParams : register(b1)
 {
     float  M0_SpawnRate_Rate;                      // 0
-    float  M1_InitializeParticle_Size_Min;         // 4
-    float  M1_InitializeParticle_Size_Max;         // 8
-    float  M1_InitializeParticle_Mass;             // 12
-    float  M1_InitializeParticle_Lifetime_Min;     // 16
-    float  M1_InitializeParticle_Lifetime_Max;     // 20
-    float3 M1_InitializeParticle_Pos;              // 32
-    float4 M1_InitializeParticle_Color_Min;        // 48
-    float4 M1_InitializeParticle_Color_Max;        // 64
-    float  M2_SphereLocation_Radius_Min;           // 80
-    float  M2_SphereLocation_Radius_Max;           // 84
-    uint   M2_SphereLocation_SurfaceOnly;          // 88
-    uint   M3_ParticleState_KillOnLifetime;        // 92
-    float  M4_SolveForceandVelocity_AccelLimit;    // 96
-    float  M4_SolveForceandVelocity_SpeedLimit;    // 100
+    float  M1_InitializeParticle_Size;             // 4
+    float  M1_InitializeParticle_Mass;             // 8
+    float  M1_InitializeParticle_Lifetime;         // 12
+    float3 M1_InitializeParticle_Pos_Min;          // 16
+    float3 M1_InitializeParticle_Pos_Max;          // 32
+    float4 M1_InitializeParticle_Color;            // 48
+    float  M2_SphereLocation_Radius;               // 64
+    uint   M2_SphereLocation_SurfaceOnly;          // 68
+    uint   M3_ParticleState_KillOnLifetime;        // 72
+    float  M4_SolveForceandVelocity_AccelLimit;    // 76
+    float  M4_SolveForceandVelocity_SpeedLimit;    // 80
+    float  M5_SubUVAnimation_StartFrame;           // 84
+    float  M5_SubUVAnimation_EndFrame;             // 88
+    uint   M5_SubUVAnimation_Loop;                 // 92
+    float  M5_SubUVAnimation_FramesPerSecond;      // 96
 };
 
 // =====================================================================
@@ -62,6 +66,7 @@ struct Particle
     float  NormalizedAge;
     float3 Velocity;
     float3 Acceleration;
+    float  SubImageIndex;
 };
 
 struct EmitterState
@@ -73,29 +78,38 @@ struct EmitterState
 // =====================================================================
 // 4. Load / Store
 // =====================================================================
-Particle LoadParticle(RWByteAddressBuffer b, uint i)
+Particle FromRender(RenderParticle r)
 {
     Particle p = (Particle)0;
-    p.Position             = LoadF3(b, OFS_Particles_Position, i);
-    p.Color                = LoadF4(b, OFS_Particles_Color, i);
-    p.Size                 = LoadF1(b, OFS_Particles_Size, i);
+    p.Position             = r.Position;
+    p.Color                = r.Color;
+    p.Size                 = r.Size;
+    p.NormalizedAge        = r.NormalizedAge;
+    p.Velocity             = r.Velocity;
+    p.SubImageIndex        = r.SubImageIndex;
+    return p;
+}
+
+Particle LoadParticle(RWByteAddressBuffer b, RenderParticle r, uint i)
+{
+    Particle p = FromRender(r);
     p.Lifetime             = LoadF1(b, OFS_Particles_Lifetime, i);
     p.Age                  = LoadF1(b, OFS_Particles_Age, i);
-    p.NormalizedAge        = LoadF1(b, OFS_Particles_NormalizedAge, i);
-    p.Velocity             = LoadF3(b, OFS_Particles_Velocity, i);
     p.Acceleration         = LoadF3(b, OFS_Particles_Acceleration, i);
     return p;
 }
 
-void StoreParticle(RWByteAddressBuffer b, uint i, Particle p)
+void StoreParticle(RWByteAddressBuffer b, uint i, Particle p, RenderParticle r)
 {
-    StoreF3(b, OFS_Particles_Position,               i, p.Position);
-    StoreF4(b, OFS_Particles_Color,                  i, p.Color);
-    StoreF1(b, OFS_Particles_Size,                   i, p.Size);
+    r.Position             = p.Position;
+    r.Color                = p.Color;
+    r.Size                 = p.Size;
+    r.NormalizedAge        = p.NormalizedAge;
+    r.Velocity             = p.Velocity;
+    r.SubImageIndex        = p.SubImageIndex;
+    RenderOut[i] = r;
     StoreF1(b, OFS_Particles_Lifetime,               i, p.Lifetime);
     StoreF1(b, OFS_Particles_Age,                    i, p.Age);
-    StoreF1(b, OFS_Particles_NormalizedAge,          i, p.NormalizedAge);
-    StoreF3(b, OFS_Particles_Velocity,               i, p.Velocity);
     StoreF3(b, OFS_Particles_Acceleration,           i, p.Acceleration);
 }
 
@@ -126,7 +140,7 @@ void EmitterUpdate(inout EmitterState e)
         const uint	n = (uint)want;
         e.SpawnRemainder = want - (float)n;
         e.SpawnCount += n;
-#line 130 "Main.generated.hlsl"
+#line 144 "Main.generated.hlsl"
 #undef PARAM
     }
 }
@@ -135,9 +149,7 @@ void ParticleSpawn(inout Particle p, uint index)
 {
     // ---- [M1] Initialize Particle----
     {
-#define M1_InitializeParticle_Size (M1_InitializeParticle_Size_Min + (M1_InitializeParticle_Size_Max - M1_InitializeParticle_Size_Min) * Random01(index, 65792))
-#define M1_InitializeParticle_Lifetime (M1_InitializeParticle_Lifetime_Min + (M1_InitializeParticle_Lifetime_Max - M1_InitializeParticle_Lifetime_Min) * Random01(index, 65800))
-#define M1_InitializeParticle_Color (M1_InitializeParticle_Color_Min + (M1_InitializeParticle_Color_Max - M1_InitializeParticle_Color_Min) * float4(Random01(index, 65808), Random01(index, 65809), Random01(index, 65810), Random01(index, 65811)))
+#define M1_InitializeParticle_Pos (M1_InitializeParticle_Pos_Min + (M1_InitializeParticle_Pos_Max - M1_InitializeParticle_Pos_Min) * float3(Random01(index, 65804), Random01(index, 65805), Random01(index, 65806)))
 #define PARAM(n) M1_InitializeParticle_##n
 #line 1 "M1_InitializeParticle"
         p.Position = OwnerPosition + PARAM(Pos);
@@ -146,15 +158,12 @@ void ParticleSpawn(inout Particle p, uint index)
         p.Size = PARAM(Size);
         p.Lifetime = PARAM(Lifetime);
         p.Age = 0.f;
-#line 150 "Main.generated.hlsl"
+#line 162 "Main.generated.hlsl"
 #undef PARAM
-#undef M1_InitializeParticle_Size
-#undef M1_InitializeParticle_Lifetime
-#undef M1_InitializeParticle_Color
+#undef M1_InitializeParticle_Pos
     }
     // ---- [M2] Sphere Location----
     {
-#define M2_SphereLocation_Radius (M2_SphereLocation_Radius_Min + (M2_SphereLocation_Radius_Max - M2_SphereLocation_Radius_Min) * Random01(index, 66048))
 #define PARAM(n) M2_SphereLocation_##n
 #line 1 "M2_SphereLocation"
         const float kTwoPi = 6.28318530f;
@@ -164,9 +173,8 @@ void ParticleSpawn(inout Particle p, uint index)
         const float dist = (PARAM(SurfaceOnly) != 0) ? PARAM(Radius) : 
         		PARAM(Radius) * pow(Random01(index, 2), 1.f / 3.f);
         p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
-#line 168 "Main.generated.hlsl"
+#line 177 "Main.generated.hlsl"
 #undef PARAM
-#undef M2_SphereLocation_Radius
     }
     // ---- [Initialcopy] none ----
 }
@@ -183,7 +191,7 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
         p.NormalizedAge = min(t, 1.f);
         if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
         	KILL();
-#line 187 "Main.generated.hlsl"
+#line 195 "Main.generated.hlsl"
 #undef PARAM
     }
     // ---- [M4] Solve Force and Velocity----
@@ -203,7 +211,21 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
 
         p.Position += p.Velocity * DeltaTime;
         p.Acceleration = float3(0.f, 0.f, 0.f);
-#line 207 "Main.generated.hlsl"
+#line 215 "Main.generated.hlsl"
+#undef PARAM
+    }
+    // ---- [M5] SubUV Animation----
+    {
+#define PARAM(n) M5_SubUVAnimation_##n
+#line 1 "M5_SubUVAnimation"
+        const float count = max(PARAM(EndFrame) - PARAM(StartFrame) + 1.f, 1.f);
+        float t;
+        if (PARAM(Loop) != 0)
+        	t = frac(p.Age * PARAM(FramesPerSecond) / count) * count;
+        else
+        	t = min(p.NormalizedAge * count, count - 1.f);
+        p.SubImageIndex = PARAM(StartFrame) + t;
+#line 229 "Main.generated.hlsl"
 #undef PARAM
     }
 }
@@ -231,7 +253,8 @@ void ParticleUpdateMain(uint3 dtid : SV_DispatchThreadID)
     if (i >= Counters.Load(COUNTER_ALIVE_IN))
         return;
 
-    Particle p = LoadParticle(ParticlesIn, i);
+    const RenderParticle r = RenderIn[i];
+    Particle p = LoadParticle(ParticlesIn, r, i);
     bool alive = true;
     ParticleUpdate(p, i, alive);
     if (!alive)
@@ -239,7 +262,7 @@ void ParticleUpdateMain(uint3 dtid : SV_DispatchThreadID)
 
     uint dst;
     Counters.InterlockedAdd(COUNTER_WRITE_CURSOR, 1, dst);
-    StoreParticle(ParticlesOut, dst, p);
+    StoreParticle(ParticlesOut, dst, p, r);
 }
 
 [numthreads(GROUP_SIZE, 1, 1)]
@@ -253,7 +276,8 @@ void ParticleSpawnMain(uint3 dtid : SV_DispatchThreadID)
     if (dst >= Capacity)
         return;   // overflow is clamped by Finalize
 
-    Particle p = (Particle)0;   // new particles start from 0 (CPU ZeroRange)
+    // render attributes start from the CPU-side defaults, the rest from 0 (CPU ZeroRange)
+    Particle p = FromRender(DefaultRender);
     ParticleSpawn(p, dst);      // random index = slot index (same as CPU)
-    StoreParticle(ParticlesOut, dst, p);
+    StoreParticle(ParticlesOut, dst, p, DefaultRender);
 }

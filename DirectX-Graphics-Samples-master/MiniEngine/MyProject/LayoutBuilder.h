@@ -50,4 +50,7 @@ struct CopyOp
     uint32_t    srcOffset;
     uint32_t    dstOffset;
     uint32_t    size;       // 원소 하나 크기 (바이트)
+    // 원본이 고정 렌더 구조체(RenderParticle) 안에 있음: srcOffset = 구조체 안의 바이트 위치.
+    // 복사 대상(Previous / Initial) 은 항상 SoA 열이다
+    bool        srcRender = false;
 };

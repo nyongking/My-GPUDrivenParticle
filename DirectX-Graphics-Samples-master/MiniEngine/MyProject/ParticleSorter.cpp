@@ -3,16 +3,17 @@
 
 #include <algorithm>
 
-void SortBackToFront(const float3* positions, uint32_t count, const float3& cameraPosition, const float3& cameraForward, std::vector<uint32_t>& outIndices, SortScratch& scratch)
+void SortBackToFront(const float3* positions, uint32_t count, const float3& cameraPosition, const float3& cameraForward, std::vector<uint32_t>& outIndices, SortScratch& scratch, uint32_t stride)
 {
 	scratch.items.resize(count);
 
 	// 거리 계산
 	for (uint32_t i = 0; i < count; ++i)
 	{
-		const float dx = positions[i].x - cameraPosition.x;
-		const float dy = positions[i].y - cameraPosition.y;
-		const float dz = positions[i].z - cameraPosition.z;
+		const float3& pos = *reinterpret_cast<const float3*>(reinterpret_cast<const uint8_t*>(positions) + size_t(i) * stride);
+		const float dx = pos.x - cameraPosition.x;
+		const float dy = pos.y - cameraPosition.y;
+		const float dz = pos.z - cameraPosition.z;
 
 		scratch.items[i].key = dx * cameraForward.x + dy * cameraForward.y + dz * cameraForward.z;
 		scratch.items[i].index = i;

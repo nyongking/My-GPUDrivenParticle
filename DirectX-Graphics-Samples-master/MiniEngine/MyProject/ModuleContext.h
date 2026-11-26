@@ -50,16 +50,18 @@ private:
 	bool					m_PerComponent = false;
 	uint32_t				m_Salt = 0;
 
-	// Curve: 전역 커브 버퍼의 칸 + 가로축 속성 열 (SoA 라 stride = float 크기)
+	// Curve: 전역 커브 버퍼의 칸 + 가로축 속성 (SoA 열이면 stride = float 크기, 렌더 구조체 필드면 구조체 크기)
 	uint32_t				m_CurveSlot = CurveLibrary::kIdentitySlot;
 	const uint8_t*			m_CurveIndex = nullptr;
+	uint32_t				m_CurveIndexStride = sizeof(float);
 };
 
 class ModuleContext
 {
 public:
 	ModuleContext(const CompiledEmitter& compiled,
-		uint8_t* particleData,   // 파티클 버퍼 시작 (Stride x 최대 개수)
+		uint8_t* particleData,   // 가변 속성 버퍼 시작 (SoA, Stride x 최대 개수)
+		uint8_t* renderData,     // 고정 렌더 구조체 배열 시작 (RenderParticleData x 최대 개수)
 		uint8_t* emitterData,    // Emitter 저장소 시작
 		const EngineValues& engine,
 		uint32_t			   capacity,
@@ -70,7 +72,7 @@ public:
 	uint32_t Begin() const { return m_Begin; } // 시작 지점
 	uint32_t End() const { return m_End; }
 
-	bool HasParticle(const std::string& name) const { return m_Compiled.particles.Find(name) != nullptr; }
+	bool HasParticle(const std::string& name) const { return m_Compiled.render.Find(name) != nullptr || m_Compiled.particles.Find(name) != nullptr; }
 
 
 	template<typename T> StridedView<T> Particles(const std::string& name);
@@ -96,6 +98,7 @@ private:
 
 	const CompiledEmitter& m_Compiled;
 	uint8_t*				m_ParticleData;
+	uint8_t*				m_RenderData;
 	uint8_t*				m_EmitterData;
 	const EngineValues&		m_Engine;
 	uint32_t				m_Capacity;
@@ -115,7 +118,7 @@ inline T ParamReader<T>::operator()(uint32_t particleIndex) const
 	if (m_Kind == ParamKind::Curve)
 	{
 		// HLSL 의 SampleCurve(칸, p.<가로축 속성>) 과 같은 식. 타입의 성분 수만큼만 쓴다
-		const float t = m_CurveIndex ? *reinterpret_cast<const float*>(m_CurveIndex + size_t(particleIndex) * sizeof(float)) : 0.f;
+		const float t = m_CurveIndex ? *reinterpret_cast<const float*>(m_CurveIndex + size_t(particleIndex) * m_CurveIndexStride) : 0.f;
 		const float4 v = CurveLibrary::Sample(m_CurveSlot, t);
 		T curved{};
 		std::memcpy(static_cast<void*>(&curved), &v, (std::min)(sizeof(T), sizeof(float4)));
@@ -162,7 +165,12 @@ inline ParamReader<T> ModuleContext::Param(const std::string& name) const
 		assert(sizeof(T) <= sizeof(float4) && "Param: Curve 는 float 계열만");
 		std::memcpy(&ret.m_CurveSlot, data + FindChecked(m_Compiled.moduleParams, prefix + slots[0], TypeOf<uint32_t>())->offset, sizeof(uint32_t));
 		// 가로축 속성은 EmitterCompiler 가 이 모듈의 읽기로 넣어 두므로 레이아웃에 있다
-		if (const Slot* index = m_Compiled.particles.Find(info->curveIndex))
+		if (const Slot* fixed = m_Compiled.render.Find(info->curveIndex))
+		{
+			ret.m_CurveIndex = m_RenderData + fixed->offset;
+			ret.m_CurveIndexStride = m_Compiled.render.Stride();
+		}
+		else if (const Slot* index = m_Compiled.particles.Find(info->curveIndex))
 			ret.m_CurveIndex = m_ParticleData + size_t(index->offset) * m_Capacity;
 		return ret;
 	}
@@ -177,9 +185,19 @@ inline ParamReader<T> ModuleContext::Param(const std::string& name) const
 template<typename T>
 inline StridedView<T> ModuleContext::Particles(const std::string& name)
 {
-	const Slot* slot = FindChecked(m_Compiled.particles, name, TypeOf<T>());
-
 	StridedView<T> ret;
+
+	// 고정 렌더 구조체의 필드: 구조체 배열(AoS) 안의 한 필드를 stride = 구조체 크기로 훑는다
+	if (m_Compiled.render.Find(name) != nullptr)
+	{
+		const Slot* fixed = FindChecked(m_Compiled.render, name, TypeOf<T>());
+		ret.base = m_RenderData + fixed->offset;
+		ret.stride = m_Compiled.render.Stride();
+		return ret;
+	}
+
+	// 그 외: SoA 열
+	const Slot* slot = FindChecked(m_Compiled.particles, name, TypeOf<T>());
 	ret.base = m_ParticleData + size_t(slot->offset) * m_Capacity;
 	ret.stride = slot->type->size;
 	return ret;

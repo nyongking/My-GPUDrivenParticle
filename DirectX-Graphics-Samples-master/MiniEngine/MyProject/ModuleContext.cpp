@@ -15,6 +15,7 @@ namespace
 
 ModuleContext::ModuleContext(const CompiledEmitter& compiled,
     uint8_t* particleData,
+    uint8_t* renderData,
     uint8_t* emitterData,
     const EngineValues& engine,
     uint32_t               capacity,
@@ -23,6 +24,7 @@ ModuleContext::ModuleContext(const CompiledEmitter& compiled,
     uint8_t*                aliveFlags)
     : m_Compiled(compiled)
     , m_ParticleData(particleData)
+    , m_RenderData(renderData)
     , m_EmitterData(emitterData)
     , m_Engine(engine)
     , m_Capacity(capacity)

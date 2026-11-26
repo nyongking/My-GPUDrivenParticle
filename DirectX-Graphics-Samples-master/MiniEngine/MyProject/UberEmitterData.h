@@ -55,22 +55,15 @@ struct EmitterLayoutCB
 	uint32_t updateInstCount = 0;
 	uint32_t ofsEmitterSpawnCount = Uber::kNoAttribute;
 	uint32_t ofsEmitterSpawnRemainder = Uber::kNoAttribute;
-	uint32_t ofsPosition = Uber::kNoAttribute;
-	uint32_t ofsColor = Uber::kNoAttribute;
-	uint32_t ofsSize = Uber::kNoAttribute;
+	// 가변 속성 (SoA 열) 만. 렌더 구조체(RenderParticle) 의 속성은 항상 있어서 위치가 필요 없다
 	uint32_t ofsLifetime = Uber::kNoAttribute;
 	uint32_t ofsAge = Uber::kNoAttribute;
 	uint32_t ofsMass = Uber::kNoAttribute;
-	uint32_t ofsNormalizedAge = Uber::kNoAttribute;
-	uint32_t ofsVelocity = Uber::kNoAttribute;
 	uint32_t ofsAcceleration = Uber::kNoAttribute;
-	uint32_t ofsSubImageIndex = Uber::kNoAttribute;
-	uint32_t ofsSpriteSize = Uber::kNoAttribute;
-	uint32_t ofsSpriteRotation = Uber::kNoAttribute;
 	uint32_t ofsInitialColor = Uber::kNoAttribute;         // Particles.Initial.Color (Spawn 끝에 Color 를 복사)
 	uint32_t reserved[3] = {};                              // cbuffer 크기는 16 의 배수 (HLSL _LayoutReserved)
 };
-static_assert(sizeof(EmitterLayoutCB) == 96, "EmitterLayoutCB 는 HLSL EmitterLayout(96 바이트) 과 같아야 한다");
+static_assert(sizeof(EmitterLayoutCB) == 64, "EmitterLayoutCB 는 HLSL EmitterLayout(64 바이트) 과 같아야 한다");
 
 struct UberEmitterData
 {

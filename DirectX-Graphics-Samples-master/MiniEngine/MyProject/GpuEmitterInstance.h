@@ -5,6 +5,7 @@
 #include "GpuBuffer.h"
 #include "ReadbackBuffer.h"
 #include "OwnerTransform.h"
+#include "RenderParticle.h"
 #include "UberEmitterData.h"
 
 #include <cstdint>
@@ -69,12 +70,16 @@ public:
 	void Rebind(const CompiledEmitter& compiled, const EmitterGpuProgram* program);
 	void SetUberData(const UberEmitterData& data);
 	bool UberReady() const { return m_UberOk; }
+	// 아무 모듈도 쓰지 않는 렌더 필드에 들어갈 값 (b0 의 DefaultRender). 다음에 태어나는 파티클부터 적용
+	void SetRenderDefaults(const RenderParticleData& defaults) { m_RenderDefaults = defaults; }
 
 	bool		Ready() const { return m_Ready; }
 	uint32_t	Capacity() const { return m_Capacity; }
 	const CompiledEmitter& Compiled() const { return m_Compiled; }
 
-	ByteAddressBuffer& ParticleBuffer() { return m_Particles[m_Current]; }
+	// 이번 프레임의 결과 (Tick 이 끝나면 Out 이었던 쪽)
+	ByteAddressBuffer& ParticleBuffer() { return m_Particles[m_Current]; }   // 가변 속성 (SoA)
+	StructuredBuffer& RenderBuffer() { return m_Render[m_Current]; }        // 고정 렌더 구조체 (VS 가 읽는다)
 	IndirectArgsBuffer& DrawArgs() { return m_FrameArgs; }
 
 	// readback으로 받은 값
@@ -103,6 +108,8 @@ private:
 	ByteAddressBuffer        m_Particles[2];      // Particle 버퍼, In/Out 형태의 버퍼 구성
 	ByteAddressBuffer        m_Counters;       // ALIVE_IN, WRITE_CURSOR, SPAWN_REQUEST, (pad)의 정보 저장
 	ByteAddressBuffer        m_EmitterData;    // Emitter.* 의 데이터 저장
+	StructuredBuffer         m_Render[2];         // RenderParticle x capacity. m_Particles 와 같이 In/Out 을 바꿔 쓴다
+	RenderParticleData       m_RenderDefaults = RenderParticle::Defaults();
 	IndirectArgsBuffer       m_SpawnArgs;      // DispatchIndirect (x, y, z)
 	IndirectArgsBuffer       m_FrameArgs;      // [0 - 15] : DrawIndirect 인자 (6, AliveCount, 0, 0) / [16 - 27] : DispatchIndirect 인자 (다음 프레임의 ParticleUpdate 그룹 수, 1, 1)
 
@@ -115,7 +122,7 @@ private:
 	bool                     m_UberOk = false;
 
 	// ----- 단계별 PSO 설정값 -----
-	alignas(16) uint8_t		 m_TickEngineCB[112] = {};
+	alignas(16) uint8_t		 m_TickEngineCB[176] = {};
 	bool					 m_TickActive = false;
 	bool					 m_TickUber = false;
 	// -----------------------------

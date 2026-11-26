@@ -21,50 +21,35 @@ using namespace Graphics;
 namespace
 {
 	// ParticleGatherCS.hlsl 의 cbuffer GatherConstants 와 같은 배치
+	//   파티클 값은 고정 렌더 구조체에서 읽으므로 속성 offset / 기본값이 없다 (Facing / Alignment 벡터만 예외)
 	struct alignas(16) GatherConstants
 	{
-		uint32_t positionOffset;   // 0
-		uint32_t colorOffset;      // 4
-		uint32_t sizeOffset;       // 8
-		uint32_t subImageOffset;   // 12
-		uint32_t capacity;         // 16
-		uint32_t countOffset;      // 20
-		uint32_t constCount;       // 24
-		uint32_t useCountBuffer;   // 28
-		uint32_t emitterIndex;     // 32
-		uint32_t listCapacity;     // 36
-		uint32_t spriteSizeOffset;      // 40
-		uint32_t spriteRotationOffset;  // 44
-		float4   defaultColor;     // 48
-		float3   defaultPosition;  // 64
-		float    defaultSize;      // 76
-		float    camPos[3];        // 80
-		float    defaultSubImage;  // 92
-		float    camForward[3];    // 96
-		float    defaultSpriteRotation; // 108
-		float    camRight[3];      // 112
-		uint32_t velocityOffset;   // 124
-		float    camUp[3];         // 128
-		uint32_t spriteFacingOffset;    // 140
-		float3   defaultVelocity;       // 144
-		uint32_t spriteAlignmentOffset; // 156
-		float3   defaultSpriteFacing;   // 160
-		uint32_t facingMode;            // 172
-		float3   defaultSpriteAlignment;// 176
-		uint32_t alignmentMode;         // 188
-		float2   pivot;            // 192
-		float    cameraOffset;     // 200
-		float    velocityStretch;  // 204
-		float    blendNear;        // 208
-		float    blendFar;         // 212
-		uint32_t cullEnable;       // 216
-		uint32_t particleParam0Offset; // 220
-		float4   frustumPlanes[6]; // 224  월드 공간, 안쪽이 +
-		uint32_t particleParam1Offset;
-		float2   defaultParticleParams;
-		float    _pad1;
+		uint32_t capacity;         // 0
+		uint32_t countOffset;      // 4
+		uint32_t constCount;       // 8
+		uint32_t useCountBuffer;   // 12
+		uint32_t emitterIndex;     // 16
+		uint32_t listCapacity;     // 20
+		uint32_t spriteFacingOffset;    // 24
+		uint32_t spriteAlignmentOffset; // 28
+		float    camPos[3];        // 32
+		uint32_t facingMode;       // 44
+		float    camForward[3];    // 48
+		uint32_t alignmentMode;    // 60
+		float    camRight[3];      // 64
+		float    cameraOffset;     // 76
+		float    camUp[3];         // 80
+		float    velocityStretch;  // 92
+		float3   defaultSpriteFacing;    // 96
+		float    blendNear;        // 108
+		float3   defaultSpriteAlignment; // 112
+		float    blendFar;         // 124
+		float2   pivot;            // 128
+		uint32_t cullEnable;       // 136
+		uint32_t _pad0;            // 140
+		float4   frustumPlanes[6]; // 144  월드 공간, 안쪽이 +
 	};
-	static_assert(sizeof(GatherConstants) == 336, "GatherConstants 336 B");
+	static_assert(sizeof(GatherConstants) == 240, "GatherConstants 240 B");
 	
 	// ParticleListVS.hlsl 의 cbuffer ListDrawConstants 와 같은 배치 (빌보드 축은 Gather 가 계산)
 	struct alignas(16) DrawConstants
@@ -91,10 +76,11 @@ namespace
 		if (s_PipelineReady)
 			return;
 
-		// b0 = GatherConstants, t0 = 이미터 파티클, t1 = 개수 버퍼, u0 = RenderParticles, u1 = SortList, u2 = Counter
+		// b0 = GatherConstants, t0 = 이미터의 렌더 구조체, t1 = 가변 속성(SoA), t2 = 개수 버퍼
+		// u0 = RenderParticles, u1 = SortList, u2 = Counter
 		s_GatherRootSig.Reset(kNumGatherRoot, 0);
 		s_GatherRootSig[kGatherCB].InitAsConstantBuffer(0);
-		s_GatherRootSig[kGatherSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 2);
+		s_GatherRootSig[kGatherSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 3);
 		s_GatherRootSig[kGatherUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 3);
 		s_GatherRootSig.Finalize(L"Particle Gather RootSig");
 
@@ -227,7 +213,7 @@ uint32_t ParticleRenderList::TextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv)
 
 void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 {
-	if (!m_Active || src.particles == nullptr || src.capacity == 0 || src.texture.ptr == 0)
+	if (!m_Active || src.render == nullptr || src.particles == nullptr || src.capacity == 0 || src.texture.ptr == 0)
 		return;
 	if (src.countBuffer == nullptr && src.constCount == 0)
 		return;
@@ -261,29 +247,16 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 
 	m_Emitters.push_back(info);
 
-	// 각 이미터의 파티클이 어떠한 데이터를 갖느냐에 대한 내용
+	// 이미터마다 다른 것은 개수 / 빌보드 설정뿐이다 (파티클 값의 배치는 모든 이미터가 같다)
 	GatherConstants gc = {};
-	gc.positionOffset = src.positionOffset;
-	gc.colorOffset = src.colorOffset;
-	gc.sizeOffset = src.sizeOffset;
-	gc.subImageOffset = src.subImageOffset;
 	gc.capacity = src.capacity;
 	gc.countOffset = src.countOffset;
 	gc.constCount = src.constCount;
 	gc.useCountBuffer = src.countBuffer ? 1u : 0u;
 	gc.emitterIndex = emitterIndex;
 	gc.listCapacity = m_Capacity;
-	gc.defaultColor = src.defaultColor;
-	gc.defaultPosition = src.defaultPosition;
-	gc.defaultSize = src.defaultSize;
-	gc.defaultSubImage = src.defaultSubImage;
-	gc.spriteSizeOffset = src.spriteSizeOffset;
-	gc.spriteRotationOffset = src.spriteRotationOffset;
-	gc.defaultSpriteRotation = src.defaultSpriteRotation;
-	gc.velocityOffset = src.velocityOffset;
 	gc.spriteFacingOffset = src.spriteFacingOffset;
 	gc.spriteAlignmentOffset = src.spriteAlignmentOffset;
-	gc.defaultVelocity = src.defaultVelocity;
 	gc.defaultSpriteFacing = src.defaultSpriteFacing;
 	gc.defaultSpriteAlignment = src.defaultSpriteAlignment;
 	gc.facingMode = src.facingMode;
@@ -294,9 +267,6 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	gc.blendNear = src.blendNear;
 	gc.blendFar = src.blendFar;
 	gc.cullEnable = m_Culling ? 1u : 0u;
-	gc.particleParam0Offset = src.particleParam0Offset;
-	gc.particleParam1Offset = src.particleParam1Offset;
-	gc.defaultParticleParams = src.defaultParticleParams;
 	for (int k = 0; k < 6; ++k)
 		gc.frustumPlanes[k] = { m_FrustumPlanes[k].x, m_FrustumPlanes[k].y, m_FrustumPlanes[k].z, m_FrustumPlanes[k].w };
 	const float camRight[3] = { m_CamRight.x, m_CamRight.y, m_CamRight.z };
@@ -310,6 +280,7 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	}
 
 	ComputeContext& cc = gfx.GetComputeContext();
+	cc.TransitionResource(*src.render, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	cc.TransitionResource(*src.particles, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	if (src.countBuffer)
 		cc.TransitionResource(*src.countBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -318,11 +289,11 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	cc.SetPipelineState(s_GatherPSO);
 	cc.SetDynamicConstantBufferView(kGatherCB, sizeof(gc), &gc);
 
-	// t1 은 개수 버퍼가 없을 때(CPU) 읽지 않지만 자리를 채워야 한다
+	// t2 는 개수 버퍼가 없을 때(CPU) 읽지 않지만 자리를 채워야 한다
 	ByteAddressBuffer& countSrv = src.countBuffer ? *src.countBuffer : *src.particles;
-	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[2] = { src.particles->GetSRV(), countSrv.GetSRV() };
+	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[3] = { src.render->GetSRV(), src.particles->GetSRV(), countSrv.GetSRV() };
 	const D3D12_CPU_DESCRIPTOR_HANDLE uavs[3] = { m_RenderParticles.GetUAV(), m_SortList.GetUAV(), m_Counter.GetUAV() };
-	cc.SetDynamicDescriptors(kGatherSRVs, 0, 2, srvs);
+	cc.SetDynamicDescriptors(kGatherSRVs, 0, 3, srvs);
 	cc.SetDynamicDescriptors(kGatherUAVs, 0, 3, uavs);
 
 	// 개수를 모르는 GPU 이미터도 있어서 capacity 기준으로 띄운다 (넘는 스레드 / 컬링된 파티클은 append 하지 않음)

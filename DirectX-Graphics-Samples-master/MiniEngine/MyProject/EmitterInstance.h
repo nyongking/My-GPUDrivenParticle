@@ -3,6 +3,7 @@
 #include "ModuleContext.h"
 #include "CompiledEmitter.h"
 #include "OwnerTransform.h"
+#include "RenderParticle.h"
 
 #include <vector>
 
@@ -25,9 +26,14 @@ public:
 	uint32_t				Count() const { return m_Count; }
 	uint32_t				Capacity() const { return m_Capacity; }
 	const CompiledEmitter&	Compiled() const { return m_CompiledEmitter; }
-	const uint8_t*			ParticleData() const { return m_ParticleData.data(); }
+	const uint8_t*			ParticleData() const { return m_ParticleData.data(); }   // 가변 속성 (SoA)
 
 	size_t	 ParticleDataBytes() const { return m_ParticleData.size(); }
+
+	// 고정 렌더 구조체 배열 (RenderParticleData x capacity). 렌더러가 그대로 올린다
+	const RenderParticleData* RenderData() const { return m_RenderData.data(); }
+	// 아무 모듈도 쓰지 않는 필드에 들어갈 값. 다음에 태어나는 파티클부터 적용
+	void SetRenderDefaults(const RenderParticleData& defaults) { m_RenderDefaults = defaults; }
 
 	uint32_t NewBegin() const { return m_NewBegin; }
 	uint32_t NewEnd() const { return m_NewEnd; }
@@ -53,7 +59,9 @@ private:
 	std::vector<ModuleDesc>		m_ParticleSpawns;
 	std::vector<ModuleDesc>		m_ParticleUpdates;
 
-	std::vector<uint8_t>    m_ParticleData;
+	std::vector<uint8_t>    m_ParticleData;		// 가변 속성 (SoA)
+	std::vector<RenderParticleData> m_RenderData;	// 고정 렌더 구조체 (AoS)
+	RenderParticleData		m_RenderDefaults = RenderParticle::Defaults();
 	std::vector<uint8_t>    m_EmitterData;
 	std::vector<uint8_t>	m_AliveFlags;
 	EngineValues			m_EngineValues;

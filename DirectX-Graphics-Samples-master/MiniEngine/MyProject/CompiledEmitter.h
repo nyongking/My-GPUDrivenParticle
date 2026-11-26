@@ -39,7 +39,11 @@ struct DeclaredAttribute
 // Compile 된 Emitter 자료
 struct CompiledEmitter
 {
-    Block particles;       // 파티클 버퍼 레이아웃 (= "파티클 구조체")
+    // 파티클 값은 두 곳에 나뉘어 있다
+    //   render    : 렌더링에 꼭 필요한 고정 구조체 (RenderParticle.h, 64 B). 항상 같은 배치, Trim 없음
+    //   particles : 나머지 속성. 이미터마다 다른 가변 레이아웃 (SoA 열, 열 시작 = offset * capacity)
+    Block render;          // 고정 렌더 구조체의 배치표 (Slot::offset = 구조체 안의 바이트 위치)
+    Block particles;       // 가변 속성 레이아웃 (render 에 있는 속성은 여기 없다)
     Block emitterParams;   // Emitter 당 1개씩
     Block systemParams;    // System 당 1개씩
 

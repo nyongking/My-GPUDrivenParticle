@@ -41,21 +41,15 @@ cbuffer EmitterLayout : register(b2)
     uint UpdateInstCount; // 20
     uint Ofs_Emitter_SpawnCount; // 24  Emitter 블록
     uint Ofs_Emitter_SpawnRemainder; // 28
-    uint Ofs_Position; // 32  Particles 블록 (SoA 열 시작 = offset * Capacity)
-    uint Ofs_Color; // 36
-    uint Ofs_Size; // 40
-    uint Ofs_Lifetime; // 44
-    uint Ofs_Age; // 48
-    uint Ofs_Mass; // 52
-    uint Ofs_NormalizedAge; // 56
-    uint Ofs_Velocity; // 60
-    uint Ofs_Acceleration; // 64
-    uint Ofs_SubImageIndex; // 68
-    uint Ofs_SpriteSize; // 72
-    uint Ofs_SpriteRotation; // 76
-    uint Ofs_Initial_Color; // 80  Particles.Initial.Color (Spawn 끝에 Color 를 복사, Scale Color 가 읽음)
-    uint3 _LayoutReserved; // 84  -> 전체 96 바이트 (C++ reserved[3])
-    // 속성이 늘면 여기에 추가 (C++ EmitterLayoutCB 도 같이)
+    // 가변 속성만 (SoA 열 시작 = offset * Capacity). 렌더 구조체(RenderParticle) 에 있는 속성은
+    // 항상 있으므로 위치가 필요 없다: Position / Color / Size / NormalizedAge / Velocity / SubImageIndex / SpriteSize / SpriteRotation
+    uint Ofs_Lifetime; // 32
+    uint Ofs_Age; // 36
+    uint Ofs_Mass; // 40
+    uint Ofs_Acceleration; // 44
+    uint Ofs_Initial_Color; // 48  Particles.Initial.Color (Spawn 끝의 Color 를 복사, Scale Color 가 읽음)
+    uint3 _LayoutReserved; // 52  -> 전체 64 바이트 (C++ reserved[3])
+    // 가변 속성을 늘리면 여기에 추가 (C++ EmitterLayoutCB 와 같이)
 };
 
 bool HasAttr(uint ofs)
@@ -229,33 +223,32 @@ struct EmitterState
 // =====================================================================
 // 5. 읽기 / 쓰기: 이 이미터에 있는 열만 건드린다 (trim 된 속성은 NO_ATTRIBUTE)
 // =====================================================================
-Particle LoadParticle(RWByteAddressBuffer b, uint i)
+// 렌더 구조체의 속성은 항상 있다 (검사 없음). 가변 속성은 0 으로 둔다
+Particle FromRender(RenderParticle r)
 {
     Particle p = (Particle) 0;
-    if (HasAttr(Ofs_Position))
-        p.Position = LoadF3(b, Ofs_Position, i);
-    if (HasAttr(Ofs_Color))
-        p.Color = LoadF4(b, Ofs_Color, i);
-    if (HasAttr(Ofs_Size))
-        p.Size = LoadF1(b, Ofs_Size, i);
+    p.Position = r.Position;
+    p.Color = r.Color;
+    p.Size = r.Size;
+    p.NormalizedAge = r.NormalizedAge;
+    p.Velocity = r.Velocity;
+    p.SubImageIndex = r.SubImageIndex;
+    p.SpriteSize = r.SpriteSize;
+    p.SpriteRotation = r.SpriteRotation;
+    return p;
+}
+
+Particle LoadParticle(RWByteAddressBuffer b, RenderParticle r, uint i)
+{
+    Particle p = FromRender(r);
     if (HasAttr(Ofs_Lifetime))
         p.Lifetime = LoadF1(b, Ofs_Lifetime, i);
     if (HasAttr(Ofs_Age))
         p.Age = LoadF1(b, Ofs_Age, i);
     if (HasAttr(Ofs_Mass))
         p.Mass = LoadF1(b, Ofs_Mass, i);
-    if (HasAttr(Ofs_NormalizedAge))
-        p.NormalizedAge = LoadF1(b, Ofs_NormalizedAge, i);
-    if (HasAttr(Ofs_Velocity))
-        p.Velocity = LoadF3(b, Ofs_Velocity, i);
     if (HasAttr(Ofs_Acceleration))
         p.Acceleration = LoadF3(b, Ofs_Acceleration, i);
-    if (HasAttr(Ofs_SubImageIndex))
-        p.SubImageIndex = LoadF1(b, Ofs_SubImageIndex, i);
-    if (HasAttr(Ofs_SpriteSize))
-        p.SpriteSize = LoadF2(b, Ofs_SpriteSize, i);
-    if (HasAttr(Ofs_SpriteRotation))
-        p.SpriteRotation = LoadF1(b, Ofs_SpriteRotation, i);
     if (HasAttr(Ofs_Initial_Color))
         p.Initial_Color = LoadF4(b, Ofs_Initial_Color, i);
     return p;
@@ -263,30 +256,26 @@ Particle LoadParticle(RWByteAddressBuffer b, uint i)
 
 void StoreParticle(RWByteAddressBuffer b, uint i, Particle p)
 {
-    if (HasAttr(Ofs_Position))
-        StoreF3(b, Ofs_Position, i, p.Position);
-    if (HasAttr(Ofs_Color))
-        StoreF4(b, Ofs_Color, i, p.Color);
-    if (HasAttr(Ofs_Size))
-        StoreF1(b, Ofs_Size, i, p.Size);
+    // 렌더 구조체: 공유 셰이더의 Particle 이 모든 필드를 갖고 있으므로 통째로 쓴다
+    RenderParticle r;
+    r.Position = p.Position;
+    r.SubImageIndex = p.SubImageIndex;
+    r.Color = p.Color;
+    r.SpriteSize = p.SpriteSize;
+    r.SpriteRotation = p.SpriteRotation;
+    r.NormalizedAge = p.NormalizedAge;
+    r.Velocity = p.Velocity;
+    r.Size = p.Size;
+    RenderOut[i] = r;
+
     if (HasAttr(Ofs_Lifetime))
         StoreF1(b, Ofs_Lifetime, i, p.Lifetime);
     if (HasAttr(Ofs_Age))
         StoreF1(b, Ofs_Age, i, p.Age);
     if (HasAttr(Ofs_Mass))
         StoreF1(b, Ofs_Mass, i, p.Mass);
-    if (HasAttr(Ofs_NormalizedAge))
-        StoreF1(b, Ofs_NormalizedAge, i, p.NormalizedAge);
-    if (HasAttr(Ofs_Velocity))
-        StoreF3(b, Ofs_Velocity, i, p.Velocity);
     if (HasAttr(Ofs_Acceleration))
         StoreF3(b, Ofs_Acceleration, i, p.Acceleration);
-    if (HasAttr(Ofs_SubImageIndex))
-        StoreF1(b, Ofs_SubImageIndex, i, p.SubImageIndex);
-    if (HasAttr(Ofs_SpriteSize))
-        StoreF2(b, Ofs_SpriteSize, i, p.SpriteSize);
-    if (HasAttr(Ofs_SpriteRotation))
-        StoreF1(b, Ofs_SpriteRotation, i, p.SpriteRotation);
     if (HasAttr(Ofs_Initial_Color))
         StoreF4(b, Ofs_Initial_Color, i, p.Initial_Color);
 }
@@ -576,7 +565,7 @@ void UberParticleUpdate(uint3 dtid)
     if (i >= Counters.Load(COUNTER_ALIVE_IN))
         return;
 
-    Particle p = LoadParticle(ParticlesIn, i);
+    Particle p = LoadParticle(ParticlesIn, RenderIn[i], i);
     bool alive = true;
     ParticleUpdate(p, i, alive);
     if (!alive)
@@ -597,7 +586,8 @@ void UberParticleSpawn(uint3 dtid)
     if (dst >= Capacity)
         return; // overflow is clamped by Finalize
 
-    Particle p = (Particle) 0; // new particles start from 0 (CPU ZeroRange)
+    // render attributes start from the CPU-side defaults, the rest from 0 (CPU ZeroRange)
+    Particle p = FromRender(DefaultRender);
     ParticleSpawn(p, dst); // random index = slot index (same as CPU)
     StoreParticle(ParticlesOut, dst, p);
 }

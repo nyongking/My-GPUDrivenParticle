@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "EmitterCompiler.h"
+#include "RenderParticle.h"
 #include <algorithm>
 #include <string>
 #include <unordered_map>
@@ -174,6 +175,7 @@ void FillModuleParamData(const std::vector<ModuleDesc>& modules, CompiledEmitter
 CompiledEmitter EmitterCompiler::Compile() const
 {
     CompiledEmitter out;
+    out.render = RenderParticle::Layout();   // 고정 렌더 구조체는 모듈과 관계없이 항상 있다
     CollectModuleParams(m_Modules, out);
     std::unordered_map<std::string, Entry> table;
     int nextOrder = 0;
@@ -331,6 +333,15 @@ CompiledEmitter EmitterCompiler::Compile() const
         e.written = true;           // 엔진이 채운다 -> "아무도 안 씀" 경고 대상 아님
     }
 
+    // 고정 렌더 구조체의 속성은 타입이 정해져 있다 (모듈 선언이 다르면 구조체 필드와 안 맞는다)
+    for (const auto& kv : table)
+    {
+        const Slot* fixed = out.render.Find(kv.first);
+        if (fixed && fixed->type != kv.second.type)
+            out.errors.push_back("'" + kv.first + "' 는 렌더 구조체의 고정 속성이라 타입이 " + fixed->type->name
+                + " 이어야 함 (" + kv.second.firstUser + " 는 " + kv.second.type->name + ")");
+    }
+
     if (!out.Ok()) return out;
 
     // ---------- [4] 처음 등장 순서대로, 저장 위치별로 자리 배정 ----------
@@ -344,10 +355,13 @@ CompiledEmitter EmitterCompiler::Compile() const
     {
         const std::string full = e->key.Full();
 
+        // 고정 렌더 구조체에 있는 속성: 자리가 이미 정해져 있다 (Trim 없음, SoA 레이아웃에 넣지 않는다)
+        const bool inRender = out.render.Find(full) != nullptr;
+
         // 생성기용: 선언된 속성 전부 기록 (Trim 여부와 상관없이)
         {
             const Storage st = e->key.GetStorage();
-            const bool trimmedHere = (st == Storage::ParticleBuffer) && m_Trim && !e->read;
+            const bool trimmedHere = (st == Storage::ParticleBuffer) && m_Trim && !e->read && !inRender;
             DeclaredAttribute d{ e->key, e->type, !trimmedHere };
             if (st == Storage::ParticleBuffer) out.declaredParticles.push_back(d);
             if (st == Storage::EmitterStore)   out.declaredEmitter.push_back(d);
@@ -355,6 +369,7 @@ CompiledEmitter EmitterCompiler::Compile() const
         switch (e->key.GetStorage())
         {
         case Storage::ParticleBuffer:
+            if (inRender) break;    // 아무도 안 쓰면 렌더 기본값 (RenderParticle::Defaults / 렌더러 설정) 이 들어간다
             if (m_Trim && !e->read) { out.trimmed.push_back(full); break; }   // Trim
             if (e->read && !e->written)
                 out.warnings.push_back("'" + full + "' 읽기만 하고 아무도 쓰지 않음 (기본값 0 사용)");
@@ -386,8 +401,13 @@ CompiledEmitter EmitterCompiler::Compile() const
     {
         if (s.key.mod == Modifier::None) continue;
 
+        // 원본은 SoA 열이거나 고정 렌더 구조체의 필드
         const Slot* base = out.particles.Find(s.key.Base().Full());
+        const bool  baseInRender = (base == nullptr);
+        if (baseInRender)
+            base = out.render.Find(s.key.Base().Full());
         CopyOp op;
+        op.srcRender = baseInRender;
         op.from = base->key.Full();
         op.to = s.key.Full();
         op.srcOffset = base->offset;

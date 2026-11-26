@@ -433,8 +433,12 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 	// --------	[1] 레이아웃 -------
 	w.Line(bar);
 	w.Line("// 1. Layout offsets (particle buffer: SoA column start = offset * Capacity)");
+	w.Line("//    Render attributes live in the fixed struct RenderParticle (RenderParticle.hlsli), not here");
 	w.Line(bar);
 
+	for (const DeclaredAttribute& d : compiled.declaredParticles)
+		if (compiled.render.Find(d.key.Full()))
+			w.Line("// " + d.key.Full() + " : RenderParticle." + ShaderNames::Field(d.key));
 	for (const Slot& s : compiled.particles.Slots())
 		w.Line("static const uint " + Pad(ShaderNames::OffsetConst(s.key), 36) + " = " + std::to_string(s.offset) + ";   // " + ShaderNames::HlslType(s.type));
 	for (const DeclaredAttribute& d : compiled.declaredParticles)
@@ -484,16 +488,35 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 	w.Line(bar);
 	w.Line("// 4. Load / Store");
 	w.Line(bar);
-	w.Line("Particle LoadParticle(RWByteAddressBuffer b, uint i)");
+	// 렌더 구조체(고정) 에 있는 속성 중 이 이미터의 모듈이 선언한 것. 필드 이름이 양쪽에서 같다
+	std::vector<std::string> renderFields;
+	for (const DeclaredAttribute& d : compiled.declaredParticles)
+		if (compiled.render.Find(d.key.Full()))
+			renderFields.push_back(ShaderNames::Field(d.key));
+
+	// 렌더 구조체 -> 모듈이 쓰는 Particle (가변 속성은 0)
+	w.Line("Particle FromRender(RenderParticle r)");
 	w.Line("{");
 	w.Line("    Particle p = (Particle)0;");
+	for (const std::string& f : renderFields)
+		w.Line("    p." + Pad(f, 20) + " = r." + f + ";");
+	w.Line("    return p;");
+	w.Line("}");
+	w.Line();
+	w.Line("Particle LoadParticle(RWByteAddressBuffer b, RenderParticle r, uint i)");
+	w.Line("{");
+	w.Line("    Particle p = FromRender(r);");
 	for (const Slot& s : compiled.particles.Slots())
 		w.Line("    p." + Pad(ShaderNames::Field(s.key), 20) + " = Load" + LoadSuffix(s.type) + "(b, " + ShaderNames::OffsetConst(s.key) + ", i);");
 	w.Line("    return p;");
 	w.Line("}");
 	w.Line();
-	w.Line("void StoreParticle(RWByteAddressBuffer b, uint i, Particle p)");
+	// r = 이 파티클의 렌더 구조체 (Update: 읽어 온 것 / Spawn: 기본값). 모듈이 선언하지 않은 필드는 r 의 값이 그대로 간다
+	w.Line("void StoreParticle(RWByteAddressBuffer b, uint i, Particle p, RenderParticle r)");
 	w.Line("{");
+	for (const std::string& f : renderFields)
+		w.Line("    r." + Pad(f, 20) + " = p." + f + ";");
+	w.Line("    RenderOut[i] = r;");
 	for (const Slot& s : compiled.particles.Slots())
 		w.Line(std::string("    Store") + LoadSuffix(s.type) + "(b, " + Pad(ShaderNames::OffsetConst(s.key) + ",", 38) + "i, p." + ShaderNames::Field(s.key) + ");");
 	w.Line("}");
@@ -588,7 +611,8 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 	w.Line("    if (i >= Counters.Load(COUNTER_ALIVE_IN))");
 	w.Line("        return;");
 	w.Line();
-	w.Line("    Particle p = LoadParticle(ParticlesIn, i);");
+	w.Line("    const RenderParticle r = RenderIn[i];");
+	w.Line("    Particle p = LoadParticle(ParticlesIn, r, i);");
 	w.Line("    bool alive = true;");
 	w.Line("    ParticleUpdate(p, i, alive);");
 	w.Line("    if (!alive)");
@@ -596,7 +620,7 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 	w.Line();
 	w.Line("    uint dst;");
 	w.Line("    Counters.InterlockedAdd(COUNTER_WRITE_CURSOR, 1, dst);");
-	w.Line("    StoreParticle(ParticlesOut, dst, p);");
+	w.Line("    StoreParticle(ParticlesOut, dst, p, r);");
 	w.Line("}");
 	w.Line();
 
@@ -612,9 +636,10 @@ GeneratedShader GenerateEmitterShader(const CompiledEmitter& compiled, const std
 	w.Line("    if (dst >= Capacity)");
 	w.Line("        return;   // overflow is clamped by Finalize");
 	w.Line();
-	w.Line("    Particle p = (Particle)0;   // new particles start from 0 (CPU ZeroRange)");
+	w.Line("    // render attributes start from the CPU-side defaults, the rest from 0 (CPU ZeroRange)");
+	w.Line("    Particle p = FromRender(DefaultRender);");
 	w.Line("    ParticleSpawn(p, dst);      // random index = slot index (same as CPU)");
-	w.Line("    StoreParticle(ParticlesOut, dst, p);");
+	w.Line("    StoreParticle(ParticlesOut, dst, p, DefaultRender);");
 	w.Line("}");
 
 	out.source = w.Text();

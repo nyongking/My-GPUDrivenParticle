@@ -33,7 +33,7 @@ namespace
 		s_RootSig.Reset(EmitterGpuProgram::kNumRootParams, 0);
 		s_RootSig[EmitterGpuProgram::kRootEngineCB].InitAsConstantBuffer(0);   // b0
 		s_RootSig[EmitterGpuProgram::kRootModuleCB].InitAsConstantBuffer(1);   // b1
-		s_RootSig[EmitterGpuProgram::kRootUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, EmitterGpuProgram::kNumUAVs);   // u0~u4
+		s_RootSig[EmitterGpuProgram::kRootUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, EmitterGpuProgram::kNumUAVs);   // u0~u6
 		s_RootSig[EmitterGpuProgram::kRootLayoutCB].InitAsConstantBuffer(2);   // b2  
 		// t0: 공유 셰이더의 모듈 데이터 (StructuredBuffer<uint>). 루트 SRV 라 서술자 힙이 필요 없다
 		s_RootSig[EmitterGpuProgram::kRootModuleData].InitAsBufferSRV(0);

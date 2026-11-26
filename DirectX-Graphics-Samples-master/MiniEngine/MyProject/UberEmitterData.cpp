@@ -176,12 +176,10 @@ namespace
 		return s ? s->offset : Uber::kNoAttribute;
 	}
 
-	// 공유 셰이더가 아는 파티클 속성 (EmitterLayout 의 Ofs_*)
+	// 공유 셰이더가 아는 가변 속성 (EmitterLayout 의 Ofs_*). 렌더 구조체의 속성은 레이아웃에 없으므로 여기에도 없다
 	const char* const kKnownParticleAttributes[] =
 	{
-		Particles::Position, Particles::Color, Particles::Size, Particles::Lifetime, Particles::Age,
-		Particles::Mass, Particles::NormalizedAge, Particles::Velocity, Particles::Acceleration, Particles::SubImageIndex,
-		Particles::SpriteSize, Particles::SpriteRotation, Particles::InitialColor
+		Particles::Lifetime, Particles::Age, Particles::Mass, Particles::Acceleration, Particles::InitialColor
 	};
 
 	std::string OfsText(uint32_t ofs)
@@ -224,18 +222,10 @@ UberEmitterData BuildUberEmitterData(const std::vector<ModuleDesc>& modules, con
 	// ---------- 2. 속성 열의 위치 (trim 됐거나 없으면 NO_ATTRIBUTE) ----------
 	L.ofsEmitterSpawnCount = FindOffset(compiled.emitterParams, Emitter::SpawnCount);
 	L.ofsEmitterSpawnRemainder = FindOffset(compiled.emitterParams, Emitter::SpawnRemainder);
-	L.ofsPosition = FindOffset(compiled.particles, Particles::Position);
-	L.ofsColor = FindOffset(compiled.particles, Particles::Color);
-	L.ofsSize = FindOffset(compiled.particles, Particles::Size);
 	L.ofsLifetime = FindOffset(compiled.particles, Particles::Lifetime);
 	L.ofsAge = FindOffset(compiled.particles, Particles::Age);
 	L.ofsMass = FindOffset(compiled.particles, Particles::Mass);
-	L.ofsNormalizedAge = FindOffset(compiled.particles, Particles::NormalizedAge);
-	L.ofsVelocity = FindOffset(compiled.particles, Particles::Velocity);
 	L.ofsAcceleration = FindOffset(compiled.particles, Particles::Acceleration);
-	L.ofsSubImageIndex = FindOffset(compiled.particles, Particles::SubImageIndex);
-	L.ofsSpriteSize = FindOffset(compiled.particles, Particles::SpriteSize);
-	L.ofsSpriteRotation = FindOffset(compiled.particles, Particles::SpriteRotation);
 	L.ofsInitialColor = FindOffset(compiled.particles, Particles::InitialColor);
 
 	// 공유 셰이더가 모르는 열 (Previous/Initial 등): 셰이더가 읽지도 쓰지도 않는다
@@ -291,12 +281,9 @@ std::string DescribeUber(const UberEmitterData& d)
 	}
 
 	s += "  Emitter  : SpawnCount " + OfsText(L.ofsEmitterSpawnCount) + ", SpawnRemainder " + OfsText(L.ofsEmitterSpawnRemainder) + "\n";
-	s += "  Particles: Position " + OfsText(L.ofsPosition) + ", Color " + OfsText(L.ofsColor) + ", Size " + OfsText(L.ofsSize)
-		+ ", Lifetime " + OfsText(L.ofsLifetime) + ", Age " + OfsText(L.ofsAge) + ", Mass " + OfsText(L.ofsMass)
-		+ ", NormalizedAge " + OfsText(L.ofsNormalizedAge) + ", Velocity " + OfsText(L.ofsVelocity)
-		+ ", Acceleration " + OfsText(L.ofsAcceleration) + ", SubImageIndex " + OfsText(L.ofsSubImageIndex)
-		+ ", SpriteSize " + OfsText(L.ofsSpriteSize) + ", SpriteRotation " + OfsText(L.ofsSpriteRotation)
-		+ ", Initial.Color " + OfsText(L.ofsInitialColor) + "\n";
+	s += "  Particles: Lifetime " + OfsText(L.ofsLifetime) + ", Age " + OfsText(L.ofsAge) + ", Mass " + OfsText(L.ofsMass)
+		+ ", Acceleration " + OfsText(L.ofsAcceleration) + ", Initial.Color " + OfsText(L.ofsInitialColor)
+		+ "  (render attributes: RenderParticle)\n";
 
 	for (const std::string& w : d.warnings) s += "  [경고] " + w + "\n";
 	for (const std::string& e : d.errors)   s += "  [오류] " + e + "\n";
@@ -325,18 +312,10 @@ bool CheckUberShaderLayout(const ShaderCompiler& compiler, std::string& log)
 		{ "UpdateInstCount",            uint32_t(offsetof(EmitterLayoutCB, updateInstCount)) },
 		{ "Ofs_Emitter_SpawnCount",     uint32_t(offsetof(EmitterLayoutCB, ofsEmitterSpawnCount)) },
 		{ "Ofs_Emitter_SpawnRemainder", uint32_t(offsetof(EmitterLayoutCB, ofsEmitterSpawnRemainder)) },
-		{ "Ofs_Position",               uint32_t(offsetof(EmitterLayoutCB, ofsPosition)) },
-		{ "Ofs_Color",                  uint32_t(offsetof(EmitterLayoutCB, ofsColor)) },
-		{ "Ofs_Size",                   uint32_t(offsetof(EmitterLayoutCB, ofsSize)) },
 		{ "Ofs_Lifetime",               uint32_t(offsetof(EmitterLayoutCB, ofsLifetime)) },
 		{ "Ofs_Age",                    uint32_t(offsetof(EmitterLayoutCB, ofsAge)) },
 		{ "Ofs_Mass",                   uint32_t(offsetof(EmitterLayoutCB, ofsMass)) },
-		{ "Ofs_NormalizedAge",          uint32_t(offsetof(EmitterLayoutCB, ofsNormalizedAge)) },
-		{ "Ofs_Velocity",               uint32_t(offsetof(EmitterLayoutCB, ofsVelocity)) },
 		{ "Ofs_Acceleration",           uint32_t(offsetof(EmitterLayoutCB, ofsAcceleration)) },
-		{ "Ofs_SubImageIndex",          uint32_t(offsetof(EmitterLayoutCB, ofsSubImageIndex)) },
-		{ "Ofs_SpriteSize",             uint32_t(offsetof(EmitterLayoutCB, ofsSpriteSize)) },
-		{ "Ofs_SpriteRotation",         uint32_t(offsetof(EmitterLayoutCB, ofsSpriteRotation)) },
 		{ "Ofs_Initial_Color",          uint32_t(offsetof(EmitterLayoutCB, ofsInitialColor)) },
 	};
 

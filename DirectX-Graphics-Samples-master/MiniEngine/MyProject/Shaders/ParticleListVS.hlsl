@@ -43,7 +43,7 @@ float2 SubImageUV(uint frame, float2 uv, float2 grid)
 VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
 {
     const uint slot = SortList.Load(instanceId * 8);
-    const RenderParticle p = LoadRenderParticle(RenderParticles, slot);
+    const ListParticle p = LoadListParticle(RenderParticles, slot);
     const EmitterInfo e = Emitters[p.EmitterIndex];
 
     const float2 corner = kCorners[vertexId];

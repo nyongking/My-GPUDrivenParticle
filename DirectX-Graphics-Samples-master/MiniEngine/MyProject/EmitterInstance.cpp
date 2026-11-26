@@ -69,7 +69,8 @@ bool EmitterInstance::Initialize(const std::vector<ModuleDesc>& modules,
 
 	m_Capacity = capacity;
 	const size_t bytes = size_t(m_CompiledEmitter.particles.Stride()) * capacity;
-	m_ParticleData.assign((bytes + 15) / 16 * 16, 0);	// RoundUp16
+	m_ParticleData.assign((std::max)((bytes + 15) / 16 * 16, size_t(16)), 0);	// RoundUp16 (가변 속성이 하나도 없어도 버퍼는 둔다)
+	m_RenderData.assign(capacity, m_RenderDefaults);
 	m_EmitterData.assign(m_CompiledEmitter.emitterParams.Stride(), 0);
 	m_AliveFlags.assign(capacity, 1);
 
@@ -86,6 +87,7 @@ void EmitterInstance::Shutdown()
 	m_ParticleSpawns.clear();
 	m_ParticleUpdates.clear();
 	m_ParticleData = {};
+	m_RenderData = {};
 	m_EmitterData = {};
 	m_AliveFlags = {};
 	m_Capacity = m_Count = m_Frame = m_NewBegin = m_NewEnd = m_KilledLastTick = 0;
@@ -179,7 +181,7 @@ void EmitterInstance::Tick(float deltaTime, const OwnerTransform& t)
 void EmitterInstance::RunModules(std::vector<ModuleDesc>& modules, uint32_t begin, uint32_t end,
 	uint8_t* aliveFlags)
 {
-	ModuleContext ctx(m_CompiledEmitter, m_ParticleData.data(), m_EmitterData.data(),
+	ModuleContext ctx(m_CompiledEmitter, m_ParticleData.data(), reinterpret_cast<uint8_t*>(m_RenderData.data()), m_EmitterData.data(),
 		m_EngineValues, m_Capacity, begin, end, aliveFlags);
 
 	for (ModuleDesc& m : modules)
@@ -198,14 +200,25 @@ void EmitterInstance::ZeroRange(uint32_t begin, uint32_t end)
 		uint8_t* column = m_ParticleData.data() + size_t(s.offset) * m_Capacity;
 		std::memset(column + size_t(begin) * size, 0, size_t(end - begin) * size);
 	}
+
+	// 고정 렌더 구조체는 0 이 아니라 기본값에서 시작한다 (GPU 의 DefaultRender 와 같음)
+	std::fill(m_RenderData.begin() + begin, m_RenderData.begin() + end, m_RenderDefaults);
 }
 
 void EmitterInstance::ApplyCopyOps(const std::vector<CopyOp>& ops, uint32_t begin, uint32_t end)
 {
 	for (const CopyOp& op : ops)
 	{
-		const uint8_t* src = m_ParticleData.data() + size_t(op.srcOffset) * m_Capacity + size_t(begin) * op.size;
 		uint8_t* dst = m_ParticleData.data() + size_t(op.dstOffset) * m_Capacity + size_t(begin) * op.size;
+		if (op.srcRender)
+		{
+			// 원본이 렌더 구조체의 필드: 파티클마다 떨어져 있어서 하나씩 복사
+			const uint8_t* src = reinterpret_cast<const uint8_t*>(m_RenderData.data() + begin) + op.srcOffset;
+			for (uint32_t i = begin; i < end; ++i, src += sizeof(RenderParticleData), dst += op.size)
+				std::memcpy(dst, src, op.size);
+			continue;
+		}
+		const uint8_t* src = m_ParticleData.data() + size_t(op.srcOffset) * m_Capacity + size_t(begin) * op.size;
 		std::memcpy(dst, src, size_t(end - begin) * op.size);
 	}
 }
@@ -218,6 +231,7 @@ void EmitterInstance::CopyParticles(uint32_t from, uint32_t to)
 		uint8_t* column = m_ParticleData.data() + size_t(s.offset) * m_Capacity;
 		std::memcpy(column + size_t(to) * size, column + size_t(from) * size, size);
 	}
+	m_RenderData[to] = m_RenderData[from];
 }
 
 uint32_t EmitterInstance::CompactAlive()

@@ -44,8 +44,10 @@ namespace
 		float3   ownerVelocity;       // 32
 		float    _pad2;					// 44
 		float4x4 ownerLocalToWorld;   // 48 (HLSL 은 row_major)
+		RenderParticleData defaultRender;   // 112  새 파티클의 렌더 값
 	};
-	static_assert(sizeof(EngineConstants) == 112, "HLSL cbuffer EngineConstants(112 B) 와 일치해야 함");
+	static_assert(sizeof(EngineConstants) == 176, "HLSL cbuffer EngineConstants(176 B) 와 일치해야 함");
+	static_assert(offsetof(EngineConstants, defaultRender) == 112, "DefaultRender offset 112");
 	static constexpr float kMaxDeltaTime = 0.1f;
 
 	// Counters 안의 위치 (ModuleCommon.hlsli 의 COUNTER_* 와 같게)
@@ -126,6 +128,9 @@ bool GpuEmitterInstance::Initialize(const CompiledEmitter& compiled, const Emitt
 	
 	m_Particles[0].Create(L"GPU Emitter Particles A", particleBytes / 4, 4);
 	m_Particles[1].Create(L"GPU Emitter Particles B", particleBytes / 4, 4);
+	// 고정 렌더 구조체. 살아 있는 칸은 Spawn / Update 가 채우므로 초기값이 필요 없다
+	m_Render[0].Create(L"GPU Emitter Render A", capacity, RenderParticle::kBytes);
+	m_Render[1].Create(L"GPU Emitter Render B", capacity, RenderParticle::kBytes);
 	m_Current = 0;
 
 	m_Counters.Create(L"GPU Emitter Counters", kCounterBytes / 4, 4, zeros);
@@ -166,7 +171,10 @@ void GpuEmitterInstance::Shutdown()
 	m_EmitterData.Destroy();
 	m_Counters.Destroy();
 	for (uint32_t i = 0 ; i < 2; ++i)
+	{
 		m_Particles[i].Destroy();
+		m_Render[i].Destroy();
+	}
 
 	m_ModuleParams.clear();
 	m_Program = nullptr;
@@ -226,6 +234,7 @@ bool GpuEmitterInstance::BeginTick(float deltaTime, const OwnerTransform& t)
 	ec.randomSeed = HashFrame(m_Frame + 1);
 	ec.ownerVelocity = ComputeOwnerVelocity(t.position, m_HasPrevOwner ? &m_PrevOwnerPosition : nullptr, deltaTime);
 	ec.ownerLocalToWorld = MakeLocalToWorld(t);
+	ec.defaultRender = m_RenderDefaults;
 	m_PrevOwnerPosition = t.position;
 	m_HasPrevOwner = true;
 
@@ -252,12 +261,16 @@ void GpuEmitterInstance::StageBarriers(ComputeContext& ctx, GpuSimStage stage)
 
 	ByteAddressBuffer& particlesIn = m_Particles[m_Current];
 	ByteAddressBuffer& particlesOut = m_Particles[1 - m_Current];
+	StructuredBuffer& renderIn = m_Render[m_Current];
+	StructuredBuffer& renderOut = m_Render[1 - m_Current];
 
 	switch (stage)
 	{
 	case GpuSimStage::Prepare:
 		ctx.TransitionResource(particlesIn, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		ctx.TransitionResource(particlesOut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		ctx.TransitionResource(renderIn, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		ctx.TransitionResource(renderOut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		ctx.TransitionResource(m_Counters, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		ctx.TransitionResource(m_EmitterData, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		ctx.TransitionResource(m_SpawnArgs, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -273,6 +286,7 @@ void GpuEmitterInstance::StageBarriers(ComputeContext& ctx, GpuSimStage stage)
 		ctx.InsertUAVBarrier(m_Counters);
 		ctx.InsertUAVBarrier(m_EmitterData);
 		ctx.InsertUAVBarrier(particlesOut);
+		ctx.InsertUAVBarrier(renderOut);
 		break;
 	case GpuSimStage::Finalize:
 		ctx.InsertUAVBarrier(m_Counters);
@@ -284,6 +298,7 @@ void GpuEmitterInstance::StageBarriers(ComputeContext& ctx, GpuSimStage stage)
 
 	case GpuSimStage::Present:
 		ctx.TransitionResource(particlesOut, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		ctx.TransitionResource(renderOut, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 		ctx.TransitionResource(m_FrameArgs, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, true);
 		break;
 	}
@@ -377,7 +392,9 @@ void GpuEmitterInstance::BindRoot(ComputeContext& ctx, bool finalizeStage)
 		particlesOut.GetUAV(),
 		m_Counters.GetUAV(),
 		m_EmitterData.GetUAV(),
-		finalizeStage ? m_FrameArgs.GetUAV() : m_SpawnArgs.GetUAV()
+		finalizeStage ? m_FrameArgs.GetUAV() : m_SpawnArgs.GetUAV(),
+		m_Render[m_Current].GetUAV(),          // u5 RenderIn
+		m_Render[1 - m_Current].GetUAV()       // u6 RenderOut
 	};
 	ctx.SetDynamicDescriptors(EmitterGpuProgram::kRootUAVs, 0, EmitterGpuProgram::kNumUAVs, uavs);
 }

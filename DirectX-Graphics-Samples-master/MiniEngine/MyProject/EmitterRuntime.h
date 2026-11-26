@@ -53,14 +53,12 @@ public:
 	void SetParamKind(size_t moduleIndex, size_t paramIndex, ParamKind kind);       // 파티클 유지
 	void SetPerComponent(size_t moduleIndex, size_t paramIndex, bool perComponent); // 파티클 유지
 
-	// -------- 렌더러 바인딩 -------
+	// -------- 렌더러 기본값 -------
+	// 렌더러가 읽는 속성은 고정이다 (렌더 구조체, RenderParticle.h). 여기서 바꿀 수 있는 것은
+	// "아무 모듈도 그 속성을 쓰지 않을 때의 값" 뿐이다
 	const RendererDesc& SpriteBindings() const { return m_SpriteDesc; }
-	// 연결할 속성 변경 (빈 문자열 = 항상 기본값). Trim 대상이 바뀔 수 있어 재시작
-	void SetBindingAttribute(size_t bindingIndex, const std::string& attribute);
-	// 기본값만 변경. 재컴파일 없이 바로 반영
+	// 기본값 변경. 재컴파일 없음. 렌더 구조체의 값은 다음에 태어나는 파티클부터, Facing / Alignment 벡터는 바로 반영
 	void SetBindingDefault(size_t bindingIndex, const std::vector<uint8_t>& value);
-	// 이 칸에 연결할 수 있는 속성 목록 (적용된 모듈이 쓰는 같은 타입의 Particles 속성 + Previous / Initial)
-	std::vector<std::string> BindableAttributes(const TypeInfo* type) const;
 
 	// -------- Material 설정 -------
 	bool SetMaterialTexture(uint32_t slot, const MaterialTexture& texture);
@@ -131,6 +129,8 @@ private:
 	// 머티리얼 그래프가 바뀌었으면 (또는 모드가 바뀌었으면) 생성된 픽셀 셰이더를 맞춘다
 	void SyncMaterialProgram();
 	void SetMaterialProgram(std::shared_ptr<MaterialGpuProgram> program);
+	// m_SpriteDesc 의 기본값을 렌더러 / 시뮬레이션에 넘긴다
+	void ApplyRenderDefaults();
 
 	std::vector<ModuleDesc> m_Modules;          // 원본. UI 가 직접 편집
 	std::vector<ModuleDesc> m_AppliedModules;   // 마지막으로 적용에 성공한 스택 (실패 시 복구)

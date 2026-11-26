@@ -33,7 +33,8 @@ using namespace Graphics;
 
 namespace
 {
-	// HLSL cbuffer SpriteConstants 와 같은 배치... 계속 추가될 수 있음
+	// HLSL cbuffer SpriteConstants 와 같은 배치 (ParticleSpriteVS.hlsl)
+	//   파티클 값은 고정 렌더 구조체에서 읽으므로 속성 offset / 기본값이 없다 (Facing / Alignment 벡터만 예외)
 	struct alignas(16) SpriteConstants
 	{
 		DirectX::XMFLOAT4X4 viewProj;        // 0
@@ -42,68 +43,43 @@ namespace
 		DirectX::XMFLOAT4   camPosition;     // 96
 		DirectX::XMFLOAT4   camForward;      // 112
 
-		uint32_t            positionOffset;  // 128  (0xFFFFFFFF = 연결 없음 -> 기본값)
-		uint32_t            colorOffset;     // 132
-		uint32_t            sizeOffset;      // 136
-		uint32_t            capacity;        // 140
+		uint32_t            sortEnabled;     // 128
+		uint32_t            sortStride;      // 132  정렬 목록 한 칸 바이트 (CPU 4 / GPU 8)
+		uint32_t            subUVBlend;      // 136
+		uint32_t            facingMode;      // 140
 
-		float4              defaultColor;    // 144
-		float3              defaultPosition; // 160
-		float               defaultSize;     // 172
+		float               subImageSize[2]; // 144  (가로 칸, 세로 칸)
+		float2              pivot;           // 152
 
-		uint32_t            sortEnabled;     // 176
-		uint32_t            subImageOffset;  // 180  (T2) Particles.SubImageIndex
-		float               defaultSubImage; // 184
-		uint32_t            subUVBlend;      // 188
+		uint32_t            alignmentMode;   // 160
+		float               cameraOffset;    // 164
+		float               velocityStretch; // 168
+		float               blendNear;       // 172
 
-		float               subImageSize[2]; // 192  (가로 칸, 세로 칸)
-		uint32_t            sortStride;      // 200  정렬 목록 한 칸 바이트 (CPU 4 / GPU 8)
-		uint32_t            spriteSizeOffset;// 204  연결이 없으면 (Size * 2, Size * 2)
+		float               blendFar;        // 176
+		uint32_t            capacity;        // 180  가변 속성 버퍼의 SoA 열 길이
+		uint32_t            spriteFacingOffset;     // 184  (0xFFFFFFFF = 속성 없음 -> 기본값)
+		uint32_t            spriteAlignmentOffset;  // 188
 
-		uint32_t            spriteRotationOffset;   // 208
-		float               defaultSpriteRotation;  // 212
-		uint32_t            velocityOffset;         // 216
-		uint32_t            spriteFacingOffset;     // 220
-
-		float3              defaultVelocity;        // 224
-		uint32_t            spriteAlignmentOffset;  // 236
-		float3              defaultSpriteFacing;    // 240
-		uint32_t            facingMode;             // 252
-		float3              defaultSpriteAlignment; // 256
-		uint32_t            alignmentMode;          // 268
-
-		float2              pivot;                  // 272
-		float               cameraOffset;           // 280
-		float               velocityStretch;        // 284
-		float               blendNear;              // 288
-		float               blendFar;               // 292
-		
-		uint32_t			particleParam0Offset;	// 296
-		uint32_t			particleParam1Offset;	// 300
-		float2				defaultParticleParams;	// 304
-		float2				_pad;					// 312
-	}; // 320
-	static_assert(sizeof(SpriteConstants) == 320, "HLSL cbuffer SpriteConstants(320 B)와 일치해야 함");
-	static_assert(offsetof(SpriteConstants, positionOffset) == 128, "PositionOffset offset 128");
-	static_assert(offsetof(SpriteConstants, defaultColor) == 144, "DefaultColor offset 144");
-	static_assert(offsetof(SpriteConstants, sortEnabled) == 176, "SortEnabled offset 176");
-	static_assert(offsetof(SpriteConstants, subImageSize) == 192, "SubImageSize offset 192");
-	static_assert(offsetof(SpriteConstants, spriteRotationOffset) == 208, "SpriteRotationOffset offset 208");
-	static_assert(offsetof(SpriteConstants, defaultVelocity) == 224, "DefaultVelocity offset 224");
-	static_assert(offsetof(SpriteConstants, defaultSpriteFacing) == 240, "DefaultSpriteFacing offset 240");
-	static_assert(offsetof(SpriteConstants, defaultSpriteAlignment) == 256, "DefaultSpriteAlignment offset 256");
-	static_assert(offsetof(SpriteConstants, pivot) == 272, "Pivot offset 272");
-	static_assert(offsetof(SpriteConstants, blendFar) == 292, "BlendFar offset 292");
-	static_assert(offsetof(SpriteConstants, particleParam0Offset) == 296, "ParticleParam0Offset offset 296");
-	static_assert(offsetof(SpriteConstants, defaultParticleParams) == 304, "DefaultParticleParams offset 304");
+		float3              defaultSpriteFacing;    // 192
+		float               _pad0;                  // 204
+		float3              defaultSpriteAlignment; // 208
+		float               _pad1;                  // 220
+	}; // 224
+	static_assert(sizeof(SpriteConstants) == 224, "HLSL cbuffer SpriteConstants(224 B)와 일치해야 함");
+	static_assert(offsetof(SpriteConstants, sortEnabled) == 128, "SortEnabled offset 128");
+	static_assert(offsetof(SpriteConstants, subImageSize) == 144, "SubImageSize offset 144");
+	static_assert(offsetof(SpriteConstants, alignmentMode) == 160, "AlignmentMode offset 160");
+	static_assert(offsetof(SpriteConstants, blendFar) == 176, "BlendFar offset 176");
+	static_assert(offsetof(SpriteConstants, defaultSpriteFacing) == 192, "DefaultSpriteFacing offset 192");
+	static_assert(offsetof(SpriteConstants, defaultSpriteAlignment) == 208, "DefaultSpriteAlignment offset 208");
 
 	// GPU 정렬 키 생성 (ParticleSortKeyCS.hlsl 의 cbuffer SortKeyConstants 와 같은 배치)
 	struct SortKeyConstants
 	{
-		uint32_t positionOffset;  // 0
-		uint32_t capacity;        // 4
-		uint32_t countOffset;     // 8   개수 버퍼(DrawArgs) 안의 alive 위치
-		uint32_t _pad0;           // 12
+		uint32_t capacity;        // 0
+		uint32_t countOffset;     // 4   개수 버퍼(DrawArgs) 안의 alive 위치
+		uint32_t _pad0[2];        // 8
 		float    camPos[3];       // 16
 		float    _pad1;           // 28
 		float    camForward[3];   // 32
@@ -136,7 +112,7 @@ namespace
 
 	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kRootMaterialCB, kRootMaterialProgram, kRootMaterialInstrs, kNumRootParams };
 	alignas(16) const MaterialInstr kEmptyInstr = {};
-	static const uint32_t kNumSRVs = 2;
+	static const uint32_t kNumSRVs = 3;     // VS: t0 렌더 구조체, t1 정렬 목록, t2 가변 속성 (SoA)
 
 	// 루트 시그니처 / PSO 는 모든 SpriteRenderer 가 같이 쓴다 (한 번만 만든다)
 	bool          s_PipelineReady = false;
@@ -211,7 +187,7 @@ namespace
 		s_PSO.SetPixelShader(g_pParticleSpritePS, sizeof(g_pParticleSpritePS));
 		s_PSO.Finalize();
 
-		// b0 = SortKeyConstants, t0 = 파티클, t1 = 개수 버퍼(DrawArgs), u0 = 정렬 목록
+		// b0 = SortKeyConstants, t0 = 렌더 구조체, t1 = 개수 버퍼(DrawArgs), u0 = 정렬 목록
 		s_SortKeyRootSig.Reset(kNumSortKeyRootParams, 0);
 		s_SortKeyRootSig[kSortKeyCB].InitAsConstants(0, sizeof(SortKeyConstants) / 4);
 		s_SortKeyRootSig[kSortKeySRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 2);
@@ -249,17 +225,30 @@ RendererDesc SpriteRenderer::Desc()
 		MakeRenderBinding<float4>("Color",    Particles::Color,    float4{ 1.f, 1.f, 1.f, 1.f }),
 		MakeRenderBinding<float>("Size",      Particles::Size,     0.1f),
 		MakeRenderBinding<float>("SubImageIndex",	Particles::SubImageIndex, 0.f),
-		// 빌보드: SpriteSize 기본값은 쓰지 않는다 (연결이 없으면 Size 로 정사각형)
-		MakeRenderBinding<float2>("SpriteSize",      Particles::SpriteSize,      float2{ 0.2f, 0.2f }),
 		MakeRenderBinding<float>("SpriteRotation",   Particles::SpriteRotation,  0.f),
 		MakeRenderBinding<float3>("Velocity",        Particles::Velocity,        float3{ 0.f, 0.f, 0.f }),
+		// 아래 둘은 가변 속성 버퍼에서 읽는다 (EmitterCompiler 가 Trim 하지 않게 여기서 "읽는다" 고 알린다)
 		MakeRenderBinding<float3>("SpriteFacing",    Particles::SpriteFacing,    float3{ 0.f, 1.f, 0.f }),
-		MakeRenderBinding<float3>("SpriteAlignment", Particles::SpriteAlignment, float3{ 0.f, 1.f, 0.f }),
-		MakeRenderBinding<float>("ParticleParam0",   Particles::NormalizedAge,   0.f),
-		MakeRenderBinding<float>("ParticleParam1",   std::string(),              0.f)
+		MakeRenderBinding<float3>("SpriteAlignment", Particles::SpriteAlignment, float3{ 0.f, 1.f, 0.f })
 	};
 
 	return desc;
+}
+
+RenderParticleData SpriteRenderer::RenderDefaults(const RendererDesc& desc)
+{
+	RenderParticleData d = RenderParticle::Defaults();
+	if (desc.bindings.size() != kNumSlots)
+		return d;
+
+	std::memcpy(&d.position, desc.bindings[kPosition].defaultValue.data(), sizeof(float3));
+	std::memcpy(&d.color, desc.bindings[kColor].defaultValue.data(), sizeof(float4));
+	std::memcpy(&d.size, desc.bindings[kSize].defaultValue.data(), sizeof(float));
+	std::memcpy(&d.subImageIndex, desc.bindings[kSubImageIndex].defaultValue.data(), sizeof(float));
+	std::memcpy(&d.spriteRotation, desc.bindings[kSpriteRotation].defaultValue.data(), sizeof(float));
+	std::memcpy(&d.velocity, desc.bindings[kVelocity].defaultValue.data(), sizeof(float3));
+	// spriteSize (-1 = 없음) / normalizedAge (0) 는 RenderParticle::Defaults() 그대로
+	return d;
 }
 
 const char* SpriteFacingName(SpriteFacingMode mode)
@@ -294,7 +283,8 @@ bool SpriteRenderer::Initialize(const EmitterInstance& emitter, const RendererDe
 		return false;
 
 	m_BufferBytes = static_cast<uint32_t>(emitter.ParticleDataBytes());
-	m_ParticleBuffer.Create(L"Sprite Render Buffer", m_BufferBytes / 4, 4);
+	m_ParticleBuffer.Create(L"Sprite Particle Buffer (SoA)", m_BufferBytes / 4, 4);
+	m_RenderBuffer.Create(L"Sprite Render Particles", (std::max)(m_Capacity, 1u), RenderParticle::kBytes);
 
 	m_SortedIndices.clear();
 
@@ -314,6 +304,7 @@ void SpriteRenderer::Shutdown()
 	m_SortedIndexBuffer.Destroy();
 	m_GpuSortBuffer.Destroy();
 	m_ParticleBuffer.Destroy();
+	m_RenderBuffer.Destroy();
 
 	m_SortedIndices.clear();
 
@@ -327,58 +318,70 @@ void SpriteRenderer::Render(GraphicsContext& gfx, const Math::Camera& camera, co
 		return;
 
 	// 1) 업로드 버퍼
-	gfx.TransitionResource(m_ParticleBuffer, D3D12_RESOURCE_STATE_COPY_DEST, true);
-	gfx.WriteBuffer(m_ParticleBuffer, 0, emitter.ParticleData(), m_BufferBytes);
-	gfx.TransitionResource(m_ParticleBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
+	UploadCpu(gfx, emitter);
 
 	// 2) 정렬 여부에 따라 정렬 + 업로드 버퍼
-	const bool sorted = (m_SortMode == SortMode::ViewDepth) && (m_Offsets[kPosition] != kNoAttribute);
+	const bool sorted = (m_SortMode == SortMode::ViewDepth);
 	if (sorted)
 		UploadSortedIndices(gfx, camera, emitter);
 	else
 		gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
 
 	// 3) 상수 버퍼 / 파이프라인 / SRV
-	BindForDraw(gfx, camera, m_ParticleBuffer, m_SortedIndexBuffer, sorted, sizeof(uint32_t));
+	BindForDraw(gfx, camera, m_RenderBuffer, m_ParticleBuffer, m_SortedIndexBuffer, sorted, sizeof(uint32_t));
 
 	// 4) 그리기: 파티클 하나 = 사각형(정점 6개), 인스턴스 = 파티클 수
 	gfx.DrawInstanced(6, emitter.Count());
 }
 
 
+void SpriteRenderer::UploadCpu(GraphicsContext& gfx, const EmitterInstance& emitter)
+{
+	// 렌더 구조체: 살아 있는 만큼만
+	gfx.TransitionResource(m_RenderBuffer, D3D12_RESOURCE_STATE_COPY_DEST, true);
+	gfx.WriteBuffer(m_RenderBuffer, 0, emitter.RenderData(), size_t(emitter.Count()) * RenderParticle::kBytes);
+	gfx.TransitionResource(m_RenderBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
+
+	// 가변 속성 (SoA): 셰이더가 읽는 것은 SpriteFacing / SpriteAlignment 뿐이라, 둘 다 없으면 올리지 않는다
+	if (m_FacingOffset != kNoAttribute || m_AlignmentOffset != kNoAttribute)
+	{
+		gfx.TransitionResource(m_ParticleBuffer, D3D12_RESOURCE_STATE_COPY_DEST, true);
+		gfx.WriteBuffer(m_ParticleBuffer, 0, emitter.ParticleData(), m_BufferBytes);
+	}
+	gfx.TransitionResource(m_ParticleBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
+}
+
 bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity, const RendererDesc& desc)
 {
-	// Desc() 와 같은 칸 구성인지 (칸 순서 = 셰이더 cbuffer 순서)
+	// Desc() 와 같은 칸 구성인지
 	static const TypeInfo* kSlotTypes[kNumSlots] =
 	{
 		&Types::Float3, &Types::Float4, &Types::Float, &Types::Float,
-		&Types::Float2, &Types::Float, &Types::Float3, &Types::Float3, &Types::Float3,
-		&Types::Float,	&Types::Float
+		&Types::Float, &Types::Float3, &Types::Float3, &Types::Float3
 	};
 	if (desc.bindings.size() != kNumSlots)
 	{
 		m_Log = "[SpriteRenderer] 바인딩 칸 수가 다름 (SpriteRenderer::Desc() 로 만든 desc 를 넘겨야 함)\n";
 		return false;
 	}
-
 	for (uint32_t i = 0; i < kNumSlots; ++i)
 	{
-		const RenderBinding& b = desc.bindings[i];
-		if (b.type != kSlotTypes[i])
+		if (desc.bindings[i].type != kSlotTypes[i])
 		{
-			m_Log = "[SpriteRenderer] '" + b.slot + "' 칸 타입이 다름\n";
+			m_Log = "[SpriteRenderer] '" + desc.bindings[i].slot + "' 칸 타입이 다름\n";
 			return false;
 		}
-
-		// 연결된 속성이 레이아웃에 있으면 그 offset, 없으면 (아무도 안 씀 / 비워 둠) 기본값
-		const Slot* s = b.attribute.empty() ? nullptr : layout.Find(b.attribute);
-		if (s && s->type != b.type)
-		{
-			m_Log = "[SpriteRenderer] '" + b.slot + "' <- '" + b.attribute + "' 타입이 다름\n";
-			return false;
-		}
-		m_Offsets[i] = s ? s->offset : kNoAttribute;
 	}
+
+	// 렌더 구조체의 값은 위치가 고정이라 찾을 것이 없다.
+	// 가변 속성 버퍼에서 읽는 두 벡터만: 레이아웃에 있으면 그 offset, 없으면 (아무도 안 씀) 기본값
+	auto find = [&](const char* name) -> uint32_t
+		{
+			const Slot* s = layout.Find(name);
+			return (s && s->type == &Types::Float3) ? s->offset : kNoAttribute;
+		};
+	m_FacingOffset = find(Particles::SpriteFacing);
+	m_AlignmentOffset = find(Particles::SpriteAlignment);
 
 	SetDefaults(desc);
 	m_Capacity = capacity;
@@ -409,16 +412,9 @@ void SpriteRenderer::SetDefaults(const RendererDesc& desc)
 {
 	if (desc.bindings.size() != kNumSlots)
 		return;
-	std::memcpy(&m_DefaultPosition, desc.bindings[kPosition].defaultValue.data(), sizeof(float3));
-	std::memcpy(&m_DefaultColor, desc.bindings[kColor].defaultValue.data(), sizeof(float4));
-	std::memcpy(&m_DefaultSize, desc.bindings[kSize].defaultValue.data(), sizeof(float));
-	std::memcpy(&m_DefaultSubImage, desc.bindings[kSubImageIndex].defaultValue.data(), sizeof(float));
-	std::memcpy(&m_DefaultSpriteRotation, desc.bindings[kSpriteRotation].defaultValue.data(), sizeof(float));
-	std::memcpy(&m_DefaultVelocity, desc.bindings[kVelocity].defaultValue.data(), sizeof(float3));
+	// 렌더 구조체의 기본값은 시뮬레이션이 Spawn 때 넣는다 (RenderDefaults). 여기서는 VS 가 직접 쓰는 두 벡터만
 	std::memcpy(&m_DefaultSpriteFacing, desc.bindings[kSpriteFacing].defaultValue.data(), sizeof(float3));
 	std::memcpy(&m_DefaultSpriteAlignment, desc.bindings[kSpriteAlignment].defaultValue.data(), sizeof(float3));
-	std::memcpy(&m_DefaultParticleParams.x, desc.bindings[kParticleParam0].defaultValue.data(), sizeof(float));
-	std::memcpy(&m_DefaultParticleParams.y, desc.bindings[kParticleParam1].defaultValue.data(), sizeof(float));
 }
 
 
@@ -429,10 +425,11 @@ void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera,
 
 	{
 		ScopedTimer(L"Render Sprite (Single)", gfx);
+		gfx.TransitionResource(emitter.RenderBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 		gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 		// 정렬 (CPU 경로와 같은 조건). 개수를 CPU 로 읽지 않고 DrawArgs 의 alive 를 GPU 에서 바로 쓴다
-		const bool sorted = (m_SortMode == SortMode::ViewDepth) && (m_Offsets[kPosition] != kNoAttribute);
+		const bool sorted = (m_SortMode == SortMode::ViewDepth);
 		if (sorted)
 			SortOnGpu(gfx, camera, emitter);
 
@@ -440,7 +437,7 @@ void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera,
 		gfx.TransitionResource(emitter.DrawArgs(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
 		gfx.TransitionResource(m_GpuSortBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
 
-		BindForDraw(gfx, camera, emitter.ParticleBuffer(), m_GpuSortBuffer, sorted, sizeof(uint32_t) * 2);
+		BindForDraw(gfx, camera, emitter.RenderBuffer(), emitter.ParticleBuffer(), m_GpuSortBuffer, sorted, sizeof(uint32_t) * 2);
 
 		// 개수는 Finalize 가 Draw 인자 (6, alive, 0, 0) 로 써둔 것. CPU 는 개수를 몰라도 된다
 		gfx.DrawIndirect(emitter.DrawArgs());
@@ -455,7 +452,6 @@ void SpriteRenderer::SortOnGpu(GraphicsContext& gfx, const Math::Camera& camera,
 
 	// 1) 키 생성: 파티클 i -> uint2(i, 깊이 키). alive 이후 칸은 셰이더가 건너뛴다
 	SortKeyConstants kc = {};
-	kc.positionOffset = m_Offsets[kPosition];
 	kc.capacity = m_Capacity;
 	kc.countOffset = kDrawArgsInstanceCountOffset;
 	const float3 camPos = ToFloat3(camera.GetPosition());
@@ -469,7 +465,7 @@ void SpriteRenderer::SortOnGpu(GraphicsContext& gfx, const Math::Camera& camera,
 	cc.SetRootSignature(s_SortKeyRootSig);
 	cc.SetPipelineState(s_SortKeyPSO);
 	cc.SetConstantArray(kSortKeyCB, sizeof(kc) / 4, &kc);
-	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[2] = { emitter.ParticleBuffer().GetSRV(), countBuffer.GetSRV() };
+	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[2] = { emitter.RenderBuffer().GetSRV(), countBuffer.GetSRV() };
 	cc.SetDynamicDescriptors(kSortKeySRVs, 0, 2, srvs);
 	cc.SetDynamicDescriptor(kSortKeyUAV, 0, m_GpuSortBuffer.GetUAV());
 	// 개수를 CPU 가 모르므로 capacity 기준으로 띄우고, alive 를 넘는 스레드는 바로 끝난다
@@ -489,11 +485,10 @@ void SpriteRenderer::SubmitToList(GraphicsContext& gfx, ParticleRenderList& list
 		return;
 
 	// CPU 시뮬레이션 결과를 올린다 (Render 의 1 단계와 같음). 개수는 CPU 가 알고 있으므로 상수로 넘긴다
-	gfx.TransitionResource(m_ParticleBuffer, D3D12_RESOURCE_STATE_COPY_DEST, true);
-	gfx.WriteBuffer(m_ParticleBuffer, 0, emitter.ParticleData(), m_BufferBytes);
-	gfx.TransitionResource(m_ParticleBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
+	UploadCpu(gfx, emitter);
 
 	ParticleRenderList::Source src = MakeListSource();
+	src.render = &m_RenderBuffer;
 	src.particles = &m_ParticleBuffer;
 	src.constCount = emitter.Count();
 	list.Add(gfx, src);
@@ -506,6 +501,7 @@ void SpriteRenderer::SubmitToListGpu(GraphicsContext& gfx, ParticleRenderList& l
 
 	// 개수는 Finalize 가 DrawArgs.InstanceCount 에 써 둔 alive 를 GPU 에서 바로 읽는다
 	ParticleRenderList::Source src = MakeListSource();
+	src.render = &emitter.RenderBuffer();
 	src.particles = &emitter.ParticleBuffer();
 	src.countBuffer = &emitter.DrawArgs();
 	src.countOffset = kDrawArgsInstanceCountOffset;
@@ -516,21 +512,8 @@ ParticleRenderList::Source SpriteRenderer::MakeListSource() const
 {
 	ParticleRenderList::Source src;
 	src.capacity = m_Capacity;
-	src.positionOffset = m_Offsets[kPosition];
-	src.colorOffset = m_Offsets[kColor];
-	src.sizeOffset = m_Offsets[kSize];
-	src.subImageOffset = m_Offsets[kSubImageIndex];
-	src.defaultPosition = m_DefaultPosition;
-	src.defaultColor = m_DefaultColor;
-	src.defaultSize = m_DefaultSize;
-	src.defaultSubImage = m_DefaultSubImage;
-	src.spriteSizeOffset = m_Offsets[kSpriteSize];
-	src.spriteRotationOffset = m_Offsets[kSpriteRotation];
-	src.velocityOffset = m_Offsets[kVelocity];
-	src.spriteFacingOffset = m_Offsets[kSpriteFacing];
-	src.spriteAlignmentOffset = m_Offsets[kSpriteAlignment];
-	src.defaultSpriteRotation = m_DefaultSpriteRotation;
-	src.defaultVelocity = m_DefaultVelocity;
+	src.spriteFacingOffset = m_FacingOffset;
+	src.spriteAlignmentOffset = m_AlignmentOffset;
 	src.defaultSpriteFacing = m_DefaultSpriteFacing;
 	src.defaultSpriteAlignment = m_DefaultSpriteAlignment;
 	src.facingMode = static_cast<uint32_t>(m_Settings.facing);
@@ -547,9 +530,6 @@ ParticleRenderList::Source SpriteRenderer::MakeListSource() const
 	src.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
 	src.texture = TextureSRV(ParticleMaterial::kBaseTexture);
 
-	src.particleParam0Offset = m_Offsets[kParticleParam0];
-	src.particleParam1Offset = m_Offsets[kParticleParam1];
-	src.defaultParticleParams = m_DefaultParticleParams;
 	if (m_Material)
 	{
 		src.program = &m_Material->Program();
@@ -561,7 +541,7 @@ ParticleRenderList::Source SpriteRenderer::MakeListSource() const
 	return src;
 }
 
-void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camera, ByteAddressBuffer& particles,
+void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camera, StructuredBuffer& render, ByteAddressBuffer& particles,
 	ByteAddressBuffer& sortedIndices, bool sorted, uint32_t sortStride)
 {
 	SpriteConstants sc = {};
@@ -576,31 +556,13 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 		sc.camPosition = { camPos.x, camPos.y, camPos.z, 0.f };
 		sc.camForward = { camFwd.x, camFwd.y, camFwd.z, 0.f };
 	}
-	sc.positionOffset = m_Offsets[kPosition];
-	sc.colorOffset = m_Offsets[kColor];
-	sc.sizeOffset = m_Offsets[kSize];
-	sc.capacity = m_Capacity;
-	sc.defaultColor = m_DefaultColor;
-	sc.defaultPosition = m_DefaultPosition;
-	sc.defaultSize = m_DefaultSize;
 	sc.sortEnabled = sorted ? 1u : 0u;
-	sc.subImageOffset = m_Offsets[kSubImageIndex];
-	sc.defaultSubImage = m_DefaultSubImage;
+	sc.sortStride = sortStride;
 	sc.subUVBlend = m_Settings.subUVBlend ? 1u : 0u;
 	sc.subImageSize[0] = static_cast<float>(m_Settings.subImageCols);
 	sc.subImageSize[1] = static_cast<float>(m_Settings.subImageRows);
-	sc.sortStride = sortStride;
 
-	sc.spriteSizeOffset = m_Offsets[kSpriteSize];
-	sc.spriteRotationOffset = m_Offsets[kSpriteRotation];
-	sc.defaultSpriteRotation = m_DefaultSpriteRotation;
-	sc.velocityOffset = m_Offsets[kVelocity];
-	sc.spriteFacingOffset = m_Offsets[kSpriteFacing];
-	sc.defaultVelocity = m_DefaultVelocity;
-	sc.spriteAlignmentOffset = m_Offsets[kSpriteAlignment];
-	sc.defaultSpriteFacing = m_DefaultSpriteFacing;
 	sc.facingMode = static_cast<uint32_t>(m_Settings.facing);
-	sc.defaultSpriteAlignment = m_DefaultSpriteAlignment;
 	sc.alignmentMode = static_cast<uint32_t>(m_Settings.alignment);
 	sc.pivot = m_Settings.pivot;
 	sc.cameraOffset = m_Settings.cameraOffset;
@@ -608,16 +570,19 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	sc.blendNear = m_Settings.blendNear;
 	sc.blendFar = m_Settings.blendFar;
 
-	sc.particleParam0Offset = m_Offsets[kParticleParam0];
-	sc.particleParam1Offset = m_Offsets[kParticleParam1];
-	sc.defaultParticleParams = m_DefaultParticleParams;
+	// 가변 속성 버퍼에서 읽는 것 (Custom Facing / Custom Alignment)
+	sc.capacity = m_Capacity;
+	sc.spriteFacingOffset = m_FacingOffset;
+	sc.spriteAlignmentOffset = m_AlignmentOffset;
+	sc.defaultSpriteFacing = m_DefaultSpriteFacing;
+	sc.defaultSpriteAlignment = m_DefaultSpriteAlignment;
 
 	gfx.SetRootSignature(s_RootSig);
 	gfx.SetPipelineState(m_MaterialPSO ? *m_MaterialPSO : s_PSO);
 	gfx.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	gfx.SetDynamicConstantBufferView(kRootCBV, sizeof(sc), &sc);
 
-	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), sortedIndices.GetSRV() };
+	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { render.GetSRV(), sortedIndices.GetSRV(), particles.GetSRV() };
 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
 
 	D3D12_CPU_DESCRIPTOR_HANDLE texs[ParticleMaterial::kNumTextureSlot];
@@ -678,12 +643,12 @@ void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camer
 {
 	uint32_t count = emitter.Count();
 
-	const float3* pos = reinterpret_cast<const float3*>(emitter.ParticleData()
-		+ size_t(m_Offsets[kPosition]) * m_Capacity);
+	// 위치는 렌더 구조체의 첫 필드: 구조체 크기만큼 건너뛰며 읽는다
+	const float3* pos = &emitter.RenderData()->position;
 
 	SortBackToFront(pos, count,
 		ToFloat3(camera.GetPosition()), ToFloat3(camera.GetForwardVec()),
-		m_SortedIndices, m_SortScratch);
+		m_SortedIndices, m_SortScratch, RenderParticle::kBytes);
 
 	const size_t bytes = size_t(RoundUp4(count)) * sizeof(uint32_t);
 	gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, true);

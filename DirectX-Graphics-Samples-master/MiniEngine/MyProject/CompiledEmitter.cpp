@@ -19,7 +19,7 @@ namespace
     void DescribeCopy(std::ostringstream& os, const char* when, const CopyOp& op)
     {
         os << "  [복사: " << when << "] " << op.to << " <- " << op.from
-            << "  (offset " << op.srcOffset << " -> " << op.dstOffset << ", " << op.size << "B)\n";
+            << "  (offset " << (op.srcRender ? "render " : "") << op.srcOffset << " -> " << op.dstOffset << ", " << op.size << "B)\n";
     }
 }
 
@@ -31,7 +31,8 @@ std::string DescribeCompiled(const CompiledEmitter& c, const std::string& title)
     for (const std::string& e : c.errors) os << "  [에러] " << e << "\n";
     if (!c.Ok()) return os.str();
 
-    DescribeBlock(os, "파티클 1개", c.particles);
+    DescribeBlock(os, "렌더 구조체 (고정, RenderParticle)", c.render);
+    DescribeBlock(os, "파티클 1개 (가변, SoA)", c.particles);
     DescribeBlock(os, "Emitter 저장소", c.emitterParams);
     DescribeBlock(os, "System 저장소", c.systemParams);
     DescribeBlock(os, "모듈 입력값 (상수 버퍼)", c.moduleParams);
