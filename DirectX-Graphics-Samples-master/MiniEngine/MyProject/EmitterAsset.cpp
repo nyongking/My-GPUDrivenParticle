@@ -21,9 +21,12 @@ namespace
 	const char* const kFacingNames[] = { "FaceCameraPlane", "FaceCameraPosition", "CustomFacingVector", "FaceCameraDistanceBlend" };
 	const char* const kAlignmentNames[] = { "Unaligned", "VelocityAligned", "CustomAlignment" };
 	const char* const kTextureAlphaNames[] = { "Straight", "Premultiplied", "FromLuminance" };
+	const char* const kColorSpaceNames[] = { "sRGB", "Linear" };
+
 	static_assert(_countof(kFacingNames) == size_t(SpriteFacingMode::Count), "SpriteFacingMode 이름 표");
 	static_assert(_countof(kAlignmentNames) == size_t(SpriteAlignment::Count), "SpriteAlignment 이름 표");
 	static_assert(_countof(kTextureAlphaNames) == size_t(SpriteTextureAlpha::Count), "SpriteTextureAlpha 이름 표");
+	static_assert(_countof(kColorSpaceNames) == size_t(TextureColorSpace::Count), "TextureColorSpace 이름 표");
 
 	template<size_t N>
 	bool EnumFromName(const JsonValue* v, const char* const (&names)[N], uint32_t& out, const char* what, std::vector<std::string>& warnings)
@@ -323,6 +326,56 @@ namespace
 	}
 }
 
+EmitterAsset::EmitterAsset()
+{
+	for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
+		textures[i] = ParticleMaterial::DefaultTexture();
+	for (uint32_t i = 0; i < ParticleMaterial::kMaxParams; ++i)
+		materialParams[i] = ParticleMaterial::DefaultParam(i);
+}
+
+namespace
+{
+	bool ApplyTextures(EmitterRuntime& runtime, const EmitterAsset& asset, std::vector<std::string>* failed)
+	{
+		bool ok = true;
+		for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
+		{
+			if (runtime.SetMaterialTexture(i, asset.textures[i]))
+				continue;
+			ok = false;
+			if (failed)
+				failed->push_back(asset.textures[i].path);
+		}
+		return ok;
+	}
+	
+	void ApplyMaterialParams(EmitterRuntime& runtime, const EmitterAsset& asset)
+	{
+		for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
+			runtime.SetMaterialParam(k, asset.materialParams[k]);
+	}
+
+	void ApplyMaterialLayers(EmitterRuntime& runtime, const EmitterAsset& asset)
+	{
+		if (!runtime.SetMaterialLayers(asset.materialLayers))
+		{
+			Utility::Printf("[EmitterAsset] '%s': material layers rejected (%s) -> no effect\n", asset.name.c_str(),
+				runtime.Material().LayerError().c_str());
+
+		if (asset.hasMaterialGraph)
+		{
+			runtime.SetMaterialGraph(asset.materialGraph);
+			if (!runtime.Material().ProgramError().empty())
+				Utility::Printf("[EmitterAsset] '%s': material graph does not compile (%s) -> base color\n", asset.name.c_str(),
+					runtime.Material().ProgramError().c_str());
+		}
+		else
+			runtime.ClearMaterialGraph();
+		}
+	}
+}
+
 // ------------------------------------------------------------------ 캡처 / 적용
 
 EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::string& name)
@@ -333,16 +386,26 @@ EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::strin
 	a.backend = runtime.Backend();
 	a.modules = runtime.Modules();
 	a.sprite = runtime.SpriteBindings();
-	a.texture = runtime.SpriteTexture();
+
+	for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
+		a.textures[i] = runtime.Material().SlotTexture(i);
+	for (uint32_t i = 0; i < ParticleMaterial::kMaxParams; ++i)
+		a.materialParams[i] = runtime.Material().Param(i);
+	a.materialLayers = runtime.Material().Layers();
+	a.hasMaterialGraph = runtime.Material().HasCustomGraph();
+	if (a.hasMaterialGraph)
+		a.materialGraph = *runtime.Material().CustomGraph();
 	a.settings = runtime.GetSpriteSettings();
 	return a;
 }
 
-bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset)
+bool ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset, std::vector<std::string>* failedTextures)
 {
 	runtime.ReplaceDescription(asset.modules, asset.sprite, asset.capacity, asset.backend);
 	runtime.SetSpriteSettings(asset.settings);
-	return runtime.SetSpriteTexture(asset.texture);
+	ApplyMaterialLayers(runtime, asset);
+	ApplyMaterialParams(runtime, asset);
+	return ApplyTextures(runtime, asset, failedTextures);
 }
 
 bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& asset, uint32_t capacity)
@@ -357,14 +420,20 @@ bool InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& ass
 
 	// 둘 다 재시작이 필요 없는 값이라 시작한 뒤에 넣는다
 	runtime.SetSpriteSettings(asset.settings);
-	if (!runtime.SetSpriteTexture(asset.texture))
-		Utility::Printf("[EmitterAsset] '%s': texture '%s' could not be loaded (drawn magenta)\n", asset.name.c_str(), asset.texture.c_str());
-	return true;
+	ApplyMaterialLayers(runtime, asset);
+	ApplyMaterialParams(runtime, asset);
+
+	std::vector<std::string> failed;
+	if (!ApplyTextures(runtime, asset, &failed))
+	{
+		for (const std::string& path : failed)
+			Utility::Printf("[EmitterAsset] '%s': texture '%s' could not be loaded (drawn magenta)\n", asset.name.c_str(), path.c_str());
+	}	return true;
 }
 
 // ------------------------------------------------------------------ JSON
 
-std::string EmitterAssetToJson(const EmitterAsset& a)
+JsonValue EmitterAssetToJsonValue(const EmitterAsset& a)
 {
 	JsonValue root = JsonValue::MakeObject();
 	root.Set("format", JsonValue(kFormat));
@@ -391,7 +460,28 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
 
 	const SpriteSettings& s = a.settings;
 	JsonValue sprite = JsonValue::MakeObject();
-	sprite.Set("texture", JsonValue(a.texture));
+	JsonValue textures = JsonValue::MakeArray();
+	for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
+	{
+		JsonValue jt = JsonValue::MakeObject();
+		jt.Set("slot", JsonValue(ParticleMaterial::SlotName(i)));     // 읽을 때는 쓰지 않음 (사람이 보기 위한 것)
+		jt.Set("path", JsonValue(a.textures[i].path));
+		jt.Set("colorSpace", JsonValue(kColorSpaceNames[(std::min)(uint32_t(a.textures[i].colorSpace), uint32_t(TextureColorSpace::Count) - 1)]));
+		textures.Push(std::move(jt));
+	}
+	sprite.Set("textures", std::move(textures));
+	JsonValue params = JsonValue::MakeArray();
+	for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
+		params.Push(EncodeValue(&Types::Float4, reinterpret_cast<const uint8_t*>(&a.materialParams[k])));
+	sprite.Set("materialParams", std::move(params));
+	
+	JsonValue layers = JsonValue::MakeArray();
+	for (const ParticleMaterial::Effect effect : a.materialLayers)
+		layers.Push(JsonValue(ParticleMaterial::EffectName(effect)));
+	sprite.Set("materialLayers", std::move(layers));
+	if (a.hasMaterialGraph)
+		sprite.Set("materialGraph", MaterialGraphToJson(a.materialGraph));
+
 	sprite.Set("textureAlpha", JsonValue(kTextureAlphaNames[(std::min)(uint32_t(s.textureAlpha), uint32_t(SpriteTextureAlpha::Count) - 1)]));
 	sprite.Set("blend", JsonValue(kBlendNames[(std::min)(uint32_t(s.blend), 1u)]));
 	JsonValue grid = JsonValue::MakeArray();
@@ -418,7 +508,12 @@ std::string EmitterAssetToJson(const EmitterAsset& a)
 	sprite.Set("bindings", std::move(bindings));
 	root.Set("sprite", std::move(sprite));
 
-	return WriteJson(root);
+	return root;
+}
+
+std::string EmitterAssetToJson(const EmitterAsset& a)
+{
+	return WriteJson(EmitterAssetToJsonValue(a));
 }
 
 bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings)
@@ -426,6 +521,11 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 	JsonValue root;
 	if (!ParseJson(text, root, error))
 		return false;
+	return EmitterAssetFromJsonValue(root, out, error, warnings);
+}
+
+bool EmitterAssetFromJsonValue(const JsonValue& root, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings)
+{
 	if (!root.IsObject())
 	{
 		error = "root is not an object";
@@ -513,10 +613,92 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 	{
 		SpriteSettings& s = a.settings;
 
-		if (const JsonValue* v = sprite->Find("texture"))
-			a.texture = v->AsString();
-
 		uint32_t e = 0;
+
+		if (const JsonValue* textures = sprite->Find("textures"))
+		{
+			if (textures->IsArray())
+			{
+				if (textures->Size() > ParticleMaterial::kNumTextureSlot)
+					warnings.push_back("sprite.textures: more than " + std::to_string(ParticleMaterial::kNumTextureSlot) + " slots -> extra ignored");
+				const uint32_t n = min(uint32_t(textures->Size()), uint32_t(ParticleMaterial::kNumTextureSlot));
+				for (uint32_t i = 0; i < n; ++i)
+				{
+					const JsonValue& jt = textures->At(i);
+					MaterialTexture& t = a.textures[i];
+					if (const JsonValue* v = jt.Find("path"))
+						t.path = v->AsString();
+					if (EnumFromName(jt.Find("colorSpace"), kColorSpaceNames, e, "colorSpace", warnings))
+						t.colorSpace = TextureColorSpace(e);
+				}
+			}
+			else
+				warnings.push_back("sprite.textures: expected an array -> kept default");
+		}
+		else if (const JsonValue* v = sprite->Find("texture"))
+		{
+			a.textures[ParticleMaterial::kBaseTexture].path = v->AsString();
+			a.textures[ParticleMaterial::kBaseTexture].colorSpace = TextureColorSpace::sRGB;
+		}
+
+		if (const JsonValue* params = sprite->Find("materialParams"))
+		{
+			if (params->IsArray())
+			{
+				if (params->Size() > ParticleMaterial::kMaxParams)
+					warnings.push_back("sprite.materialParams: more than " + std::to_string(ParticleMaterial::kMaxParams) + " -> extra ignored");
+				const uint32_t n = (std::min)(uint32_t(params->Size()), uint32_t(ParticleMaterial::kMaxParams));
+				for (uint32_t k = 0; k < n; ++k)
+				{
+					if (!DecodeValue(params->At(k), &Types::Float4, reinterpret_cast<uint8_t*>(&a.materialParams[k])))
+						warnings.push_back("sprite.materialParams[" + std::to_string(k) + "]: expected [x, y, z, w] -> kept default");
+				}
+			}
+			else
+				warnings.push_back("sprite.materialParams: expected an array -> kept default");
+		}
+
+		if (const JsonValue* layers = sprite->Find("materialLayers"))
+		{
+			if (layers->IsArray())
+			{
+				std::vector<ParticleMaterial::Effect> list;
+				for (size_t i = 0; i < layers->Size(); ++i)
+				{
+					const std::string& name = layers->At(i).AsString();
+					bool found = false;
+					for (uint32_t k = 1; k < uint32_t(ParticleMaterial::Effect::Count); ++k)
+					{
+						if (name == ParticleMaterial::EffectName(ParticleMaterial::Effect(k)))
+						{
+							list.push_back(ParticleMaterial::Effect(k));
+							found = true;
+							break;
+						}
+					}
+					if (!found)
+						warnings.push_back("sprite.materialLayers[" + std::to_string(i) + "]: unknown effect '" + name + "' -> layer skipped");
+				}
+				std::string layerError;
+				if (ParticleMaterial::LayoutLayers(list, nullptr, &layerError))
+					a.materialLayers = list;
+				else
+					warnings.push_back("sprite.materialLayers: " + layerError + " -> no layers");
+			}
+			else
+				warnings.push_back("sprite.materialLayers: expected an array -> no layers");
+		}
+
+		if (const JsonValue* graph = sprite->Find("materialGraph"))
+		{
+			MaterialGraph g;
+			if (MaterialGraphFromJson(*graph, g, warnings))
+			{
+				a.hasMaterialGraph = true;
+				a.materialGraph = std::move(g);
+			}
+		}
+
 		if (EnumFromName(sprite->Find("textureAlpha"), kTextureAlphaNames, e, "textureAlpha", warnings))
 			s.textureAlpha = SpriteTextureAlpha(e);
 		if (EnumFromName(sprite->Find("blend"), kBlendNames, e, "blend", warnings))
@@ -586,7 +768,7 @@ bool EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::strin
 
 // ------------------------------------------------------------------ 파일
 
-bool SaveEmitterAsset(const std::string& path, const EmitterAsset& asset, std::string& error)
+bool WriteAssetTextFile(const std::string& path, const std::string& text, std::string& error)
 {
 	const size_t slash = path.find_last_of("/\\");
 	if (slash != std::string::npos)
@@ -600,7 +782,7 @@ bool SaveEmitterAsset(const std::string& path, const EmitterAsset& asset, std::s
 			error = "cannot open " + temp + " for writing";
 			return false;
 		}
-		file << EmitterAssetToJson(asset);
+		file << text;
 		file.flush();
 		if (!file)
 		{
@@ -618,7 +800,12 @@ bool SaveEmitterAsset(const std::string& path, const EmitterAsset& asset, std::s
 	return true;
 }
 
-bool LoadEmitterAsset(const std::string& path, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings)
+bool SaveEmitterAsset(const std::string& path, const EmitterAsset& asset, std::string& error)
+{
+	return WriteAssetTextFile(path, EmitterAssetToJson(asset), error);
+}
+
+bool ReadAssetTextFile(const std::string& path, std::string& text, std::string& error)
 {
 	std::ifstream file(path, std::ios::in | std::ios::binary);
 	if (!file)
@@ -628,9 +815,17 @@ bool LoadEmitterAsset(const std::string& path, EmitterAsset& out, std::string& e
 	}
 	std::ostringstream ss;
 	ss << file.rdbuf();
-	std::string text = ss.str();
+	text = ss.str();
 	if (text.size() >= 3 && text.compare(0, 3, "\xEF\xBB\xBF") == 0)
 		text.erase(0, 3);   // 메모장 등이 붙인 BOM
+	return true;
+}
+
+bool LoadEmitterAsset(const std::string& path, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings)
+{
+	std::string text;
+	if (!ReadAssetTextFile(path, text, error))
+		return false;
 
 	return EmitterAssetFromJson(text, out, error, warnings);
 }
@@ -659,11 +854,16 @@ bool IsValidEmitterAssetName(const std::string& name)
 
 std::vector<std::string> ListEmitterAssets()
 {
+	return ListAssetFiles(kDirectory, kExtension);
+}
+
+std::vector<std::string> ListAssetFiles(const std::string& directory, const std::string& extension)
+{
 	std::vector<std::string> names;
-	const std::string ext = kExtension;
+	const std::string ext = extension;
 
 	WIN32_FIND_DATAA fd;
-	HANDLE h = FindFirstFileA((std::string(kDirectory) + "*" + ext).c_str(), &fd);
+	HANDLE h = FindFirstFileA((directory + "*" + ext).c_str(), &fd);
 	if (h == INVALID_HANDLE_VALUE)
 		return names;
 	do

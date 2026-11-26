@@ -2,7 +2,11 @@
 #include "ModuleStackPanel.h"
 
 #include "EmitterAsset.h"
+#include "EffectSystem.h"
+#include "EmitterTestScene.h"
 #include "EmitterRuntime.h"
+#include "MaterialGraph.h"
+#include "MaterialGraphEditor.h"
 #include "ModuleLibrary.h"
 #include "UberGpuProgram.h"
 #include "imgui.h"
@@ -115,7 +119,10 @@ namespace
 			const std::string name = fd.cFileName;
 			const std::string ext = LowerExtension(name);
 			if (ext == ".dds")
-				dds.push_back(name);
+			{
+				if (!ParticleTextures::IsCacheFile(name))
+					dds.push_back(name);
+			}
 			else if (ext == ".png" || ext == ".tga" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp")
 				sources.push_back(name);
 		} while (FindNextFileA(h, &fd));
@@ -136,23 +143,99 @@ namespace
 		return sources;
 	}
 
-	void DrawTexture(EmitterRuntime& runtime)
+
+	void DrawTextureSlot(EmitterRuntime& runtime, uint32_t slot)
 	{
-		const std::string& current = runtime.SpriteTexture();
-		const std::string preview = current.empty() ? std::string("(soft circle)") : current;
+		MaterialTexture t = runtime.Material().SlotTexture(slot);
+		const char* emptyName = (slot == ParticleMaterial::kBaseTexture) ? "(soft circle)" : "(none = white)";
+		const std::string preview = t.path.empty() ? std::string(emptyName) : t.path;
+		const std::string label = std::string(ParticleMaterial::SlotName(slot)) + " Texture";
+
+		ImGui::PushID(static_cast<int>(slot));
+		bool changed = false;
 
 		ImGui::SetNextItemWidth(300.f);
-		if (ImGui::BeginCombo("Texture", preview.c_str()))
+		if (ImGui::BeginCombo(label.c_str(), preview.c_str()))
 		{
-			if (ImGui::Selectable("(soft circle)", current.empty()))
-				runtime.SetSpriteTexture(std::string());
+			if (ImGui::Selectable(emptyName, t.path.empty()))
+			{
+				t.path.clear();
+				changed = true;
+			}
 
 			// 펼칠 때마다 다시 읽는다 (파일을 추가해도 재실행 필요 없음)
 			for (const std::string& path : ListTextureFiles())
-				if (ImGui::Selectable(path.c_str(), path == current))
-					runtime.SetSpriteTexture(path);
+			{
+				if (ImGui::Selectable(path.c_str(), path == t.path))
+				{
+					t.path = path;
+					changed = true;
+				}
+			}
 			ImGui::EndCombo();
 		}
+
+		// 색 텍스처 = sRGB, 노이즈 / 마스크처럼 값으로 쓰는 텍스처 = Linear
+		ImGui::SameLine();
+		static const char* const kColorSpaces[] = { "sRGB", "Linear" };
+		int colorSpace = static_cast<int>(t.colorSpace);
+		ImGui::SetNextItemWidth(90.f);
+		if (ImGui::Combo("##ColorSpace", &colorSpace, kColorSpaces, IM_ARRAYSIZE(kColorSpaces)))
+		{
+			t.colorSpace = static_cast<TextureColorSpace>(colorSpace);
+			changed = true;
+		}
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("sRGB: color image\nLinear: data (noise, mask) - values are read as stored");
+
+		if (changed)
+			runtime.SetMaterialTexture(slot, t);
+
+		if (slot >= ParticleMaterial::kTexture0 && runtime.Material().HasCustomGraph())
+		{
+			bool sampled = false;
+			for (const MaterialNode& n : runtime.Material().CustomGraph()->nodes)
+				sampled |= (n.type == MaterialNodeType::TextureSample && n.textureSlot == slot - ParticleMaterial::kTexture0);
+			ImGui::SameLine();
+			if (!sampled)
+				ImGui::TextDisabled("(not used by graph)");
+			else if (t.path.empty())
+				ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "<- graph (empty: white)");
+			else
+				ImGui::TextDisabled("<- graph");
+		}
+		else
+
+		// 이 슬롯을 어떤 효과가 쓰는가?
+		if (slot >= ParticleMaterial::kTexture0)
+		{
+			const uint32_t effectSlot = slot - ParticleMaterial::kTexture0;
+			const ParticleMaterial::LayerLayout* owner = nullptr;
+			for (const ParticleMaterial::LayerLayout& l : runtime.Material().LayerLayouts())
+			{
+				if (effectSlot >= l.textureBase && effectSlot < l.textureBase + l.textureCount)
+					owner = &l;
+			}
+			ImGui::SameLine();
+			if (owner == nullptr)
+				ImGui::TextDisabled("(no layer)");
+			else
+			{
+				const char* use = ParticleMaterial::EffectTextureName(owner->effect, effectSlot - owner->textureBase);
+				if (t.path.empty())		// 비어 있으면 흰색이라 그 층 효과가 티 없이 사라진다
+					ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "<- %s %s (empty: white)", ParticleMaterial::EffectName(owner->effect), use ? use : "");
+				else
+					ImGui::TextDisabled("<- %s %s", ParticleMaterial::EffectName(owner->effect), use ? use : "");
+			}
+		}
+
+		ImGui::PopID();
+	}
+
+	void DrawTexture(EmitterRuntime& runtime)
+	{
+		for (uint32_t slot = 0; slot < ParticleMaterial::kNumTextureSlot; ++slot)
+			DrawTextureSlot(runtime, slot);
 	}
 
 	// ---- SubUV / 블렌드 ----
@@ -280,6 +363,282 @@ namespace
 			runtime.SetSpriteSettings(s);
 	}
 
+	std::string LayerParamName(const char* name, uint32_t textureBase)
+	{
+		if (!name)
+			return std::string();
+		std::string out;
+		for (const char* c = name; *c; ++c)
+		{
+			if (c[0] == 'T' && c[1] == 'e' && c[2] == 'x' && c[3] >= '0' && c[3] <= '9')
+			{
+				out += "Tex" + std::to_string(textureBase + uint32_t(c[3] - '0'));
+				c += 3;
+				continue;
+			}
+			out += *c;
+		}
+
+		return out;
+	}
+
+	bool DrawMaterialParam(EmitterRuntime& runtime, uint32_t k, const std::string& name)
+	{
+		float4 v = runtime.Material().Param(k);
+		char label[96];
+		if (!name.empty())
+			snprintf(label, sizeof(label), "[%u] %s", k, name.c_str());
+		else
+			snprintf(label, sizeof(label), "[%u] Param", k);
+
+		ImGui::SetNextItemWidth(300.f);
+		if (!ImGui::DragFloat4(label, &v.x, 0.01f))
+			return false;
+		runtime.SetMaterialParam(k, v);
+		return true;
+	}
+
+	bool s_ShowGraphEditor = false;
+
+	void DrawMaterialGraphWindow(EmitterRuntime& runtime)
+	{
+		ImGui::SetNextWindowSize(ImVec2(960.f, 560.f), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Material Graph", &s_ShowGraphEditor))
+		{
+			ImGui::End();
+			return;
+		}
+
+		const ParticleMaterial& material = runtime.Material();
+		const bool editable = material.HasCustomGraph();
+		MaterialGraph graph = material.CurrentGraph();
+
+		if (editable)
+		{
+			if (ImGui::Button("Auto layout"))
+			{
+				LayoutMaterialGraph(graph);
+				runtime.SetMaterialGraphLayout(graph);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Back to layers"))
+			{
+				runtime.ClearMaterialGraph();
+				ImGui::End();
+				return;
+			}
+		}
+		else if (ImGui::Button("Edit as graph"))
+		{
+			runtime.SetMaterialGraph(material.LayersAsGraph());
+			ImGui::End();
+			return;
+		}
+		ImGui::SameLine();
+		const std::string& error = material.ProgramError();
+		if (!error.empty())
+			ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "drawing with the last good program");
+
+		const MaterialCompileResult compiled = CompileMaterialGraph(graph);
+		const std::string editorId = std::string(editable ? "edit#" : "view#") + std::to_string(reinterpret_cast<uintptr_t>(&runtime));
+		const uint32_t change = MaterialGraphEditor::Draw(editorId.c_str(), graph, compiled, editable);
+		if (editable && (change & MaterialGraphEditor::kGraph))
+			runtime.SetMaterialGraph(graph);
+		else if (editable && (change & MaterialGraphEditor::kLayout))
+			runtime.SetMaterialGraphLayout(graph);
+
+		ImGui::End();
+	}
+
+	void DrawMaterialParams(EmitterRuntime& runtime)
+	{
+		if (!ImGui::TreeNode("Material Params"))
+			return;
+
+		{
+			using Effect = ParticleMaterial::Effect;
+			const uint32_t numEffects = uint32_t(Effect::Count) - 1;		// None 은 층으로 넣지 않는다 (층 없음 = None)
+			const char* names[uint32_t(Effect::Count) - 1];
+			for (uint32_t i = 0; i < numEffects; ++i)
+				names[i] = ParticleMaterial::EffectName(Effect(i + 1));
+
+			const ParticleMaterial& material = runtime.Material();
+
+			ImGui::Checkbox("Graph Editor", &s_ShowGraphEditor);
+			ImGui::SameLine();
+			if (material.HasCustomGraph())
+			{
+				if (ImGui::Button("Back to layers"))
+					runtime.ClearMaterialGraph();
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("Discard the custom graph and draw with the effect layers again.\nParam slots reset to the layer defaults.");
+				ImGui::SameLine();
+				ImGui::TextDisabled("(custom graph)");
+			}
+			else if (ImGui::Button("Edit as graph"))
+			{
+				runtime.SetMaterialGraph(material.LayersAsGraph());
+				s_ShowGraphEditor = true;
+			}
+
+			if (!material.HasCustomGraph())
+			{
+				ImGui::Text("Effect Layers (%u / %u)", uint32_t(material.Layers().size()), ParticleMaterial::kMaxLayers);
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("Applied top to bottom: each layer's result is the next layer's base color.\n"
+						"Coverage (shape alpha) is always the original sprite shape.\n"
+						"Pattern: color x Tex.r / Tint: color x Tex.rgb / Dissolve: Tex = mask, progress = ParticleParam0\n"
+						"Distortion: first layer only (re-reads the base texture), later layers read the shifted UV / Glow: Tex x Tex -> add color\n"
+						"Limits: 4 layers, 4 effect textures, 16 param slots");
+
+			for (uint32_t i = 0; i < uint32_t(material.LayerLayouts().size()); ++i)
+			{
+				const ParticleMaterial::LayerLayout l = material.LayerLayouts()[i];	// 복사: 아래에서 층이 바뀌면 목록이 바뀐다
+				bool edited = false;
+				ImGui::PushID(static_cast<int>(i));
+				int effect = static_cast<int>(l.effect) - 1;
+				ImGui::SetNextItemWidth(120.f);
+				if (ImGui::Combo("##effect", &effect, names, static_cast<int>(numEffects)))
+				{
+					runtime.SetMaterialLayerEffect(i, Effect(effect + 1));		// 실패해도(한도) 이유는 LayerError 로 보인다
+					edited = true;
+				}
+				ImGui::SameLine();
+				if (ImGui::ArrowButton("##up", ImGuiDir_Up))
+				{
+					runtime.MoveMaterialLayer(i, -1);		// 실패해도(한도) 이유는 LayerError 로 보인다
+					edited = true;
+				}
+				ImGui::SameLine();
+				if (ImGui::ArrowButton("##down", ImGuiDir_Down))
+				{
+					runtime.MoveMaterialLayer(i, +1);		// 실패해도(한도) 이유는 LayerError 로 보인다
+					edited = true;
+				}
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Remove"))
+				{
+					runtime.RemoveMaterialLayer(i);		// 실패해도(한도) 이유는 LayerError 로 보인다
+					edited = true;
+				}
+				ImGui::SameLine();
+				if (l.textureCount == 0)
+					ImGui::TextDisabled("params [%u ~ %u]", l.paramBase, l.paramBase + l.paramCount - 1);
+				else if (l.textureCount == 1)
+					ImGui::TextDisabled("params [%u ~ %u]  Tex%u", l.paramBase, l.paramBase + l.paramCount - 1, l.textureBase);
+				else
+					ImGui::TextDisabled("params [%u ~ %u]  Tex%u, Tex%u", l.paramBase, l.paramBase + l.paramCount - 1, l.textureBase, l.textureBase + 1);
+				
+				for (uint32_t t = 0; t < l.textureCount; ++t)
+				{
+					if (!material.SlotTexture(ParticleMaterial::kTexture0 + l.textureBase + t).path.empty())
+						continue;
+					ImGui::SameLine();
+					ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Tex%u empty", l.textureBase + t);
+				}
+				
+				ImGui::PopID();
+				if (edited)
+					break;		// 목록이 바뀌었으니 이번 프레임은 여기까지
+			}
+
+			{
+				static int s_AddEffect = 0;		// 추가할 효과 (UI 상태만)
+				ImGui::SetNextItemWidth(120.f);
+				ImGui::Combo("##addEffect", &s_AddEffect, names, static_cast<int>(numEffects));
+				ImGui::SameLine();
+				if (ImGui::Button("Add Layer"))
+					runtime.AddMaterialLayer(Effect(s_AddEffect + 1));
+			}
+			if (!material.LayerError().empty())
+				ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", material.LayerError().c_str());
+			}
+
+			bool useVM = runtime.Material().UseVM();
+			if (ImGui::Checkbox("Run as VM", &useVM))
+				runtime.SetMaterialUseVM(useVM);
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("Draw the same effect with the material interpreter (MaterialVM.hlsli).\nThe image must not change when toggled.");
+			if (runtime.Material().Layers().size() > 1)
+			{
+				ImGui::SameLine();
+				ImGui::TextDisabled("(2+ layers: always VM + Graph compile)");
+			}
+
+			{
+				static const char* const kSources[] = { "Hand list", "Graph compile" };
+				int source = static_cast<int>(runtime.Material().GetProgramSource());
+				ImGui::SetNextItemWidth(160.f);
+				if (ImGui::Combo("VM Program Source", &source, kSources, IM_ARRAYSIZE(kSources)))
+					runtime.SetMaterialProgramSource(static_cast<ParticleMaterial::ProgramSource>(source));
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("Hand list: hand-written instructions\nGraph compile: built from the effect graph by CompileMaterialGraph\nThe image must not change.");
+
+				const std::string& error = runtime.Material().ProgramError();
+				if (!error.empty())
+					ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", error.c_str());
+
+				if (ImGui::TreeNode("Effect Graph"))
+				{
+					const MaterialGraph graph = runtime.Material().CurrentGraph();
+					const MaterialCompileResult compiled = CompileMaterialGraph(graph);
+					const std::string text = DumpMaterialGraph(graph, &compiled);
+					ImGui::TextUnformatted(text.c_str());
+					ImGui::TreePop();
+				}
+			}
+
+			const MaterialProgram& program = runtime.Material().Program();
+
+			uint32_t regs = 0;
+			for (const MaterialInstr& instr : program.instrs)
+				regs = (std::max)(regs, instr.dst + 1);
+			if (ImGui::TreeNode("VM Program", "VM Program (%u / %u instrs, %u / %u regs)", uint32_t(program.instrs.size()),
+				MaterialProgram::kMaxInstrs, regs, MaterialProgram::kMaxRegs))
+			{
+				const std::string text = DumpMaterialProgram(program);
+				ImGui::TextUnformatted(text.c_str());
+				ImGui::TreePop();
+			}
+		}
+
+		if (runtime.Material().HasCustomGraph())
+		{
+			ImGui::TextDisabled("Param values are edited on the Constant / UVTransform nodes (Material Graph window).");
+			ImGui::TreePop();
+			return;
+		}
+
+		const std::vector<ParticleMaterial::LayerLayout>& layouts = runtime.Material().LayerLayouts();
+		uint32_t used = 0;
+		for (const ParticleMaterial::LayerLayout& l : layouts)
+		{
+			ImGui::TextDisabled("%s", ParticleMaterial::EffectName(l.effect));
+			for (uint32_t k = 0; k < l.paramCount; ++k)
+				DrawMaterialParam(runtime, l.paramBase + k, LayerParamName(ParticleMaterial::ParamName(k, l.effect), l.textureBase));
+			used = l.paramBase + l.paramCount;
+		}
+
+		if (ImGui::TreeNode("Unused", "Unused [%u ~ %u]", used, ParticleMaterial::kMaxParams - 1))
+		{
+			for (uint32_t k = used; k < ParticleMaterial::kMaxParams; ++k)
+				DrawMaterialParam(runtime, k, std::string());
+			ImGui::TreePop();
+		}
+
+		if (ImGui::SmallButton("Reset Params"))
+		{
+			for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
+				runtime.SetMaterialParam(k, ParticleMaterial::DefaultParam(k, ParticleMaterial::Effect::None));
+			for (const ParticleMaterial::LayerLayout& l : layouts)
+			{
+				for (uint32_t k = 0; k < l.paramCount; ++k)
+					runtime.SetMaterialParam(l.paramBase + k, ParticleMaterial::DefaultParam(k, l.effect));
+			}
+		}
+		ImGui::TreePop();
+	}
+
 	// 렌더러 바인딩 (R1): 칸마다 [연결할 속성 콤보] + [기본값]
 	void DrawBindings(EmitterRuntime& runtime)
 	{
@@ -287,6 +646,7 @@ namespace
 		ImGui::SeparatorText(desc.name.c_str());
 
 		DrawTexture(runtime);
+		DrawMaterialParams(runtime);
 		DrawSpriteSettings(runtime);
 
 		for (size_t i = 0; i < desc.bindings.size(); ++i)
@@ -517,9 +877,12 @@ namespace
 			return;
 		}
 
-		const bool textureOk = ApplyEmitterAsset(runtime, asset);
-		if (!textureOk)
-			st.warnings.push_back("texture '" + asset.texture + "' could not be loaded (drawn magenta)");
+		std::vector<std::string> failedTextures;
+		if (!ApplyEmitterAsset(runtime, asset, &failedTextures))
+		{
+			for (const std::string& p : failedTextures)
+				st.warnings.push_back("texture '" + p + "' could not be loaded (drawn magenta)");
+		}
 		strncpy_s(st.name, sizeof(st.name), name.c_str(), _TRUNCATE);
 		SetAssetStatus("Loaded " + path + " (restarting emitter)", false);
 	}
@@ -683,4 +1046,255 @@ void DrawModuleStackPanel(EmitterRuntime& runtime)
 	}
 
 	DrawBindings(runtime);
+
+	if (s_ShowGraphEditor)
+		DrawMaterialGraphWindow(runtime);
+}
+
+namespace
+{
+	struct SystemPanelState
+	{
+		char                     name[65] = "NewSystem";
+		std::string              status;
+		bool                     statusIsError = false;
+		std::vector<std::string> warnings;
+		const EmitterRuntime*    owner = nullptr;
+		char                     rename[65] = "";
+		float3                   eulerDeg = { 0.f, 0.f, 0.f };
+	};
+
+	SystemPanelState& SystemState()
+	{
+		static SystemPanelState s_State;
+		return s_State;
+	}
+
+	void SetSystemStatus(const std::string& status, bool isError)
+	{
+		SystemPanelState& st = SystemState();
+		st.status = status;
+		st.statusIsError = isError;
+	}
+
+	std::vector<ModuleDesc> DefaultEmitterModules()
+	{
+		return MakePreset(EmitterPreset::Basic, 50.f);
+	}
+
+	void SaveSystem(EffectSystem& system, const std::string& name)
+	{
+		SystemPanelState& st = SystemState();
+		st.warnings.clear();
+		std::string error;
+		const std::string path = SystemAssetPath(name);
+		if (SaveSystemAsset(path, system.Capture(name), error))
+			SetSystemStatus("Saved " + path + " (" + std::to_string(system.Count()) + " emitters)", false);
+		else
+			SetSystemStatus("Save failed: " + error, true);
+	}
+
+	void LoadSystem(EffectSystem& system, int& selected, const std::string& name)
+	{
+		SystemPanelState& st = SystemState();
+		st.warnings.clear();
+		SystemAsset asset;
+		std::string error;
+		if (!LoadSystemAsset(SystemAssetPath(name), asset, error, st.warnings))
+		{
+			SetSystemStatus("Load failed: " + error, true);
+			return;
+		}
+		std::vector<std::string> failures;
+		system.Load(asset, &failures);
+		for (const std::string& f : failures)
+			st.warnings.push_back(f);
+		selected = system.Count() > 0 ? 0 : -1;
+		snprintf(st.name, sizeof(st.name), "%s", name.c_str());
+		SetSystemStatus("Loaded " + name + " (" + std::to_string(system.Count()) + " emitters)", false);
+	}
+}
+
+void DrawSystemPanel(EffectSystem& system, int& selected)
+{
+	SystemPanelState& st = SystemState();
+	ImGui::SeparatorText("Effect System");
+
+	ImGui::SetNextItemWidth(200.f);
+	ImGui::InputText("##systemName", st.name, sizeof(st.name));
+	const std::string name = st.name;
+	ImGui::SameLine();
+	if (ImGui::Button("Save##system"))
+	{
+		if (!IsValidEmitterAssetName(name))
+			SetSystemStatus("Invalid name (use A-Z a-z 0-9 _ - .)", true);
+		else if (GetFileAttributesA(SystemAssetPath(name).c_str()) != INVALID_FILE_ATTRIBUTES)
+			ImGui::OpenPopup("Overwrite system?");
+		else
+			SaveSystem(system, name);
+	}
+	if (ImGui::BeginPopupModal("Overwrite system?", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+	{
+		ImGui::Text("%s already exists. Overwrite?", SystemAssetPath(name).c_str());
+		if (ImGui::Button("Overwrite"))
+		{
+			SaveSystem(system, name);
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel"))
+			ImGui::CloseCurrentPopup();
+		ImGui::EndPopup();
+	}
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(160.f);
+	if (ImGui::BeginCombo("##loadSystem", "Load..."))
+	{
+		const std::vector<std::string> systems = ListSystemAssets();
+		if (systems.empty())
+			ImGui::TextDisabled("(no files in %s)", SystemAssetDirectory());
+		for (const std::string& s : systems)
+			if (ImGui::Selectable(s.c_str()))
+				LoadSystem(system, selected, s);
+		ImGui::EndCombo();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("New##system"))
+	{
+		system.Clear();
+		selected = system.AddEmitter("Emitter", DefaultEmitterModules(), 10'000, EmitterBackend::Gpu);
+		snprintf(st.name, sizeof(st.name), "NewSystem");
+		SetSystemStatus("New system", false);
+	}
+
+	if (!st.status.empty())
+	{
+		const ImVec4 color = st.statusIsError ? ImVec4(1.f, 0.3f, 0.3f, 1.f) : ImVec4(0.5f, 1.f, 0.5f, 1.f);
+		ImGui::TextColored(color, "%s", st.status.c_str());
+	}
+	for (const std::string& w : st.warnings)
+		ImGui::TextColored(ImVec4(1.f, 0.7f, 0.2f, 1.f), "%s", w.c_str());
+
+	ImGui::Text("Alive : %u / %u  (%u emitters)", system.AliveTotal(), system.CapacityTotal(), uint32_t(system.Count()));
+	if (system.Count() > 1)
+	{
+		bool sortTogether = system.GlobalSort();
+		if (ImGui::Checkbox("Sort emitters together", &sortTogether))
+			system.SetGlobalSort(sortTogether);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("On: all emitters' particles are depth-sorted in one list and drawn in one draw call\n(smoke in front of fire stays correct between emitters).\nOff: each emitter sorts and draws on its own, in list order.");
+	}
+
+	int moveIndex = -1, moveDirection = 0, removeIndex = -1, duplicateIndex = -1;
+	for (size_t i = 0; i < system.Count(); ++i)
+	{
+		EffectSystem::Emitter& e = system.At(i);
+		ImGui::PushID(static_cast<int>(i));
+		ImGui::Checkbox("##enabled", &e.enabled);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("Off: this emitter stops (no simulation, not drawn)");
+		ImGui::SameLine();
+		if (ImGui::Selectable(e.name.c_str(), selected == static_cast<int>(i), 0, ImVec2(160.f, 0.f)))
+			selected = static_cast<int>(i);
+		ImGui::SameLine();
+		ImGui::BeginDisabled(i == 0);
+		if (ImGui::ArrowButton("##up", ImGuiDir_Up)) { moveIndex = static_cast<int>(i); moveDirection = -1; }
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		ImGui::BeginDisabled(i + 1 == system.Count());
+		if (ImGui::ArrowButton("##down", ImGuiDir_Down)) { moveIndex = static_cast<int>(i); moveDirection = 1; }
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Dup"))
+			duplicateIndex = static_cast<int>(i);
+		ImGui::SameLine();
+		if (ImGui::SmallButton("X"))
+			removeIndex = static_cast<int>(i);
+		ImGui::PopID();
+	}
+
+	if (duplicateIndex >= 0)
+	{
+		const int added = system.DuplicateEmitter(static_cast<size_t>(duplicateIndex));
+		if (added >= 0)
+			selected = added;
+		else
+			SetSystemStatus(system.LastError(), true);
+	}
+	else if (moveIndex >= 0)
+	{
+		system.MoveEmitter(static_cast<size_t>(moveIndex), moveDirection);
+		if (selected == moveIndex)
+			selected += moveDirection;
+		else if (selected == moveIndex + moveDirection)
+			selected -= moveDirection;
+	}
+	else if (removeIndex >= 0)
+	{
+		system.RemoveEmitter(static_cast<size_t>(removeIndex));
+		if (selected >= static_cast<int>(system.Count()))
+			selected = static_cast<int>(system.Count()) - 1;
+	}
+
+	if (ImGui::Button("Add emitter"))
+	{
+		const int added = system.AddEmitter("Emitter " + std::to_string(system.Count()), DefaultEmitterModules(), 10'000, EmitterBackend::Gpu);
+		if (added >= 0)
+			selected = added;
+		else
+			SetSystemStatus(system.LastError(), true);
+	}
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(200.f);
+	if (ImGui::BeginCombo("##addFromAsset", "Add from emitter asset..."))
+	{
+		const std::vector<std::string> assets = ListEmitterAssets();
+		if (assets.empty())
+			ImGui::TextDisabled("(no files in %s)", EmitterAssetDirectory());
+		for (const std::string& asset : assets)
+		{
+			if (!ImGui::Selectable(asset.c_str()))
+				continue;
+			EmitterAsset a;
+			std::string error;
+			st.warnings.clear();
+			if (!LoadEmitterAsset(EmitterAssetPath(asset), a, error, st.warnings))
+			{
+				SetSystemStatus("Load failed: " + error, true);
+				continue;
+			}
+			const int added = system.AddEmitter(asset, a);
+			if (added >= 0)
+			{
+				selected = added;
+				SetSystemStatus("Added " + asset, false);
+			}
+			else
+				SetSystemStatus(system.LastError(), true);
+		}
+		ImGui::EndCombo();
+	}
+
+	if (selected < 0 || selected >= static_cast<int>(system.Count()))
+	{
+		selected = system.Count() > 0 ? 0 : -1;
+		return;
+	}
+	EffectSystem::Emitter& e = system.At(static_cast<size_t>(selected));
+	if (st.owner != e.runtime.get())
+	{
+		st.owner = e.runtime.get();
+		snprintf(st.rename, sizeof(st.rename), "%s", e.name.c_str());
+		st.eulerDeg = EulerDegreesFromQuat(e.local.rotation);
+	}
+	ImGui::SetNextItemWidth(200.f);
+	if (ImGui::InputText("Name", st.rename, sizeof(st.rename)))
+		e.name = st.rename;
+	ImGui::SetNextItemWidth(240.f);
+	ImGui::DragFloat3("Position in system (m)", &e.local.position.x, 0.01f);
+	ImGui::SetNextItemWidth(240.f);
+	if (ImGui::DragFloat3("Rotation (pitch, yaw, roll deg)", &st.eulerDeg.x, 0.5f))
+		e.local.rotation = QuatFromEulerDegrees(st.eulerDeg);
+	ImGui::SetNextItemWidth(240.f);
+	ImGui::DragFloat3("Scale in system", &e.local.scale.x, 0.01f, 0.01f, 100.f);
 }

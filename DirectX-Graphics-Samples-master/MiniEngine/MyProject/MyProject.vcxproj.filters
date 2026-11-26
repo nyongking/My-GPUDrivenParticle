@@ -159,6 +159,18 @@
     <ClCompile Include="ParticleMaterial.cpp">
       <Filter>Particle\Material</Filter>
     </ClCompile>
+    <ClCompile Include="MaterialGraph.cpp">
+      <Filter>Particle\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="MaterialGraphEditor.cpp">
+      <Filter>Particle\Material</Filter>
+    </ClCompile>
+    <ClCompile Include="EffectSystem.cpp">
+      <Filter>Particle\Emitter</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ThirdParty\imnodes\imnodes.cpp">
+      <Filter>Particle\Material</Filter>
+    </ClCompile>
     <ClCompile Include="GlobalData.cpp">
       <Filter>Global</Filter>
     </ClCompile>
@@ -276,6 +288,21 @@
     <ClInclude Include="ParticleMaterial.h">
       <Filter>Particle\Material</Filter>
     </ClInclude>
+    <ClInclude Include="MaterialGraph.h">
+      <Filter>Particle\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="MaterialGraphEditor.h">
+      <Filter>Particle\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="EffectSystem.h">
+      <Filter>Particle\Emitter</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ThirdParty\imnodes\imnodes.h">
+      <Filter>Particle\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ThirdParty\imnodes\imnodes_internal.h">
+      <Filter>Particle\Material</Filter>
+    </ClInclude>
     <ClInclude Include="GlobalData.h">
       <Filter>Global</Filter>
     </ClInclude>
@@ -327,6 +354,12 @@
       <Filter>Shaders\Particle</Filter>
     </None>
     <None Include="Shaders\SpriteAlpha.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\MaterialVM.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\MaterialVMDefs.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
   </ItemGroup>

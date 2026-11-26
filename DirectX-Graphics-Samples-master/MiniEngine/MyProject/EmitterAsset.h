@@ -10,6 +10,7 @@
 //   파일 : Assets/Emitters/<이름>.emitter.json (UTF-8)
 
 #include "EmitterRuntime.h"
+#include "MaterialGraph.h"
 
 #include <cstdint>
 #include <string>
@@ -24,14 +25,22 @@ struct EmitterAsset
 	EmitterBackend          backend = EmitterBackend::Gpu;
 	std::vector<ModuleDesc> modules;                         // 실행 순서 그대로
 	RendererDesc            sprite = SpriteRenderer::Desc(); // 바인딩 (칸 순서 = Desc())
-	std::string             texture;                         // 빈 문자열 = 기본 원형
+	
+	MaterialTexture			textures[ParticleMaterial::kNumTextureSlot];
+	float4					materialParams[ParticleMaterial::kMaxParams];	// PS Param(k). 파일에 없으면 DefaultParam
+	std::vector<ParticleMaterial::Effect>	materialLayers;
+	bool									hasMaterialGraph = false;
+	MaterialGraph							materialGraph;
+
 	SpriteSettings          settings;
+
+	EmitterAsset();
 };
 
 // 지금 편집 중인 상태를 에셋으로 (UI 가 보고 있는 값 = 다음 ApplyPending 에서 적용될 값)
 EmitterAsset CaptureEmitterAsset(const EmitterRuntime& runtime, const std::string& name);
-// 재시작 요청 + 텍스처 / 스프라이트 설정 바로 반영. 텍스처를 못 읽으면 false (magenta 로 그려짐)
-bool         ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset);
+
+bool         ApplyEmitterAsset(EmitterRuntime& runtime, const EmitterAsset& asset, std::vector<std::string>* failedTextures);
 // 아직 시작하지 않은 런타임을 에셋으로 시작 (재시작 없이 한 번에). capacity == 0 이면 에셋 값
 //   실패하면 false (runtime.LastError()). 텍스처를 못 읽는 것은 출력 창 경고만 (magenta 로 그려짐)
 bool         InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAsset& asset, uint32_t capacity);
@@ -39,6 +48,8 @@ bool         InitializeEmitterFromAsset(EmitterRuntime& runtime, const EmitterAs
 // 문자열 단위. 실패(파일 형식 / 모르는 모듈)면 out 은 그대로, 고칠 수 있는 문제는 warnings 에 남기고 계속
 std::string EmitterAssetToJson(const EmitterAsset& asset);
 bool        EmitterAssetFromJson(const std::string& text, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings);
+JsonValue   EmitterAssetToJsonValue(const EmitterAsset& asset);
+bool        EmitterAssetFromJsonValue(const JsonValue& json, EmitterAsset& out, std::string& error, std::vector<std::string>& warnings);
 
 // 파일 단위. 저장은 임시 파일에 쓴 뒤 교체한다 (쓰다가 실패해도 기존 파일이 남음)
 bool SaveEmitterAsset(const std::string& path, const EmitterAsset& asset, std::string& error);
@@ -49,3 +60,7 @@ const char*              EmitterAssetExtension();          // ".emitter.json"
 std::string              EmitterAssetPath(const std::string& name);
 bool                     IsValidEmitterAssetName(const std::string& name);   // 영문 / 숫자 / _ - . 만
 std::vector<std::string> ListEmitterAssets();              // 폴더 안의 에셋 이름 (확장자 제외, 정렬)
+
+bool                     WriteAssetTextFile(const std::string& path, const std::string& text, std::string& error);
+bool                     ReadAssetTextFile(const std::string& path, std::string& text, std::string& error);
+std::vector<std::string> ListAssetFiles(const std::string& directory, const std::string& extension);

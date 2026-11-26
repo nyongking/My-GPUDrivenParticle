@@ -46,7 +46,12 @@ cbuffer SpriteConstants : register(b0)
     float VelocityStretch; // 284
     float BlendNear; // 288
     float BlendFar; // 292
-    float2 _Pad; // 296
+    
+    uint ParticleParam0Offset; // 296
+    uint ParticleParam1Offset; // 300
+    float2 DefaultParticleParams; // 304
+    float2 _Pad; // 312
+    // 320
 };
 
 ByteAddressBuffer ParticleData : register(t0);
@@ -60,6 +65,7 @@ struct VSOutput
     float4 uv : TEXCOORD0; // xy = 현재 프레임 uv, zw = 다음 프레임 uv
     float2 quadUV : TEXCOORD1;
     nointerpolation float blend : TEXCOORD2; // 다음 프레임 비율 (0 = 현재 프레임만)
+    nointerpolation float2 params : TEXCOORD3;
 };
 
 static const float2 kCorners[6] =
@@ -139,5 +145,7 @@ VSOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
     const uint frame1 = (frame0 + 1) % total;
     output.uv = float4(SubImageUV(frame0, uv), SubImageUV(frame1, uv));
     output.blend = SubUVBlend ? frac(index) : 0.f;
+    output.params = float2(ReadF1(ParticleParam0Offset, idx, DefaultParticleParams.x),
+                           ReadF1(ParticleParam1Offset, idx, DefaultParticleParams.y));
     return output;
 }

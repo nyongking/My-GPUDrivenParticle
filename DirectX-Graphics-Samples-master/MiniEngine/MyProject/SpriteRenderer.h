@@ -14,6 +14,7 @@ class GraphicsContext;
 class EmitterInstance;
 class GpuEmitterInstance;
 class Block;
+class ParticleMaterial;
 namespace Math { class Camera; }
 
 enum class SpriteBlendMode : uint32_t
@@ -84,6 +85,8 @@ public:
         kVelocity,          // float3 VelocityAligned 용
         kSpriteFacing,      // float3 CustomFacingVector 용 (연결이 없으면 기본값이 상수 벡터)
         kSpriteAlignment,   // float3 CustomAlignment 용
+        kParticleParam0,    // float  기본 연결 = Particles.NormalizedAge
+        kParticleParam1,    // float  기본 연결 없음 (기본값). 파티클마다 다른 값을 줄 속성을 연결
         kNumSlots
     };
 
@@ -108,8 +111,7 @@ public:
     void SetSortMode(SortMode mode) { m_SortMode = mode; }
     SortMode GetSortMode() const { return m_SortMode; }
 
-    bool SetTexture(const std::wstring& path);
-    void ReleaseTextures();
+    void SetMaterial(const ParticleMaterial* material) { m_Material = material; }
 
     void SetSettings(const SpriteSettings& settings);
     const SpriteSettings& Settings() const { return m_Settings; }
@@ -135,10 +137,9 @@ private:
 
     static const uint32_t kNoAttribute = 0xFFFFFFFFu;   // 셰이더의 NO_ATTRIBUTE 와 같음
 
-    D3D12_CPU_DESCRIPTOR_HANDLE TextureSRV() const;
+    D3D12_CPU_DESCRIPTOR_HANDLE TextureSRV(uint32_t slot) const;
 
-    std::map<std::wstring, TextureRef> m_Textures;
-    const TextureRef* m_Texture = nullptr;       // nullptr = 기본 원형
+    const ParticleMaterial* m_Material = nullptr;
     
 
     ByteAddressBuffer   m_ParticleBuffer;
@@ -155,6 +156,7 @@ private:
     float3              m_DefaultVelocity = { 0.f, 0.f, 0.f };
     float3              m_DefaultSpriteFacing = { 0.f, 1.f, 0.f };
     float3              m_DefaultSpriteAlignment = { 0.f, 1.f, 0.f };
+    float2              m_DefaultParticleParams = { 0.f, 0.f };
 
     SpriteSettings      m_Settings;
 

@@ -8,6 +8,7 @@
 #include "GraphicsCommon.h"
 #include "PipelineState.h"
 #include "RootSignature.h"
+#include "GlobalData.h"
 
 #include "CompiledShaders/ParticleGatherCS.h"
 #include "CompiledShaders/ParticleListVS.h"
@@ -57,31 +58,25 @@ namespace
 		float    blendNear;        // 208
 		float    blendFar;         // 212
 		uint32_t cullEnable;       // 216
-		float    _pad0;            // 220
+		uint32_t particleParam0Offset; // 220
 		float4   frustumPlanes[6]; // 224  월드 공간, 안쪽이 +
+		uint32_t particleParam1Offset;
+		float2   defaultParticleParams;
+		float    _pad1;
 	};
-	static_assert(sizeof(GatherConstants) == 320, "GatherConstants 320 B");
-	static_assert(offsetof(GatherConstants, defaultColor) == 48, "DefaultColor offset 48");
-	static_assert(offsetof(GatherConstants, camPos) == 80, "CamPos offset 80");
-	static_assert(offsetof(GatherConstants, camForward) == 96, "CamForward offset 96");
-	static_assert(offsetof(GatherConstants, camRight) == 112, "CamRight offset 112");
-	static_assert(offsetof(GatherConstants, camUp) == 128, "CamUp offset 128");
-	static_assert(offsetof(GatherConstants, defaultVelocity) == 144, "DefaultVelocity offset 144");
-	static_assert(offsetof(GatherConstants, defaultSpriteFacing) == 160, "DefaultSpriteFacing offset 160");
-	static_assert(offsetof(GatherConstants, defaultSpriteAlignment) == 176, "DefaultSpriteAlignment offset 176");
-	static_assert(offsetof(GatherConstants, pivot) == 192, "Pivot offset 192");
-	static_assert(offsetof(GatherConstants, cullEnable) == 216, "CullEnable offset 216");
-	static_assert(offsetof(GatherConstants, frustumPlanes) == 224, "FrustumPlanes offset 224");
-
+	static_assert(sizeof(GatherConstants) == 336, "GatherConstants 336 B");
+	
 	// ParticleListVS.hlsl 의 cbuffer ListDrawConstants 와 같은 배치 (빌보드 축은 Gather 가 계산)
 	struct alignas(16) DrawConstants
 	{
 		DirectX::XMFLOAT4X4 viewProj;   // 0
+		float               time;
+		float               _pad[3];
 	};
-	static_assert(sizeof(DrawConstants) == 64, "DrawConstants 64 B");
+	static_assert(sizeof(DrawConstants) == 80, "DrawConstants 80 B");
 
 	enum GatherRoot { kGatherCB, kGatherSRVs, kGatherUAVs, kNumGatherRoot };
-	enum DrawRoot { kDrawCB, kDrawSRVs, kDrawEmitters, kDrawTextures, kNumDrawRoot };
+	enum DrawRoot { kDrawCB, kDrawSRVs, kDrawEmitters, kDrawMaterialParams, kDrawInstrs, kDrawTextures, kNumDrawRoot };
 
 	const uint32_t kGatherGroupSize = 256;            // ParticleGatherCS 의 numthreads
 
@@ -109,10 +104,12 @@ namespace
 
 		// VS: b0 = DrawConstants, t0 = RenderParticles, t1 = SortList, t2 = EmitterInfo (루트 SRV)
 		// PS: t0~t15 (space1) = 텍스처 표
-		s_DrawRootSig.Reset(kNumDrawRoot, 1);
-		s_DrawRootSig[kDrawCB].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
+		s_DrawRootSig.Reset(kNumDrawRoot, 2);
+		s_DrawRootSig[kDrawCB].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_ALL);
 		s_DrawRootSig[kDrawSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 2, D3D12_SHADER_VISIBILITY_VERTEX);
-		s_DrawRootSig[kDrawEmitters].InitAsBufferSRV(2, D3D12_SHADER_VISIBILITY_VERTEX);
+		s_DrawRootSig[kDrawEmitters].InitAsBufferSRV(2, D3D12_SHADER_VISIBILITY_ALL);
+		s_DrawRootSig[kDrawMaterialParams].InitAsBufferSRV(3, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_DrawRootSig[kDrawInstrs].InitAsBufferSRV(4, D3D12_SHADER_VISIBILITY_PIXEL);
 		s_DrawRootSig[kDrawTextures].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, ParticleRenderList::kMaxTextures,
 			D3D12_SHADER_VISIBILITY_PIXEL, 1);
 
@@ -120,6 +117,7 @@ namespace
 		SamplerDesc particleSampler = SamplerLinearClampDesc;
 		particleSampler.MaxLOD = 1.f;
 		s_DrawRootSig.InitStaticSampler(0, particleSampler, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_DrawRootSig.InitStaticSampler(1, SamplerLinearWrapDesc, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		s_DrawRootSig.Finalize(L"Particle List RootSig");
 
@@ -170,6 +168,8 @@ void ParticleRenderList::Shutdown()
 	m_Active = false;
 	m_Emitters.clear();
 	m_Textures.clear();
+	m_MaterialParams.clear();
+	m_Instrs.clear();
 }
 
 void ParticleRenderList::Begin(GraphicsContext& gfx, const Math::Camera& camera)
@@ -177,6 +177,8 @@ void ParticleRenderList::Begin(GraphicsContext& gfx, const Math::Camera& camera)
 	m_Active = (m_Capacity > 0);
 	m_Emitters.clear();
 	m_Textures.clear();
+	m_MaterialParams.clear();
+	m_Instrs.clear();
 	if (!m_Active)
 		return;
 
@@ -239,6 +241,24 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	info.blendMode = src.blendMode;
 	info.textureAlpha = src.textureAlpha;
 	info.textureIndex = TextureIndex(src.texture);
+
+	info.paramBase = uint32_t(m_MaterialParams.size());
+	for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
+		m_MaterialParams.push_back(src.materialParams ? src.materialParams[k] : ParticleMaterial::DefaultParam(k));
+
+	info.instrBase = uint32_t(m_Instrs.size());
+	info.instrCount = 0;
+	info.outputReg = 0;
+	if (src.program)
+	{
+		info.instrCount = (std::min)(uint32_t(src.program->instrs.size()), uint32_t(MaterialProgram::kMaxInstrs));
+		info.outputReg = src.program->outputReg;
+		m_Instrs.insert(m_Instrs.end(), src.program->instrs.begin(), src.program->instrs.begin() + info.instrCount);
+	}
+
+	for (uint32_t k = 0; k < ParticleMaterial::kNumEffectTextures; ++k)
+		info.effectTextures[k] = TextureIndex(src.effectTextures[k].ptr != 0 ? src.effectTextures[k] : src.texture);
+
 	m_Emitters.push_back(info);
 
 	// 각 이미터의 파티클이 어떠한 데이터를 갖느냐에 대한 내용
@@ -274,6 +294,9 @@ void ParticleRenderList::Add(GraphicsContext& gfx, const Source& src)
 	gc.blendNear = src.blendNear;
 	gc.blendFar = src.blendFar;
 	gc.cullEnable = m_Culling ? 1u : 0u;
+	gc.particleParam0Offset = src.particleParam0Offset;
+	gc.particleParam1Offset = src.particleParam1Offset;
+	gc.defaultParticleParams = src.defaultParticleParams;
 	for (int k = 0; k < 6; ++k)
 		gc.frustumPlanes[k] = { m_FrustumPlanes[k].x, m_FrustumPlanes[k].y, m_FrustumPlanes[k].z, m_FrustumPlanes[k].w };
 	const float camRight[3] = { m_CamRight.x, m_CamRight.y, m_CamRight.z };
@@ -337,6 +360,7 @@ void ParticleRenderList::Render(GraphicsContext& gfx, bool sorted)
 	// 3) 그리기
 	DrawConstants dc = {};
 	dc.viewProj = m_ViewProj;
+	dc.time = sGlobal.exeTime;
 
 	gfx.SetRootSignature(s_DrawRootSig);
 	gfx.SetPipelineState(s_DrawPSO);
@@ -347,11 +371,18 @@ void ParticleRenderList::Render(GraphicsContext& gfx, bool sorted)
 	gfx.SetDynamicDescriptors(kDrawSRVs, 0, 2, srvs);
 	gfx.SetDynamicSRV(kDrawEmitters, m_Emitters.size() * sizeof(EmitterInfo), m_Emitters.data());
 
+	if (m_Instrs.empty())
+		m_Instrs.push_back(MaterialInstr{});
+	gfx.SetDynamicSRV(kDrawMaterialParams, m_MaterialParams.size() * sizeof(float4), m_MaterialParams.data());
+	gfx.SetDynamicSRV(kDrawInstrs, m_Instrs.size() * sizeof(MaterialInstr), m_Instrs.data());
+
 	// 텍스처 표: 빈 칸은 0 번으로 채운다 (테이블 전체가 유효해야 함)
 	D3D12_CPU_DESCRIPTOR_HANDLE textures[kMaxTextures];
 	for (uint32_t i = 0; i < kMaxTextures; ++i)
 		textures[i] = (i < m_Textures.size()) ? m_Textures[i] : m_Textures[0];
-	gfx.SetDynamicDescriptors(kDrawTextures, 0, kMaxTextures, textures);
+	static_assert(kMaxTextures % 16 == 0, "텍스처 표는 16 칸 단위"); // 16칸 단위를 2번으로 나누어서
+	for (uint32_t i = 0; i < kMaxTextures; i += 16)
+		gfx.SetDynamicDescriptors(kDrawTextures, i, 16, textures + i);
 
 	gfx.DrawIndirect(m_DrawArgs);
 }

@@ -1,0 +1,229 @@
+{
+  "format": "MyProject.Emitter",
+  "version": 1,
+  "name": "FireTest",
+  "capacity": 10000,
+  "backend": "Gpu",
+  "modules": [
+    {
+      "module": "SpawnRate",
+      "params": {
+        "Rate": 50
+      }
+    },
+    {
+      "module": "InitializeParticle",
+      "params": {
+        "Size": 0.24,
+        "Mass": 1,
+        "Lifetime": 1,
+        "Pos": {
+          "min": [0.3, 0.1, 0],
+          "max": [-0.3, -0.1, 0],
+          "perComponent": true
+        },
+        "Color": [1, 1, 1, 1]
+      }
+    },
+    {
+      "module": "SphereLocation",
+      "params": {
+        "Radius": 1,
+        "SurfaceOnly": true
+      }
+    },
+    {
+      "module": "ParticleState",
+      "params": {
+        "KillOnLifetime": false
+      }
+    },
+    {
+      "module": "SolveForceAndVelocity",
+      "params": {
+        "AccelLimit": 100,
+        "SpeedLimit": 10
+      }
+    },
+    {
+      "module": "AddVelocityInCone",
+      "params": {
+        "Speed": 3,
+        "ConeAngle": 30,
+        "ConeAxis": [0, 1, 0],
+        "InnerConeAngle": 0,
+        "SpeedFalloff": 0,
+        "Distribution": 1,
+        "LocalSpace": false
+      }
+    }
+  ],
+  "sprite": {
+    "textures": [
+      {
+        "slot": "Base",
+        "path": "Assets/Textures/T_FX_CMN_Dust_01.dds",
+        "colorSpace": "Linear"
+      },
+      {
+        "slot": "Tex0",
+        "path": "Assets/Textures/T_Fire_Tiled.PNG",
+        "colorSpace": "Linear"
+      },
+      {
+        "slot": "Tex1",
+        "path": "",
+        "colorSpace": "Linear"
+      },
+      {
+        "slot": "Tex2",
+        "path": "",
+        "colorSpace": "Linear"
+      },
+      {
+        "slot": "Tex3",
+        "path": "",
+        "colorSpace": "Linear"
+      }
+    ],
+    "materialParams": [
+      [1, 1, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0]
+    ],
+    "materialLayers": [
+      "Tint"
+    ],
+    "materialGraph": {
+      "output": 5,
+      "nodes": [
+        {
+          "type": "QuadUV",
+          "pos": [270, 40],
+          "inputs": []
+        },
+        {
+          "type": "UVTransform",
+          "pos": [500, 40],
+          "inputs": [
+            {
+              "node": 0
+            }
+          ],
+          "tilingOffset": [1, 1, 0, 0],
+          "scroll": [0, 0, 0, 0]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [730, 40],
+          "inputs": [
+            {
+              "node": 1
+            }
+          ],
+          "slot": 0
+        },
+        {
+          "type": "BaseColor",
+          "pos": [730, 160],
+          "inputs": []
+        },
+        {
+          "type": "Multiply",
+          "pos": [1034, 43],
+          "inputs": [
+            {
+              "node": 3
+            },
+            {
+              "node": 2
+            }
+          ]
+        },
+        {
+          "type": "Append",
+          "pos": [1290, 98],
+          "inputs": [
+            {
+              "node": 4
+            },
+            {
+              "node": 3,
+              "swizzle": "w"
+            }
+          ]
+        }
+      ]
+    },
+    "textureAlpha": "FromLuminance",
+    "blend": "Translucent",
+    "subImage": [1, 1],
+    "subUVBlend": false,
+    "facing": "FaceCameraPlane",
+    "alignment": "Unaligned",
+    "pivot": [0.5, 0.5],
+    "cameraOffset": 0,
+    "velocityStretch": 0,
+    "blendNear": 1,
+    "blendFar": 10,
+    "bindings": {
+      "Position": {
+        "attribute": "Particles.Position",
+        "default": [0, 0, 0]
+      },
+      "Color": {
+        "attribute": "Particles.Color",
+        "default": [1, 1, 1, 1]
+      },
+      "Size": {
+        "attribute": "Particles.Size",
+        "default": 0.1
+      },
+      "SubImageIndex": {
+        "attribute": "Particles.SubImageIndex",
+        "default": 0
+      },
+      "SpriteSize": {
+        "attribute": "Particles.SpriteSize",
+        "default": [0.2, 0.2]
+      },
+      "SpriteRotation": {
+        "attribute": "Particles.SpriteRotation",
+        "default": 0
+      },
+      "Velocity": {
+        "attribute": "Particles.Velocity",
+        "default": [0, 0, 0]
+      },
+      "SpriteFacing": {
+        "attribute": "Particles.SpriteFacing",
+        "default": [0, 1, 0]
+      },
+      "SpriteAlignment": {
+        "attribute": "Particles.SpriteAlignment",
+        "default": [0, 1, 0]
+      },
+      "ParticleParam0": {
+        "attribute": "Particles.NormalizedAge",
+        "default": 0
+      },
+      "ParticleParam1": {
+        "attribute": "",
+        "default": 0
+      }
+    }
+  }
+}

@@ -67,6 +67,9 @@ namespace
 
 bool EmitterRuntime::Initialize(const std::vector<ModuleDesc>& modules, uint32_t capacity, EmitterBackend backend)
 {
+	m_CpuRenderer.SetMaterial(&m_Material);
+	m_GpuRenderer.SetMaterial(&m_Material);
+
 	m_Modules = modules;
 	m_AppliedModules = modules;
 	m_Capacity = capacity;
@@ -94,8 +97,9 @@ void EmitterRuntime::Shutdown()
 {
 	Graphics::g_CommandManager.IdleGPU();     // GPU 가 버퍼를 다 쓴 뒤 지운다
 	ShutdownActive();
-	m_CpuRenderer.ReleaseTextures();
-	m_GpuRenderer.ReleaseTextures();
+
+	m_Material.ReleaseTextures();
+
 	m_ShaderCompiler.Shutdown();
 	m_Ready = false;
 }
@@ -307,16 +311,71 @@ void EmitterRuntime::SetBindingDefault(size_t bindingIndex, const std::vector<ui
 	m_GpuRenderer.SetDefaults(m_SpriteDesc);
 }
 
-bool EmitterRuntime::SetSpriteTexture(const std::string& path)
+bool EmitterRuntime::SetMaterialTexture(uint32_t slot, const MaterialTexture& texture)
 {
-	m_SpriteTexture = path;
-
-	// 텍스처는 레이아웃과 무관 -> 재시작 없이 두 렌더러에 바로 (실행 중이 아닌 쪽도 맞춰 둔다)
-	const std::wstring wpath = Utility::UTF8ToWideString(path);
-	const bool cpuOk = m_CpuRenderer.SetTexture(wpath);
-	const bool gpuOk = m_GpuRenderer.SetTexture(wpath);
-	return cpuOk && gpuOk;
+	return m_Material.SetTexture(slot, texture);
 }
+
+void EmitterRuntime::SetMaterialParam(uint32_t k, const float4& value)
+{
+	return m_Material.SetParam(k, value);
+}
+
+void EmitterRuntime::SetMaterialEffect(ParticleMaterial::Effect effect)
+{
+	m_Material.SetEffect(effect);
+}
+
+bool EmitterRuntime::AddMaterialLayer(ParticleMaterial::Effect effect)
+{
+	return m_Material.AddLayer(effect);
+}
+
+bool EmitterRuntime::RemoveMaterialLayer(uint32_t index)
+{
+	return m_Material.RemoveLayer(index);
+}
+
+bool EmitterRuntime::MoveMaterialLayer(uint32_t index, int direction)
+{
+	return m_Material.MoveLayer(index, direction);
+}
+
+bool EmitterRuntime::SetMaterialLayers(const std::vector<ParticleMaterial::Effect>& layers)
+{
+	return m_Material.SetLayers(layers);
+}
+
+bool EmitterRuntime::SetMaterialLayerEffect(uint32_t index, ParticleMaterial::Effect effect)
+{
+	return m_Material.SetLayerEffect(index, effect);
+}
+
+void EmitterRuntime::SetMaterialGraph(const MaterialGraph& graph)
+{
+	m_Material.SetCustomGraph(graph);
+}
+
+void EmitterRuntime::SetMaterialGraphLayout(const MaterialGraph& graph)
+{
+	m_Material.SetCustomGraphLayout(graph);
+}
+
+void EmitterRuntime::ClearMaterialGraph()
+{
+	m_Material.ClearCustomGraph();
+}
+
+void EmitterRuntime::SetMaterialUseVM(bool use)
+{
+	m_Material.SetUseVM(use);
+}
+
+void EmitterRuntime::SetMaterialProgramSource(ParticleMaterial::ProgramSource source)
+{
+	m_Material.SetProgramSource(source);
+}
+
 
 void EmitterRuntime::SetSpriteSettings(const SpriteSettings& settings)
 {
@@ -390,8 +449,6 @@ void EmitterRuntime::ApplyPending()
 	}
 	else
 	{
-		// 새 구성이 잘못됨: 실행 중인 이미터는 건드리지 않았으므로 UI 만 되돌린다
-		// (컴파일 오류 문구에 한글이 있어 ImGui 에서는 깨질 수 있으므로 출력 창에도 남긴다)
 		Utility::Print(m_LastError.c_str());
 		m_Modules = m_AppliedModules;
 		m_SpriteDesc = m_AppliedSpriteDesc;

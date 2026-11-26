@@ -15,6 +15,7 @@
 
 #include "GpuBuffer.h"
 #include "ModuleDesc.h"
+#include "ParticleMaterial.h"
 
 #include <cstdint>
 #include <string>
@@ -27,7 +28,7 @@ class ParticleRenderList
 {
 public:
 	static const uint32_t kNoAttribute = 0xFFFFFFFFu;
-	static const uint32_t kMaxTextures = 16;          // 한 목록에서 쓸 수 있는 서로 다른 텍스처 수 (넘으면 0 번 텍스처)
+	static const uint32_t kMaxTextures = 32;          // 한 목록에서 쓸 수 있는 서로 다른 텍스처 수 (넘으면 0 번 텍스처)
 	static const uint32_t kRenderParticleBytes = 64;  // HLSL RenderParticle 과 같음 (중심 + 색 + 빌보드 축 2개)
 
 	// 이미터 하나를 목록에 넣을 때 필요한 정보 (SpriteRenderer 가 채운다)
@@ -73,6 +74,14 @@ public:
 		uint32_t blendMode = 0;                    // 0 = Translucent, 1 = Additive (SpriteBlendMode)
 		uint32_t textureAlpha = 0;				// 0, 1, 2
 		D3D12_CPU_DESCRIPTOR_HANDLE texture = {};   // 이미터 텍스처 (기본 원형 포함)
+
+		uint32_t particleParam0Offset = kNoAttribute;
+		uint32_t particleParam1Offset = kNoAttribute;
+		float2   defaultParticleParams = { 0.f, 0.f };
+
+		const MaterialProgram* program = nullptr;
+		const float4*          materialParams = nullptr;
+		D3D12_CPU_DESCRIPTOR_HANDLE effectTextures[ParticleMaterial::kNumEffectTextures] = {};
 	};
 
 	// 모든 이미터 capacity 의 합만큼 버퍼를 잡는다. 크기가 바뀌면 GPU idle 상태에서 불러야 한다
@@ -100,9 +109,15 @@ private:
 		uint32_t blendMode;
 		uint32_t textureIndex;
 		uint32_t textureAlpha;
+		uint32_t paramBase;
+		uint32_t instrBase;
+		uint32_t instrCount;
+		uint32_t outputReg;
 		uint32_t _pad[2];
+		uint32_t effectTextures[4];
 	};
-	static_assert(sizeof(EmitterInfo) == 32, "EmitterInfo 32 B");
+	static_assert(sizeof(EmitterInfo) == 64, "EmitterInfo 64 B (HLSL ParticleListCommon.hlsli)");
+	static_assert(ParticleMaterial::kNumEffectTextures == 4, "EmitterInfo.effectTextures 는 4 칸");
 
 	uint32_t TextureIndex(D3D12_CPU_DESCRIPTOR_HANDLE srv);
 
@@ -124,5 +139,7 @@ private:
 
 	std::vector<EmitterInfo>                 m_Emitters;
 	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> m_Textures;
+	std::vector<float4>                      m_MaterialParams;
+	std::vector<MaterialInstr>               m_Instrs;
 	bool                                     m_TextureOverflowLogged = false;
 };

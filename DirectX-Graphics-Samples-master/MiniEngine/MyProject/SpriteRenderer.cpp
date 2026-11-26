@@ -4,6 +4,7 @@
 #include "EmitterInstance.h"
 #include "GpuEmitterInstance.h"
 #include "ParticleRenderList.h"
+#include "ParticleMaterial.h"
 
 #include "GraphicsCore.h"
 #include "GraphicsCommon.h"
@@ -12,8 +13,6 @@
 #include "RootSignature.h"
 #include "PipelineState.h"
 #include "Camera.h"
-#include "TextureManager.h"
-#include "TextureConvert.h"
 
 #include "TagLibrary.h"
 #include "BitonicSort.h"
@@ -76,9 +75,13 @@ namespace
 		float               velocityStretch;        // 284
 		float               blendNear;              // 288
 		float               blendFar;               // 292
-		float               _pad[2];                // 296
-	};
-	static_assert(sizeof(SpriteConstants) == 304, "HLSL cbuffer SpriteConstants(304 B)와 일치해야 함");
+		
+		uint32_t			particleParam0Offset;	// 296
+		uint32_t			particleParam1Offset;	// 300
+		float2				defaultParticleParams;	// 304
+		float2				_pad;					// 312
+	}; // 320
+	static_assert(sizeof(SpriteConstants) == 320, "HLSL cbuffer SpriteConstants(320 B)와 일치해야 함");
 	static_assert(offsetof(SpriteConstants, positionOffset) == 128, "PositionOffset offset 128");
 	static_assert(offsetof(SpriteConstants, defaultColor) == 144, "DefaultColor offset 144");
 	static_assert(offsetof(SpriteConstants, sortEnabled) == 176, "SortEnabled offset 176");
@@ -89,6 +92,8 @@ namespace
 	static_assert(offsetof(SpriteConstants, defaultSpriteAlignment) == 256, "DefaultSpriteAlignment offset 256");
 	static_assert(offsetof(SpriteConstants, pivot) == 272, "Pivot offset 272");
 	static_assert(offsetof(SpriteConstants, blendFar) == 292, "BlendFar offset 292");
+	static_assert(offsetof(SpriteConstants, particleParam0Offset) == 296, "ParticleParam0Offset offset 296");
+	static_assert(offsetof(SpriteConstants, defaultParticleParams) == 304, "DefaultParticleParams offset 304");
 
 	// GPU 정렬 키 생성 (ParticleSortKeyCS.hlsl 의 cbuffer SortKeyConstants 와 같은 배치)
 	struct SortKeyConstants
@@ -104,12 +109,31 @@ namespace
 	};
 	static_assert(sizeof(SortKeyConstants) == 48, "SortKeyConstants 48 B");
 
+	struct PSConstants
+	{
+		uint32_t blendMode;   
+		uint32_t textureAlpha;
+		float    time;        
+		uint32_t effectMode;  
+		float    cellSize[2]; 
+	};
+	static_assert(sizeof(PSConstants) == 24, "HLSL SpritePSConstants (6 x 4 B) 와 같아야 함");
+
 	enum SortKeyRootParams { kSortKeyCB, kSortKeySRVs, kSortKeyUAV, kNumSortKeyRootParams };
 	const uint32_t kSortKeyGroupSize = 256;            // ParticleSortKeyCS 의 numthreads
 	const uint32_t kDrawArgsInstanceCountOffset = 4;   // D3D12_DRAW_ARGUMENTS::InstanceCount (= alive)
 
+	struct MaterialProgramConstants
+	{
+		uint32_t      useVM;
+		uint32_t      instrCount;
+		uint32_t      outputReg;
+		uint32_t      _pad;
+	};
+	static_assert(sizeof(MaterialProgramConstants) == 16, "HLSL MaterialProgramCB");
 
-	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kNumRootParams };
+	enum RootParams { kRootCBV, kRootSRVs, kRootTexture, kRootPSConstants, kRootMaterialCB, kRootMaterialProgram, kRootMaterialInstrs, kNumRootParams };
+	alignas(16) const MaterialInstr kEmptyInstr = {};
 	static const uint32_t kNumSRVs = 2;
 
 	// 루트 시그니처 / PSO 는 모든 SpriteRenderer 가 같이 쓴다 (한 번만 만든다)
@@ -123,7 +147,6 @@ namespace
 
 	// 텍스처를 고르지 않았을 때 쓰는 기본 원형 (예전 PS 의 falloff 를 텍스처로 구운 것)
 	Texture       s_SoftCircle;
-	TextureRef		  s_TempNoise;
 
 	// 기본 텍스처 생성
 	void CreateSoftCircle()
@@ -144,12 +167,7 @@ namespace
 		}
 		s_SoftCircle.Create2D(kSize * sizeof(uint32_t), kSize, kSize, DXGI_FORMAT_R8G8B8A8_UNORM, texels.data());
 	}
-
-	void LoadTempNoise()
-	{
-		s_TempNoise = TextureManager::LoadDDSFromFile(L"Assets/Textures/T_Fire_Tiled.dds", Graphics::kWhiteOpaque2D, false);
-	}
-
+		
 	uint32_t	RoundUp4(uint32_t v) { return (v + 3u) & ~3u; } // 4단위로 끊는다.
 	float3		ToFloat3(const Math::Vector3& v) { return { float(v.GetX()), float(v.GetY()), float(v.GetZ()) }; }
 
@@ -163,14 +181,19 @@ namespace
 		s_RootSig[kRootSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, kNumSRVs, D3D12_SHADER_VISIBILITY_VERTEX);
 		
 		// 텍스처 및 샘플러 설정
-		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 2, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig[kRootTexture].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, ParticleMaterial::kNumTextureSlot, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		s_RootSig.InitStaticSampler(0, SamplerLinearClampDesc, D3D12_SHADER_VISIBILITY_PIXEL);
 		s_RootSig.InitStaticSampler(1, SamplerLinearWrapDesc, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		// Blendmode 상수버퍼 설정
-		s_RootSig[kRootPSConstants].InitAsConstants(1, 3, D3D12_SHADER_VISIBILITY_PIXEL);		
-		
+		s_RootSig[kRootPSConstants].InitAsConstants(1, sizeof(PSConstants) / 4, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		// Material Cbuffer 설정
+		s_RootSig[kRootMaterialCB].InitAsConstantBuffer(2, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig[kRootMaterialProgram].InitAsConstantBuffer(3, D3D12_SHADER_VISIBILITY_PIXEL);
+		s_RootSig[kRootMaterialInstrs].InitAsBufferSRV(7, D3D12_SHADER_VISIBILITY_PIXEL);
+
 		s_RootSig.Finalize(L"Particle Sprite RootSig");
 
 		s_PSO.SetRootSignature(s_RootSig);
@@ -198,7 +221,6 @@ namespace
 		s_SortKeyPSO.Finalize();
 
 		CreateSoftCircle();
-		LoadTempNoise();
 
 		s_PipelineReady = true;
 	}
@@ -220,7 +242,9 @@ RendererDesc SpriteRenderer::Desc()
 		MakeRenderBinding<float>("SpriteRotation",   Particles::SpriteRotation,  0.f),
 		MakeRenderBinding<float3>("Velocity",        Particles::Velocity,        float3{ 0.f, 0.f, 0.f }),
 		MakeRenderBinding<float3>("SpriteFacing",    Particles::SpriteFacing,    float3{ 0.f, 1.f, 0.f }),
-		MakeRenderBinding<float3>("SpriteAlignment", Particles::SpriteAlignment, float3{ 0.f, 1.f, 0.f })
+		MakeRenderBinding<float3>("SpriteAlignment", Particles::SpriteAlignment, float3{ 0.f, 1.f, 0.f }),
+		MakeRenderBinding<float>("ParticleParam0",   Particles::NormalizedAge,   0.f),
+		MakeRenderBinding<float>("ParticleParam1",   std::string(),              0.f)
 	};
 
 	return desc;
@@ -316,7 +340,8 @@ bool SpriteRenderer::ReadLayout(const Block& layout, uint32_t capacity, const Re
 	static const TypeInfo* kSlotTypes[kNumSlots] =
 	{
 		&Types::Float3, &Types::Float4, &Types::Float, &Types::Float,
-		&Types::Float2, &Types::Float, &Types::Float3, &Types::Float3, &Types::Float3
+		&Types::Float2, &Types::Float, &Types::Float3, &Types::Float3, &Types::Float3,
+		&Types::Float,	&Types::Float
 	};
 	if (desc.bindings.size() != kNumSlots)
 	{
@@ -380,6 +405,8 @@ void SpriteRenderer::SetDefaults(const RendererDesc& desc)
 	std::memcpy(&m_DefaultVelocity, desc.bindings[kVelocity].defaultValue.data(), sizeof(float3));
 	std::memcpy(&m_DefaultSpriteFacing, desc.bindings[kSpriteFacing].defaultValue.data(), sizeof(float3));
 	std::memcpy(&m_DefaultSpriteAlignment, desc.bindings[kSpriteAlignment].defaultValue.data(), sizeof(float3));
+	std::memcpy(&m_DefaultParticleParams.x, desc.bindings[kParticleParam0].defaultValue.data(), sizeof(float));
+	std::memcpy(&m_DefaultParticleParams.y, desc.bindings[kParticleParam1].defaultValue.data(), sizeof(float));
 }
 
 
@@ -498,7 +525,18 @@ ParticleRenderList::Source SpriteRenderer::MakeListSource() const
 	src.subUVBlend = m_Settings.subUVBlend;
 	src.blendMode = static_cast<uint32_t>(m_Settings.blend);
 	src.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
-	src.texture = TextureSRV();
+	src.texture = TextureSRV(ParticleMaterial::kBaseTexture);
+
+	src.particleParam0Offset = m_Offsets[kParticleParam0];
+	src.particleParam1Offset = m_Offsets[kParticleParam1];
+	src.defaultParticleParams = m_DefaultParticleParams;
+	if (m_Material)
+	{
+		src.program = &m_Material->Program();
+		src.materialParams = m_Material->Params();
+	}
+	for (uint32_t k = 0; k < ParticleMaterial::kNumEffectTextures; ++k)
+		src.effectTextures[k] = TextureSRV(ParticleMaterial::kTexture0 + k);
 
 	return src;
 }
@@ -550,6 +588,10 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	sc.blendNear = m_Settings.blendNear;
 	sc.blendFar = m_Settings.blendFar;
 
+	sc.particleParam0Offset = m_Offsets[kParticleParam0];
+	sc.particleParam1Offset = m_Offsets[kParticleParam1];
+	sc.defaultParticleParams = m_DefaultParticleParams;
+
 	gfx.SetRootSignature(s_RootSig);
 	gfx.SetPipelineState(s_PSO);
 	gfx.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -558,10 +600,57 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[kNumSRVs] = { particles.GetSRV(), sortedIndices.GetSRV() };
 	gfx.SetDynamicDescriptors(kRootSRVs, 0, kNumSRVs, srvs);
 
-	const D3D12_CPU_DESCRIPTOR_HANDLE texs[2] = { TextureSRV(), s_TempNoise.GetSRV() };
-	gfx.SetDynamicDescriptors(kRootTexture, 0, 2, texs);
+	D3D12_CPU_DESCRIPTOR_HANDLE texs[ParticleMaterial::kNumTextureSlot];
+	for (uint32_t i = 0; i < ParticleMaterial::kNumTextureSlot; ++i)
+		texs[i] = TextureSRV(i);
 
-	gfx.SetConstants(kRootPSConstants, static_cast<uint32_t>(m_Settings.blend), static_cast<uint32_t>(m_Settings.textureAlpha), sGlobal.exeTime);
+	gfx.SetDynamicDescriptors(kRootTexture, 0, ParticleMaterial::kNumTextureSlot, texs);
+
+	PSConstants pc = {};
+	pc.blendMode = static_cast<uint32_t>(m_Settings.blend);
+	pc.textureAlpha = static_cast<uint32_t>(m_Settings.textureAlpha);
+	pc.time = sGlobal.exeTime;
+	pc.effectMode = m_Material ? static_cast<uint32_t>(m_Material->GetEffect()) : 0u;
+	pc.cellSize[0] = 1.f / static_cast<float>(m_Settings.subImageCols);    // SetSettings 가 1 이상으로 맞춰 둔다
+	pc.cellSize[1] = 1.f / static_cast<float>(m_Settings.subImageRows);
+	gfx.SetConstantArray(kRootPSConstants, sizeof(pc) / 4, &pc);
+
+	if (m_Material)
+	{
+		gfx.SetDynamicConstantBufferView(kRootMaterialCB, sizeof(float4) * ParticleMaterial::kMaxParams, m_Material->Params());
+	}
+	else
+	{
+		float4 defaults[ParticleMaterial::kMaxParams];
+		for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
+			defaults[k] = ParticleMaterial::DefaultParam(k);
+		gfx.SetDynamicConstantBufferView(kRootMaterialCB, sizeof(defaults), defaults);
+	}
+
+	{
+		MaterialProgramConstants mp = {};
+
+		const void* instrData = &kEmptyInstr;
+		size_t      instrBytes = sizeof(MaterialInstr);
+		if (m_Material)
+		{
+			const MaterialProgram& program = m_Material->Program();
+			const uint32_t count = (std::min)(uint32_t(program.instrs.size()), uint32_t(MaterialProgram::kMaxInstrs));
+			
+			mp.useVM = m_Material->NeedsVM() ? 1u : 0u;
+			mp.instrCount = count;
+			mp.outputReg = program.outputReg;
+
+			if (count > 0)
+			{
+				instrData = program.instrs.data();
+				instrBytes = sizeof(MaterialInstr) * count;
+			}
+		}
+		gfx.SetDynamicConstantBufferView(kRootMaterialProgram, sizeof(mp), &mp);
+		gfx.SetDynamicSRV(kRootMaterialInstrs, instrBytes, instrData);
+	}
+
 }
 
 void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camera& camera, const EmitterInstance& emitter)
@@ -581,39 +670,6 @@ void SpriteRenderer::UploadSortedIndices(GraphicsContext& gfx, const Math::Camer
 	gfx.TransitionResource(m_SortedIndexBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
 }
 
-bool SpriteRenderer::SetTexture(const std::wstring& path)
-{
-	m_Texture = nullptr;
-	if (path.empty())
-		return true;    // 기본 원형
-
-	auto it = m_Textures.find(path);
-	if (it == m_Textures.end())
-	{
-		// PNG 등은 처음 한 번 옆에 DDS 로 변환해 둔다 (원본이 더 새로우면 다시 변환)
-		// 색 텍스처라 sRGB, 파티클은 알파가 중요하므로 4채널 유지
-		CompileTextureOnDemand(path, TextureOptions(true, true));
-		const std::wstring ddsPath = Utility::RemoveExtension(path) + L".dds";
-
-		// 실패해도 magenta 로 그려져서 바로 눈에 띈다
-		it = m_Textures.emplace(path, TextureManager::LoadDDSFromFile(ddsPath, Graphics::kMagenta2D, true)).first;
-	}
-
-	m_Texture = &it->second;
-	if (!m_Texture->IsValid())
-	{
-		Utility::Printf(L"[SpriteRenderer] Texture load failed : %ws\n", path.c_str());
-		return false;
-	}
-	return true;
-}
-
-void SpriteRenderer::ReleaseTextures()
-{
-	// 프레임이 아직 쓰고 있을 수 있으므로 GPU idle 뒤에만 부른다
-	m_Texture = nullptr;
-	m_Textures.clear();
-}
 
 void SpriteRenderer::SetSettings(const SpriteSettings& settings)
 {
@@ -623,7 +679,12 @@ void SpriteRenderer::SetSettings(const SpriteSettings& settings)
 	m_Settings.subImageRows = max(m_Settings.subImageRows, 1u);
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE SpriteRenderer::TextureSRV() const
+D3D12_CPU_DESCRIPTOR_HANDLE SpriteRenderer::TextureSRV(uint32_t slot) const
 {
-	return m_Texture ? m_Texture->GetSRV() : s_SoftCircle.GetSRV();
+	const D3D12_CPU_DESCRIPTOR_HANDLE srv = m_Material ? m_Material->TextureSRV(slot) : D3D12_CPU_DESCRIPTOR_HANDLE{ 0 };
+	if (srv.ptr != 0)
+		return srv;
+	
+	return (slot == ParticleMaterial::kBaseTexture) ?
+		s_SoftCircle.GetSRV() : Graphics::GetDefaultTexture(Graphics::kWhiteOpaque2D);
 }
