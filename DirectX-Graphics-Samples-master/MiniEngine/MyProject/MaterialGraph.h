@@ -52,6 +52,14 @@ struct MaterialGraph
 	int                       output = -1;
 };
 
+// 명령어 하나의 타입 정보 (Generated 방식만 쓴다. VM 은 전부 float4 로 계산)
+//   width 1 ~ 4 = float / float2 / float3 / float4
+struct MaterialSsaInfo
+{
+	uint8_t width = 4;					// 결과의 성분 수
+	uint8_t inWidth[3] = { 4, 4, 4 };	// 입력마다 읽는 성분 수 (그 입력 swizzle 의 앞 N 개)
+};
+
 struct MaterialCompileResult
 {
 	bool                ok = false;
@@ -62,6 +70,17 @@ struct MaterialCompileResult
 	std::vector<uint32_t>    nodeWidth;
 	std::vector<std::string> notes;
 	uint32_t			regCount = 0; // 실제로 사용한 Reg 칸 수
+
+	// ---- Generated 방식(MaterialShaderGenerator)용: 칸 배정 전의 명령어 목록 ----
+	//   ssa[k].dst == k, srcA/B/C = 앞선 명령어 번호. 값 하나 = 변수 하나라 Reg 8 칸 제한이 없다
+	//   ok 가 false 여도 ssaOk 가 true 일 수 있다 (VM 의 Reg 칸 수만 넘은 경우)
+	bool                       ssaOk = false;
+	std::vector<MaterialInstr> ssa;
+	std::vector<uint32_t>      ssaInputs;	// 명령어가 실제로 읽는 입력 수 (0 ~ 3)
+	std::vector<MaterialSsaInfo> ssaInfo;	// ssa 와 같은 길이: 결과 / 입력의 성분 수
+	std::vector<int>           ssaAuto;		// >= 0 이면 빈 핀 기본값 (autoValues 번호). 셰이더에 숫자로 직접 쓴다
+	std::vector<float4>        autoValues;
+	int                        ssaOutput = -1;	// 출력 명령어 번호. -1 = 출력 없음 (base color)
 };
 
 MaterialCompileResult CompileMaterialGraph(const MaterialGraph& graph);

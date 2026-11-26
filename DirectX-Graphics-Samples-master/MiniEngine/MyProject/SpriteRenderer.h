@@ -15,6 +15,7 @@ class EmitterInstance;
 class GpuEmitterInstance;
 class Block;
 class ParticleMaterial;
+class GraphicsPSO;
 namespace Math { class Camera; }
 
 enum class SpriteBlendMode : uint32_t
@@ -113,6 +114,12 @@ public:
 
     void SetMaterial(const ParticleMaterial* material) { m_Material = material; }
 
+    // Generated 방식: 그래프마다 만든 픽셀 셰이더의 PSO 로 그린다 (nullptr = 기본 PSO, EffectMode 분기 / VM)
+    //   포인터가 가리키는 PSO 는 MaterialGpuProgram 이 갖고 있다. 공용 렌더 목록에는 영향이 없다
+    void SetMaterialPSO(const GraphicsPSO* pso) { m_MaterialPSO = pso; }
+    // 기본 PSO 와 같은 설정에 픽셀 셰이더만 바꾼 PSO 를 만든다. ps 는 PSO 를 쓰는 동안 살아 있어야 한다
+    static void CreateMaterialPSO(GraphicsPSO& pso, const void* ps, size_t size);
+
     void SetSettings(const SpriteSettings& settings);
     const SpriteSettings& Settings() const { return m_Settings; }
 
@@ -140,6 +147,7 @@ private:
     D3D12_CPU_DESCRIPTOR_HANDLE TextureSRV(uint32_t slot) const;
 
     const ParticleMaterial* m_Material = nullptr;
+    const GraphicsPSO*      m_MaterialPSO = nullptr;
     
 
     ByteAddressBuffer   m_ParticleBuffer;

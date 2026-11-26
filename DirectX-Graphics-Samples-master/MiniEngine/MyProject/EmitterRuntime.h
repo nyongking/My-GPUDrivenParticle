@@ -3,6 +3,7 @@
 #include "CompiledEmitter.h"
 #include "EmitterInstance.h"
 #include "EmitterGpuProgram.h"
+#include "MaterialGpuProgram.h"
 #include "GpuEmitterInstance.h"
 #include "ShaderCompiler.h"
 #include "SpriteRenderer.h"
@@ -103,6 +104,11 @@ public:
 	const UberEmitterData& Uber() const { return m_Uber; }
 	bool			HasGeneratedProgram() const { return m_GpuProgram != nullptr; }
 
+	// Generated 방식 머티리얼 (그래프마다 만든 픽셀 셰이더). 없으면 기본 PS (EffectMode 분기 / VM) 로 그린다
+	bool			HasGeneratedMaterial() const { return m_MaterialProgram != nullptr; }
+	const std::string& GeneratedMaterialSource() const;
+	const std::string& GeneratedMaterialError() const { return m_MaterialProgramError; }
+
 	static void     SetProgramCacheEnabled(bool enabled);
 	static bool     ProgramCacheEnabled();
 	static uint32_t ProgramCacheHits();
@@ -122,7 +128,9 @@ private:
 	bool NeedGeneratedProgram(const UberEmitterData& uber) const;
 	void EnsureUberProgram();
 	void SyncProgramWithMode();
-
+	// 머티리얼 그래프가 바뀌었으면 (또는 모드가 바뀌었으면) 생성된 픽셀 셰이더를 맞춘다
+	void SyncMaterialProgram();
+	void SetMaterialProgram(std::shared_ptr<MaterialGpuProgram> program);
 
 	std::vector<ModuleDesc> m_Modules;          // 원본. UI 가 직접 편집
 	std::vector<ModuleDesc> m_AppliedModules;   // 마지막으로 적용에 성공한 스택 (실패 시 복구)
@@ -147,4 +155,9 @@ private:
 	std::shared_ptr<EmitterGpuProgram>  m_GpuProgram;
 	GpuEmitterInstance                  m_Gpu;
 	SpriteRenderer                      m_GpuRenderer;
+
+	std::shared_ptr<MaterialGpuProgram> m_MaterialProgram;              // nullptr = 기본 PS 로 그림
+	bool                                m_MaterialProgramTried = false; // 아래 revision 으로 만들어 봤는지 (실패해도 매 프레임 다시 하지 않는다)
+	uint32_t                            m_MaterialProgramRevision = 0;
+	std::string                         m_MaterialProgramError;
 };

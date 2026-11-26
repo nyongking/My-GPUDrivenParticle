@@ -181,7 +181,8 @@ void MyProject::Cleanup(void)
     // Free up resources in an orderly fashion
     m_TestScene.Shutdown();
     m_System.Shutdown();
-    CurveLibrary::Shutdown();       // 이미터가 다 내려간 뒤 (Shutdown 이 GPU 를 기다린다)
+    MaterialGpuProgram::ClearCache();
+    CurveLibrary::Shutdown();      // 이미터가 다 내려간 뒤 (Shutdown 이 GPU 를 기다린다)
     ParticleTextures::Shutdown();
 
     m_Floor.Release();
@@ -441,6 +442,21 @@ void MyProject::UpdateTestSceneImGui()
         }
         ImGui::SameLine();
         ImGui::TextDisabled("(%s)", UberGpuProgram::StatusText());
+    }
+
+    {
+        // 머티리얼(픽셀 셰이더) 방식. 공용 렌더 목록으로 그리는 이미터는 항상 Interpreted
+        int mode = int(MaterialGpuProgram::Mode());
+        ImGui::TextUnformatted("Material mode:");
+        ImGui::SameLine();
+        const bool a = ImGui::RadioButton("Generated##material", &mode, int(MaterialShaderMode::Generated));
+        ImGui::SameLine();
+        const bool b = ImGui::RadioButton("Interpreted##material", &mode, int(MaterialShaderMode::Interpreted));
+        if (a || b)
+            MaterialGpuProgram::SetMode(MaterialShaderMode(mode));
+        ImGui::SameLine();
+        const MaterialGpuProgram::Stats& ms = MaterialGpuProgram::GetStats();
+        ImGui::TextDisabled("(shaders: %u, builds: %u / %.1f ms, cache hits: %u)", ms.programs, ms.builds, ms.buildMs, ms.cacheHits);
     }
 
 

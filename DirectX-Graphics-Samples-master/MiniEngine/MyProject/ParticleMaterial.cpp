@@ -726,6 +726,7 @@ bool ParticleMaterial::ApplyLayers(const std::vector<Effect>& layers, const std:
 void ParticleMaterial::RebuildProgram()
 {
 	m_ProgramError.clear();
+	++m_GraphRevision;
 
 	if (m_CustomGraph)
 	{
@@ -734,7 +735,9 @@ void ParticleMaterial::RebuildProgram()
 		if (!custom.ok)
 		{
 			m_ProgramError = "Graph compile failed: " + custom.error;
-			return;
+			// ssaOk = VM 의 Reg 칸 수만 넘음: Generated 방식은 그릴 수 있으므로 값(params)은 맞춰 둔다
+			if (!custom.ssaOk)
+				return;
 		}
 		m_Program = custom.program;
 

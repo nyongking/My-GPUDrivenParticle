@@ -226,6 +226,16 @@ namespace
 	}
 }
 
+void SpriteRenderer::CreateMaterialPSO(GraphicsPSO& pso, const void* ps, size_t size)
+{
+	InitializePipeline();
+
+	// 루트 시그니처 / 블렌드 / 깊이 / VS 는 기본 PSO 그대로, 픽셀 셰이더만 바꾼다
+	pso = s_PSO;
+	pso.SetPixelShader(ps, size);
+	pso.Finalize();
+}
+
 RendererDesc SpriteRenderer::Desc()
 {
 	RendererDesc desc = {};
@@ -593,7 +603,7 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	sc.defaultParticleParams = m_DefaultParticleParams;
 
 	gfx.SetRootSignature(s_RootSig);
-	gfx.SetPipelineState(s_PSO);
+	gfx.SetPipelineState(m_MaterialPSO ? *m_MaterialPSO : s_PSO);
 	gfx.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	gfx.SetDynamicConstantBufferView(kRootCBV, sizeof(sc), &sc);
 
@@ -621,18 +631,19 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	}
 	else
 	{
-		float4 defaults[ParticleMaterial::kMaxParams];
+		alignas(16) float4 defaults[ParticleMaterial::kMaxParams];
 		for (uint32_t k = 0; k < ParticleMaterial::kMaxParams; ++k)
 			defaults[k] = ParticleMaterial::DefaultParam(k);
 		gfx.SetDynamicConstantBufferView(kRootMaterialCB, sizeof(defaults), defaults);
 	}
 
 	{
-		MaterialProgramConstants mp = {};
+		alignas(16) MaterialProgramConstants mp = {};	// SetDynamicConstantBufferView 는 16 B 정렬된 주소만 받는다
 
 		const void* instrData = &kEmptyInstr;
 		size_t      instrBytes = sizeof(MaterialInstr);
-		if (m_Material)
+		// 생성된 PS 는 명령어를 읽지 않는다 (b3 / t7 은 빈 값만 묶어 둔다)
+		if (m_Material && !m_MaterialPSO)
 		{
 			const MaterialProgram& program = m_Material->Program();
 			const uint32_t count = (std::min)(uint32_t(program.instrs.size()), uint32_t(MaterialProgram::kMaxInstrs));

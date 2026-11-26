@@ -141,6 +141,12 @@
     <ClCompile Include="EmitterGpuProgram.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
+    <ClCompile Include="MaterialGpuProgram.cpp">
+      <Filter>Particle\Generator</Filter>
+    </ClCompile>
+    <ClCompile Include="MaterialShaderGenerator.cpp">
+      <Filter>Particle\Generator</Filter>
+    </ClCompile>
     <ClCompile Include="GpuEmitterInstance.cpp">
       <Filter>Particle\Emitter</Filter>
     </ClCompile>
@@ -270,6 +276,12 @@
     <ClInclude Include="EmitterGpuProgram.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
+    <ClInclude Include="MaterialGpuProgram.h">
+      <Filter>Particle\Generator</Filter>
+    </ClInclude>
+    <ClInclude Include="MaterialShaderGenerator.h">
+      <Filter>Particle\Generator</Filter>
+    </ClInclude>
     <ClInclude Include="GpuEmitterInstance.h">
       <Filter>Particle\Emitter</Filter>
     </ClInclude>
@@ -354,6 +366,9 @@
       <Filter>Shaders\Particle</Filter>
     </None>
     <None Include="Shaders\SpriteAlpha.hlsli">
+      <Filter>Shaders\Particle</Filter>
+    </None>
+    <None Include="Shaders\SpriteMaterialCommon.hlsli">
       <Filter>Shaders\Particle</Filter>
     </None>
     <None Include="Shaders\MaterialVM.hlsli">

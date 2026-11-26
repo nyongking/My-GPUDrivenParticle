@@ -100,6 +100,10 @@ void EmitterRuntime::Shutdown()
 
 	m_Material.ReleaseTextures();
 
+	SetMaterialProgram(nullptr);
+	m_MaterialProgramTried = false;
+	m_MaterialProgramError.clear();
+
 	m_ShaderCompiler.Shutdown();
 	m_Ready = false;
 }
@@ -413,6 +417,7 @@ std::vector<std::string> EmitterRuntime::BindableAttributes(const TypeInfo* type
 void EmitterRuntime::ApplyPending()
 {
 	SyncProgramWithMode();
+	SyncMaterialProgram();
 
 	const Pending pending = m_Pending;
 	m_Pending = Pending::None;
@@ -634,6 +639,78 @@ void EmitterRuntime::SyncProgramWithMode()
 	}
 }
 
+
+const std::string& EmitterRuntime::GeneratedMaterialSource() const
+{
+	static const std::string kEmpty;
+	return m_MaterialProgram ? m_MaterialProgram->Source() : kEmpty;
+}
+
+void EmitterRuntime::SetMaterialProgram(std::shared_ptr<MaterialGpuProgram> program)
+{
+	// PSO 자체는 MiniEngine 이 끝까지 갖고 있으므로, 지난 프레임이 쓰던 것을 바꿔도 GPU 를 기다릴 필요가 없다
+	m_MaterialProgram = std::move(program);
+
+	const GraphicsPSO* pso = m_MaterialProgram ? &m_MaterialProgram->PSO() : nullptr;
+	m_CpuRenderer.SetMaterialPSO(pso);
+	m_GpuRenderer.SetMaterialPSO(pso);
+}
+
+void EmitterRuntime::SyncMaterialProgram()
+{
+	if (MaterialGpuProgram::Mode() != MaterialShaderMode::Generated)
+	{
+		// Generated -> Interpreted: 기본 PS 로 돌아간다
+		if (m_MaterialProgram || m_MaterialProgramTried)
+		{
+			SetMaterialProgram(nullptr);
+			m_MaterialProgramTried = false;
+			m_MaterialProgramError.clear();
+		}
+		return;
+	}
+
+	// 그래프 구성이 그대로면 할 일 없음 (값만 바뀐 것은 revision 이 올라가도 소스가 같아서 캐시에서 바로 찾는다)
+	const uint32_t revision = m_Material.GraphRevision();
+	if (m_MaterialProgramTried && revision == m_MaterialProgramRevision)
+		return;
+
+	m_MaterialProgramTried = true;
+	m_MaterialProgramRevision = revision;
+	m_MaterialProgramError.clear();
+
+	const std::string name = "Main";
+	const GeneratedShader generated = GenerateMaterialShader(m_Material.CurrentGraph(), name + ".material.generated.hlsl");
+
+	std::string log;
+	std::shared_ptr<MaterialGpuProgram> program;
+	if (generated.Ok())
+		program = MaterialGpuProgram::Find(generated.source);   // 이미 만든 셰이더가 있으면 그대로 쓴다 (컴파일러 불필요)
+
+	if (!program)
+	{
+		if (generated.Ok() && !m_ShaderCompiler.Ready()
+			&& !m_ShaderCompiler.Initialize(ShaderCompiler::FindIncludeDir(L"ModuleCommon.hlsli")))
+		{
+			log = "ShaderCompiler initialize failed\n" + m_ShaderCompiler.Log();
+		}
+		else
+		{
+			program = MaterialGpuProgram::Acquire(generated, m_ShaderCompiler, name, log);
+			if (program)
+				Utility::Print(log.c_str());
+		}
+	}
+
+	if (!program)
+	{
+		// 실패: 기본 PS (VM) 로 그린다. 그래프를 고치면 revision 이 올라가서 다시 시도한다
+		m_MaterialProgramError = "[Generated material] build failed -> drawing with the interpreter\n" + log;
+		Utility::Print(m_MaterialProgramError.c_str());
+	}
+
+	SetMaterialProgram(std::move(program));
+}
 
 uint32_t EmitterRuntime::AliveCount() const
 {

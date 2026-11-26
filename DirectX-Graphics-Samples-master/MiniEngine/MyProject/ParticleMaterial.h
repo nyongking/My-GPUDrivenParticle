@@ -184,6 +184,9 @@ public:
 	ProgramSource				GetProgramSource() const { return m_ProgramSource; }
 	const std::string&			ProgramError() const { return m_ProgramError; }
 
+	// 그래프 / 레이어 구성이 바뀔 때마다 올라간다 (Generated 방식이 다시 만들 시점을 아는 용도)
+	uint32_t					GraphRevision() const { return m_GraphRevision; }
+
 private:
 	bool						ApplyLayers(const std::vector<Effect>& layers, const std::vector<int>& from, bool keepTextures);
 	void						RebuildProgram();
@@ -200,6 +203,7 @@ private:
 	MaterialProgram		m_Program;
 	ProgramSource		m_ProgramSource = ProgramSource::HandWritten;
 	std::string			m_ProgramError;
+	uint32_t			m_GraphRevision = 0;
 	std::unique_ptr<MaterialGraph> m_CustomGraph;
 
 };

@@ -554,6 +554,28 @@ namespace
 				ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", material.LayerError().c_str());
 			}
 
+			// ---- Generated 방식 상태 (모드는 Main 창의 "Material mode") ----
+			if (MaterialGpuProgram::Mode() == MaterialShaderMode::Generated)
+			{
+				if (runtime.HasGeneratedMaterial())
+					ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.5f, 1.f), "Pixel shader: generated for this graph");
+				else
+					ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Pixel shader: interpreter (generated build failed)");
+
+				const std::string& genError = runtime.GeneratedMaterialError();
+				if (!genError.empty())
+					ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "%s", genError.c_str());
+
+				if (runtime.HasGeneratedMaterial() && ImGui::TreeNode("Generated PS Source"))
+				{
+					ImGui::TextUnformatted(runtime.GeneratedMaterialSource().c_str());
+					ImGui::TreePop();
+				}
+			}
+			else
+				ImGui::TextDisabled("Pixel shader: interpreter (Material mode = Interpreted)");
+
+			// 아래 설정은 Interpreted 방식과 공용 렌더 목록에만 쓰인다
 			bool useVM = runtime.Material().UseVM();
 			if (ImGui::Checkbox("Run as VM", &useVM))
 				runtime.SetMaterialUseVM(useVM);

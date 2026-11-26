@@ -188,6 +188,7 @@ namespace
 			if (m_Graph.output < 0)
 			{
 				result.ok = true;
+				result.ssaOk = true;
 				return result;
 			}
 
@@ -248,10 +249,28 @@ namespace
 					m_Instrs[k].param = n.textureSlot;
 			}
 
+			// 칸 배정 전 상태를 남긴다 (Generated 방식이 쓴다)
+			result.ssaOk = true;
+			result.ssa = m_Instrs;
+			result.ssaInputs = m_InstrInputs;
+			result.ssaInfo = m_InstrInfo;
+			result.ssaAuto = m_InstrAuto;
+			result.autoValues = m_AutoValues;
+			result.ssaOutput = outputReg;
+			for (size_t id = 0; id < m_Graph.nodes.size(); ++id)
+				result.nodeWidth[id] = (m_RegOf[id] >= 0) ? m_Width[id] : 0u;
+
 			uint32_t regCount = 0;
 			const int outputPhys = AllocateRegisters(static_cast<uint32_t>(outputReg), regCount);
 			if (outputPhys < 0)
-				return Failed(result);
+			{
+				// Reg 칸 수는 VM 만의 제한: VM 프로그램만 실패로 두고 ssa / params 는 유지
+				result.ok = false;
+				result.error = m_Error;
+				result.program = MaterialProgram();
+				result.notes = m_Notes;
+				return result;
+			}
 			result.regCount = regCount;
 
 			result.ok = true;
@@ -298,12 +317,19 @@ namespace
 		}
 
 		// Emit시에 
-		int Emit(MaterialInstr I, int node, int autoIndex, uint32_t inputCount)
+		//   width = 결과의 성분 수, in = 입력 정보 (없으면 입력 없음). 둘 다 Generated 방식의 타입 정보로만 남긴다
+		int Emit(MaterialInstr I, int node, int autoIndex, uint32_t inputCount, uint32_t width, const InputInfo* in = nullptr)
 		{
 			if (m_Instrs.size() >= MaterialProgram::kMaxInstrs)
 				return Fail("명령어가 " + std::to_string(MaterialProgram::kMaxInstrs) + " 개를 넘음");
 			I.dst = static_cast<uint32_t>(m_Instrs.size());
 			m_Instrs.push_back(I);
+
+			MaterialSsaInfo info;
+			info.width = static_cast<uint8_t>(width);
+			for (uint32_t k = 0; in != nullptr && k < inputCount && k < 3; ++k)
+				info.inWidth[k] = static_cast<uint8_t>(in[k].width);
+			m_InstrInfo.push_back(info);
 			m_InstrNode.push_back(node);
 			m_InstrAuto.push_back(autoIndex);
 			m_InstrInputs.push_back(inputCount);
@@ -379,7 +405,7 @@ namespace
 					MaterialInstr I = {};
 					I.op = static_cast<uint32_t>(MaterialOp::QuadUV);
 					I.swz = 0xE4E4E4u;
-					m_AutoQuadUV = Emit(I, -1, -1, 0);
+					m_AutoQuadUV = Emit(I, -1, -1, 0, 2);
 				}
 				reg = m_AutoQuadUV;
 			}
@@ -389,7 +415,7 @@ namespace
 				I.op = static_cast<uint32_t>(MaterialOp::Const);
 				I.swz = 0xE4E4E4u;
 				m_AutoValues.push_back(d.value);
-				reg = Emit(I, -1, static_cast<int>(m_AutoValues.size()) - 1, 0);
+				reg = Emit(I, -1, static_cast<int>(m_AutoValues.size()) - 1, 0, d.width);
 			}
 			if (reg < 0)
 				return false;
@@ -537,7 +563,7 @@ namespace
 				I.swz = (I.swz & ~(0xFFu << shift)) | (in[k].swz << shift);
 			}
 
-			const int dst = Emit(I, id, -1, need);
+			const int dst = Emit(I, id, -1, need, outWidth, in);
 
 			if (dst < 0)
 				return -1;
@@ -554,7 +580,8 @@ namespace
 		std::vector<int>            m_InstrNode;
 		std::vector<int>            m_InstrAuto;
 		std::vector<uint32_t>       m_InstrInputs;
-		std::vector<float4>         m_AutoValues;
+		std::vector<MaterialSsaInfo> m_InstrInfo;
+		std::vector<float4>        m_AutoValues;
 		int                         m_AutoQuadUV = -1;
 		std::vector<std::string>    m_Notes;
 		std::string                 m_Error;
