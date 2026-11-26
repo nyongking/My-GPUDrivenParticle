@@ -3,7 +3,26 @@
 
 float4 EvalMaterial(MaterialInput i)
 {
-    return i.baseColor;
+    const float4 v0 = i.baseColor;    // BASE_COLOR
+    const float2 v1 = i.particleParams;    // PARTICLE
+    const float4 v2 = MaterialParams[2];    // CONST
+    const float v3 = v1.x + v2.x;    // ADD
+    const float2 v4 = i.quadUV;    // QUAD_UV
+    const float2 v5 = v4 * MaterialParams[0].xy + MaterialParams[0].zw + MaterialParams[1].xy * Time;    // UV_TRANSFORM
+    const float4 v6 = MaterialTextures[0].Sample(LinearWrap, v5);    // SAMPLE
+    const float v7 = smoothstep(v1.x, v3, v6.x);    // SMOOTHSTEP
+    const float4 v8 = v0 * v7;    // MUL
+    const float4 v9 = MaterialParams[3];    // CONST
+    const float v10 = v3 + v2.y;    // ADD
+    const float v11 = smoothstep(v3, v10, v6.x);    // SMOOTHSTEP
+    const float v12 = 1.f - v11;    // ONE_MINUS
+    const float v13 = v12 * v7;    // MUL
+    const float v14 = i.coverage;    // COVERAGE
+    const float v15 = v13 * v14;    // MUL
+    const float4 v16 = v9 * v15;    // MUL
+    const float4 v17 = v8 + v16;    // ADD
+    const float4 v18 = float4(v17.xyz, v8.w);    // APPEND
+    return v18;
 }
 
 float4 main(PSInput input) : SV_TARGET

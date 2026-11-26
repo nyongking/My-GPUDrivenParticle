@@ -362,7 +362,7 @@ namespace
 		{
 			Utility::Printf("[EmitterAsset] '%s': material layers rejected (%s) -> no effect\n", asset.name.c_str(),
 				runtime.Material().LayerError().c_str());
-
+		}
 		if (asset.hasMaterialGraph)
 		{
 			runtime.SetMaterialGraph(asset.materialGraph);
@@ -372,7 +372,6 @@ namespace
 		}
 		else
 			runtime.ClearMaterialGraph();
-		}
 	}
 }
 
