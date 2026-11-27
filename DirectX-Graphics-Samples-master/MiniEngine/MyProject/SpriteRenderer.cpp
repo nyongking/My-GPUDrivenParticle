@@ -472,29 +472,59 @@ void SpriteRenderer::SetDefaults(const RendererDesc& desc)
 
 void SpriteRenderer::RenderGpu(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter)
 {
+	// 기존 코드
+	//if (!m_Ready || !emitter.Ready())
+	//	return;
+
+	//	gfx.TransitionResource(emitter.RenderBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	//	gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+	//	// 정렬 (CPU 경로와 같은 조건). 개수를 CPU 로 읽지 않고 DrawArgs 의 alive 를 GPU 에서 바로 쓴다
+	//	const bool sorted = ShouldSort();
+	//	if (sorted)
+	//		SortOnGpu(gfx, camera, emitter);
+
+
+	//	gfx.TransitionResource(emitter.DrawArgs(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+	//	gfx.TransitionResource(m_GpuSortBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
+
+	//	BindForDraw(gfx, camera, emitter.RenderBuffer(), emitter.ParticleBuffer(), m_GpuSortBuffer, sorted, sizeof(uint32_t) * 2);
+	//{
+
+	//	ScopedTimer t(L"Render Sprite (Single)", gfx);
+	//	// 개수는 Finalize 가 Draw 인자 (6, alive, 0, 0) 로 써둔 것. CPU 는 개수를 몰라도 된다
+	//	gfx.DrawIndirect(emitter.DrawArgs());
+	//}
+
+	PrepareGPU(gfx, camera, emitter);
+	DrawGPU(gfx, camera, emitter);
+
+}
+
+void SpriteRenderer::PrepareGPU(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter)
+{
 	if (!m_Ready || !emitter.Ready())
 		return;
 
-		gfx.TransitionResource(emitter.RenderBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	gfx.TransitionResource(emitter.RenderBuffer(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-		// 정렬 (CPU 경로와 같은 조건). 개수를 CPU 로 읽지 않고 DrawArgs 의 alive 를 GPU 에서 바로 쓴다
-		const bool sorted = ShouldSort();
-		if (sorted)
-			SortOnGpu(gfx, camera, emitter);
+	if (ShouldSort())
+		SortOnGpu(gfx, camera, emitter);
 
+	gfx.TransitionResource(emitter.DrawArgs(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+	gfx.TransitionResource(m_GpuSortBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+}
 
-		gfx.TransitionResource(emitter.DrawArgs(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-		gfx.TransitionResource(m_GpuSortBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true);
+void SpriteRenderer::DrawGPU(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter)
+{
+	if (!m_Ready || !emitter.Ready())
+		return;
 
-		BindForDraw(gfx, camera, emitter.RenderBuffer(), emitter.ParticleBuffer(), m_GpuSortBuffer, sorted, sizeof(uint32_t) * 2);
-	{
-
-		ScopedTimer t(L"Render Sprite (Single)", gfx);
-		// 개수는 Finalize 가 Draw 인자 (6, alive, 0, 0) 로 써둔 것. CPU 는 개수를 몰라도 된다
-		gfx.DrawIndirect(emitter.DrawArgs());
-	}
-
+	BindForDraw(gfx, camera, emitter.RenderBuffer(), emitter.ParticleBuffer(), m_GpuSortBuffer, ShouldSort(), sizeof(uint32_t) * 2);
+	
+	
+	gfx.DrawIndirect(emitter.DrawArgs());
 }
 
 void SpriteRenderer::SortOnGpu(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter)

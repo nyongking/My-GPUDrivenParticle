@@ -38,10 +38,7 @@ void EmitterRenderList::Render(GraphicsContext& gfx)
 		return;
 
 	if (m_Sorted)
-	{
-		ScopedTimer s(L"Sort Particle (EmitterList)", gfx);
-
-		// stable: 키와 거리가 모두 같으면 Add 한 순서를 지킨다 -> 프레임마다 순서가 뒤바뀌지 않는다
+	{		
 		std::stable_sort(m_Items.begin(), m_Items.end(), [](const Item& a, const Item& b)
 			{
 				if (a.sortKey != b.sortKey)
@@ -49,11 +46,17 @@ void EmitterRenderList::Render(GraphicsContext& gfx)
 				return a.depth > b.depth;           // 먼 것부터
 			});
 	}
-	
+		
 	{
-		ScopedTimer s(L"Render Particle (EmitterList)", gfx);
+		ScopedTimer s(L"Particle Render Prepare(Sort)", gfx);
 		for (const Item& item : m_Items)
-			item.runtime->Render(gfx, *m_Camera);
+			item.runtime->PrepareRender(gfx, *m_Camera);
+	}
+
+	{
+		ScopedTimer s(L"Particle Render Draw", gfx);
+		for (const Item& item : m_Items)
+			item.runtime->DrawPrepared(gfx, *m_Camera);
 	}
 
 

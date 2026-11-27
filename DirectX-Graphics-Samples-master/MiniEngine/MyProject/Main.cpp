@@ -210,7 +210,7 @@ void MyProject::Update(float deltaT)
     // 타임 스톱: 시뮬레이션 / 소유자 시간을 0 으로 (Tick 은 그대로 돌려 펜스 / 버퍼 흐름 유지). Step 은 한 프레임만 진행
     const bool  advance = !m_TimeStop || m_StepOnce;
     m_StepOnce = false;
-    const float frameDt = m_FixedDt ? (1.f / 60.f) : deltaT;
+    const float frameDt = m_FixedDt ? (1.f / 120.f) : deltaT;
     const float simDt = advance ? frameDt : 0.f;
     const float ownerDt = advance ? (m_TimeStop ? frameDt : deltaT) : 0.f;
 
@@ -401,6 +401,11 @@ void MyProject::UpdateImGui(float deltaT)
                 m_Renderer.SetCulling(culling);
             ImGui::Unindent();
             ImGui::EndDisabled();
+
+            ImGui::Text("Render GPU: prepare+sort %.3f ms, draw %.3f ms  (%u x %u)",
+                EngineProfiling::GetGpuTimeLast(L"Particle Render Prepare"),
+                EngineProfiling::GetGpuTimeLast(L"Particle Render Draw"),
+                g_SceneColorBuffer.GetWidth(), g_SceneColorBuffer.GetHeight());
         }
 
         {
@@ -703,21 +708,25 @@ void MyProject::TickRecorder()
         + (anyGenerated ? ps.livePrograms * EmitterGpuProgram::kNumKernels : 0u) + 1;   // +1 = 공용 Finalize
     const EmitterTestScene::BuildResult& b = m_TestScene.LastBuild();
 
-    const std::string header = "emitters,capPerEmitter,spawnRate,fixedDt,psoCount,psoChanges,dispatches,setupMs,shaderBuildMs";
+    const std::string header = "emitters,capPerEmitter,spawnRate,fixedDt,psoCount,psoChanges,dispatches,setupMs,shaderBuildMs"
+        ",renderMode,materialMode,width,height";
     // 에셋 capacity 를 쓰면 이미터마다 다를 수 있어서 평균을 남긴다
     const EmitterTestScene::Settings& applied = m_TestScene.AppliedSettings();
     const uint32_t capPerEmitter = !m_UseTestScene ? m_System.CapacityTotal() / (std::max)(uint32_t(m_System.Count()), 1u)
         : (!applied.assets.empty() && applied.assetCapacity) ? m_TestScene.CapacityTotal() / (std::max)(m_TestScene.Count(), 1u)
         : applied.capacityPerEmitter;
 
-    char values[256];
-    sprintf_s(values, "%u,%u,%.1f,%d,%u,%u,%u,%.2f,%.2f",
+    char values[384];
+    sprintf_s(values, "%u,%u,%.1f,%d,%u,%u,%u,%.2f,%.2f,%s,%s,%u,%u",
         emitters,
         capPerEmitter,
         m_UseTestScene ? m_TestScene.AppliedSettings().spawnRate : 0.f,
         m_FixedDt ? 1 : 0,
         psoCount, m_LastSimStats.psoChanges, m_LastSimStats.dispatches,
-        m_UseTestScene ? b.setupMs : 0.0, m_UseTestScene ? b.shaderBuildMs : 0.0);
+        m_UseTestScene ? b.setupMs : 0.0, m_UseTestScene ? b.shaderBuildMs : 0.0,
+        ParticleRenderer::ModeName(m_Renderer.Mode()), MaterialGpuProgram::ModeName(MaterialGpuProgram::Mode()),
+        g_SceneColorBuffer.GetWidth(), g_SceneColorBuffer.GetHeight());
+
 
     if (m_BenchRecording)
     {
@@ -738,7 +747,7 @@ void MyProject::TickRecorder()
         return;
     }
 
-    SaveCsvRow({ "ParticleProfile_week5.csv", header, values, m_RecordTag, capacity });
+    SaveCsvRow({ "ParticleProfile_Downsample.csv", header, values, m_RecordTag, capacity });
 }
 void MyProject::StartBenchmark()
 {

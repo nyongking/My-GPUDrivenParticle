@@ -137,6 +137,24 @@ void EmitterRuntime::Render(GraphicsContext& gfx, const Math::Camera& camera)
 		m_GpuRenderer.RenderGpu(gfx, camera, m_Gpu);
 }
 
+void EmitterRuntime::PrepareRender(GraphicsContext& gfx, const Math::Camera& cam)
+{
+	if (!m_Ready)
+		return;
+
+	if (m_ActiveBackend == EmitterBackend::Gpu)
+		m_GpuRenderer.PrepareGPU(gfx, cam, m_Gpu);
+}
+
+void EmitterRuntime::DrawPrepared(GraphicsContext& gfx, const Math::Camera& cam)
+{
+	if (!m_Ready)
+		return;
+
+	if (m_ActiveBackend == EmitterBackend::Gpu)
+		m_GpuRenderer.DrawGPU(gfx, cam, m_Gpu);
+}
+
 void EmitterRuntime::SubmitTo(GraphicsContext& gfx, ParticleRenderList& list)
 {
 	if (!m_Ready)

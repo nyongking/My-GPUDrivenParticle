@@ -33,6 +33,10 @@ public:
 	void Tick(ComputeContext& ctx, float deltaTime, const OwnerTransform& owner);
 	void Tick(ComputeContext& ctx, float deltaTime, const float3& ownerPosition);
 	void Render(GraphicsContext& gfx, const Math::Camera& camera);
+
+	void PrepareRender(GraphicsContext& gfx, const Math::Camera& cam);
+	void DrawPrepared(GraphicsContext& gfx, const Math::Camera& cam);
+
 	// 공용 렌더 목록에 넣기 (그리기는 list.Render). 여러 이미터를 섞어서 정렬할 때 Render 대신 쓴다
 	void SubmitTo(GraphicsContext& gfx, ParticleRenderList& list);
 

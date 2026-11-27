@@ -77,10 +77,6 @@ struct SpriteSettings
 class SpriteRenderer
 {
 public:
-    // 칸 순서 = Desc() 의 bindings 순서
-    //   파티클 값은 고정 렌더 구조체 (RenderParticle.h) 에서 읽는다. 어느 속성을 읽을지는 고정이고,
-    //   여기서 정하는 것은 "아무 모듈도 그 속성을 쓰지 않을 때의 값" (기본값) 뿐이다.
-    //   kSpriteFacing / kSpriteAlignment 만 예외: 일부 모드에서만 쓰여서 가변 속성 버퍼(SoA) 에서 offset 으로 읽는다
     enum BindingSlot
     {
         kPosition, kColor, kSize, kSubImageIndex,
@@ -109,6 +105,9 @@ public:
 
     void SetDefaults(const RendererDesc& desc);
     void RenderGpu(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter);
+
+    void PrepareGPU(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter);
+    void DrawGPU(GraphicsContext& gfx, const Math::Camera& camera, GpuEmitterInstance& emitter);
 
     // 공용 렌더 목록에 넣기 (여러 이미터를 한 번에 정렬해서 그릴 때). 그리기는 ParticleRenderList::Render 가 한다
     void SubmitToList(GraphicsContext& gfx, ParticleRenderList& list, const EmitterInstance& emitter);

@@ -321,7 +321,7 @@
               }
             ]
           },
-          "textureAlpha": "Straight",
+          "textureAlpha": "FromLuminance",
           "blend": "Additive",
           "subImage": [6, 6],
           "subUVBlend": true,
@@ -679,7 +679,7 @@
               }
             ]
           },
-          "textureAlpha": "Straight",
+          "textureAlpha": "FromLuminance",
           "blend": "Additive",
           "subImage": [6, 6],
           "subUVBlend": true,
@@ -1037,7 +1037,7 @@
               }
             ]
           },
-          "textureAlpha": "Straight",
+          "textureAlpha": "FromLuminance",
           "blend": "Additive",
           "subImage": [6, 6],
           "subUVBlend": true,
