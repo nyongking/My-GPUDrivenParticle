@@ -4,6 +4,7 @@
 #include "Camera.h"
 #include "EmitterRuntime.h"
 
+#include "CommandContext.h"
 #include <algorithm>
 
 void EmitterRenderList::Begin(const Math::Camera& camera)
@@ -36,11 +37,10 @@ void EmitterRenderList::Render(GraphicsContext& gfx)
 	if (!m_Camera)
 		return;
 
-	// TODO : Scoped Timer 세팅
-
-
 	if (m_Sorted)
 	{
+		ScopedTimer s(L"Sort Particle (EmitterList)", gfx);
+
 		// stable: 키와 거리가 모두 같으면 Add 한 순서를 지킨다 -> 프레임마다 순서가 뒤바뀌지 않는다
 		std::stable_sort(m_Items.begin(), m_Items.end(), [](const Item& a, const Item& b)
 			{
@@ -50,8 +50,11 @@ void EmitterRenderList::Render(GraphicsContext& gfx)
 			});
 	}
 	
-	for (const Item& item : m_Items)
-		item.runtime->Render(gfx, *m_Camera);
+	{
+		ScopedTimer s(L"Render Particle (EmitterList)", gfx);
+		for (const Item& item : m_Items)
+			item.runtime->Render(gfx, *m_Camera);
+	}
 
 
 	m_Items.clear();

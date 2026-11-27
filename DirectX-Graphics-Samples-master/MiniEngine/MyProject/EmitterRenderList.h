@@ -2,8 +2,6 @@
 // 이미터 렌더 목록 ("준 List" 방식)
 //
 //   그릴 이미터를 배열에 모았다가, 이미터 "사이" 의 순서를 CPU 에서 정해서 하나씩 그린다.
-//   ParticleRenderList 와 쓰는 법이 같다 (Begin -> Add x 이미터 수 -> Render). 차이는 목록의 단위:
-//     ParticleRenderList : 파티클 단위. 모든 파티클을 한데 섞어 GPU 에서 정렬, Draw 1번 (머티리얼은 VM)
 //     EmitterRenderList  : 이미터 단위. 이미터는 각자 자기 셰이더로 그린다 (Preset / Custom), Draw 는 이미터 수만큼
 //
 //   그리는 순서

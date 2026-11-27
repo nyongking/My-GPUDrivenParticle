@@ -169,12 +169,148 @@
       [0, 0, 0, 0],
       [0, 0, 0, 0]
     ],
-    "materialLayers": [
-      "Distortion",
-      "Pattern"
-    ],
-    "textureAlpha": "FromLuminance",
-    "blend": "Translucent",
+    "materialLayers": [],
+    "materialGraph": {
+      "output": 11,
+      "nodes": [
+        {
+          "type": "QuadUV",
+          "pos": [270, 40],
+          "inputs": []
+        },
+        {
+          "type": "UVTransform",
+          "pos": [500, 40],
+          "inputs": [
+            {
+              "node": 0
+            }
+          ],
+          "tilingOffset": [1, 1, 0, 0],
+          "scroll": [0, 0, 0, 0]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [730, 40],
+          "inputs": [
+            {
+              "node": 1
+            }
+          ],
+          "slot": 0
+        },
+        {
+          "type": "UnpackSigned",
+          "pos": [960, 40],
+          "inputs": [
+            {
+              "node": 2
+            }
+          ],
+          "pinValues": [
+            [0, 0, 0, 0]
+          ]
+        },
+        {
+          "type": "Constant",
+          "pos": [960, 160],
+          "inputs": [],
+          "value": [0.05, 0.05, 0, 0],
+          "valueWidth": 4
+        },
+        {
+          "type": "Multiply",
+          "pos": [1190, 40],
+          "inputs": [
+            {
+              "node": 3
+            },
+            {
+              "node": 4
+            }
+          ],
+          "pinValues": [
+            [0, 0, 0, 0],
+            [1, 1, 1, 1]
+          ]
+        },
+        {
+          "type": "BaseSample",
+          "pos": [1420, 40],
+          "inputs": [
+            {
+              "node": 5,
+              "width": 2
+            }
+          ],
+          "pinValues": [
+            [0, 0, 0, 0]
+          ]
+        },
+        {
+          "type": "QuadUV",
+          "pos": [960, 280],
+          "inputs": []
+        },
+        {
+          "type": "UVTransform",
+          "pos": [1190, 160],
+          "inputs": [
+            {
+              "node": 7
+            }
+          ],
+          "tilingOffset": [1, 1, 0, 0],
+          "scroll": [0, 0, 0, 0]
+        },
+        {
+          "type": "TextureSample",
+          "pos": [1420, 160],
+          "inputs": [
+            {
+              "node": 8
+            }
+          ],
+          "slot": 1
+        },
+        {
+          "type": "Multiply",
+          "pos": [1650, 40],
+          "inputs": [
+            {
+              "node": 6
+            },
+            {
+              "node": 9,
+              "swizzle": "x"
+            }
+          ],
+          "pinValues": [
+            [0, 0, 0, 0],
+            [1, 1, 1, 1]
+          ]
+        },
+        {
+          "type": "Append",
+          "pos": [1880, 40],
+          "inputs": [
+            {
+              "node": 10
+            },
+            {
+              "node": 6,
+              "swizzle": "w"
+            }
+          ],
+          "pinValues": [
+            [0, 0, 0, 0],
+            [1, 1, 1, 1]
+          ]
+        }
+      ]
+    },
+    "textureAlpha": "Straight",
+    "blend": "Additive",
     "subImage": [6, 6],
     "subUVBlend": true,
     "facing": "FaceCameraPlane",
@@ -186,48 +322,28 @@
     "blendFar": 10,
     "bindings": {
       "Position": {
-        "attribute": "Particles.Position",
         "default": [0, 0, 0]
       },
       "Color": {
-        "attribute": "Particles.Color",
         "default": [1, 1, 1, 1]
       },
       "Size": {
-        "attribute": "Particles.Size",
         "default": 0.1
       },
       "SubImageIndex": {
-        "attribute": "Particles.SubImageIndex",
         "default": 0
       },
-      "SpriteSize": {
-        "attribute": "Particles.SpriteSize",
-        "default": [0.2, 0.2]
-      },
       "SpriteRotation": {
-        "attribute": "Particles.SpriteRotation",
         "default": 0
       },
       "Velocity": {
-        "attribute": "Particles.Velocity",
         "default": [0, 0, 0]
       },
       "SpriteFacing": {
-        "attribute": "Particles.SpriteFacing",
         "default": [0, 1, 0]
       },
       "SpriteAlignment": {
-        "attribute": "Particles.SpriteAlignment",
         "default": [0, 1, 0]
-      },
-      "ParticleParam0": {
-        "attribute": "Particles.NormalizedAge",
-        "default": 0
-      },
-      "ParticleParam1": {
-        "attribute": "",
-        "default": 0
       }
     }
   }

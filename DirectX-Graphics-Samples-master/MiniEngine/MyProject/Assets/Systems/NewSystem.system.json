@@ -1,0 +1,1241 @@
+{
+  "format": "MyProject.System",
+  "version": 1,
+  "name": "NewSystem",
+  "emitters": [
+    {
+      "name": "Fire_New2",
+      "enabled": true,
+      "sortKey": 0,
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
+      "emitter": {
+        "format": "MyProject.Emitter",
+        "version": 1,
+        "name": "Fire_New2",
+        "capacity": 10000,
+        "backend": "Gpu",
+        "modules": [
+          {
+            "module": "SpawnRate",
+            "params": {
+              "Rate": 50
+            }
+          },
+          {
+            "module": "InitializeParticle",
+            "params": {
+              "Size": 0.1,
+              "Mass": 1,
+              "Lifetime": 1,
+              "Pos": {
+                "min": [0, 0, 0],
+                "max": [0, 0, 0],
+                "perComponent": true
+              },
+              "Color": [1, 0.475, 0.18, 1]
+            }
+          },
+          {
+            "module": "ParticleState",
+            "params": {
+              "KillOnLifetime": true
+            }
+          },
+          {
+            "module": "SubUVAnimation",
+            "params": {
+              "StartFrame": 0,
+              "EndFrame": 35,
+              "Loop": false,
+              "FramesPerSecond": 30
+            }
+          },
+          {
+            "module": "SphereLocation",
+            "params": {
+              "Radius": 0.01,
+              "SurfaceOnly": false
+            }
+          },
+          {
+            "module": "CurlNoiseForce",
+            "params": {
+              "Strength": 0.2,
+              "Frequency": 3,
+              "Offset": [0, 1, 0],
+              "Pan": [0, 0, 0]
+            }
+          },
+          {
+            "module": "AddVelocityInCone",
+            "params": {
+              "Speed": 0.5,
+              "ConeAngle": 15,
+              "ConeAxis": [0, 1, 0],
+              "InnerConeAngle": 0,
+              "SpeedFalloff": 0.5,
+              "Distribution": 1,
+              "LocalSpace": false
+            }
+          },
+          {
+            "module": "SolveForceAndVelocity",
+            "params": {
+              "AccelLimit": 100,
+              "SpeedLimit": 10
+            }
+          },
+          {
+            "module": "InitializeSprite",
+            "params": {
+              "SpriteSize": [0.15, 0.15],
+              "SpriteRotation": {
+                "min": 30,
+                "max": -30
+              }
+            }
+          },
+          {
+            "module": "ScaleColor",
+            "params": {
+              "ScaleRGB": {
+                "value": [1, 1, 1],
+                "curve": [
+                  {
+                    "time": 0,
+                    "value": [1.281, 1.205, 1]
+                  },
+                  {
+                    "time": 0.5,
+                    "value": [0.941, 0.562, 0.39]
+                  },
+                  {
+                    "time": 1,
+                    "value": [0.25, 0.06, 0]
+                  }
+                ],
+                "index": "Particles.NormalizedAge"
+              },
+              "ScaleAlpha": {
+                "value": 1,
+                "curve": [
+                  {
+                    "time": 0,
+                    "value": 1
+                  },
+                  {
+                    "time": 1,
+                    "value": 0
+                  }
+                ],
+                "index": "Particles.NormalizedAge"
+              }
+            }
+          }
+        ],
+        "sprite": {
+          "textures": [
+            {
+              "slot": "Base",
+              "path": "Assets/Textures/T_Fire_subUV.PNG",
+              "colorSpace": "sRGB"
+            },
+            {
+              "slot": "Tex0",
+              "path": "Assets/Textures/T_Fire_Tiled.PNG",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex1",
+              "path": "Assets/Textures/T_Fire_Tiled.PNG",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex2",
+              "path": "",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex3",
+              "path": "",
+              "colorSpace": "Linear"
+            }
+          ],
+          "materialParams": [
+            [1, 1, 0, 0],
+            [0, 0, 0, 0],
+            [0.05, 0.05, 0, 0],
+            [1, 1, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0]
+          ],
+          "materialLayers": [],
+          "materialGraph": {
+            "output": 11,
+            "nodes": [
+              {
+                "type": "QuadUV",
+                "pos": [270, 40],
+                "inputs": []
+              },
+              {
+                "type": "UVTransform",
+                "pos": [500, 40],
+                "inputs": [
+                  {
+                    "node": 0
+                  }
+                ],
+                "tilingOffset": [1, 1, 0, 0],
+                "scroll": [0, 0, 0, 0]
+              },
+              {
+                "type": "TextureSample",
+                "pos": [730, 40],
+                "inputs": [
+                  {
+                    "node": 1
+                  }
+                ],
+                "slot": 0
+              },
+              {
+                "type": "UnpackSigned",
+                "pos": [960, 40],
+                "inputs": [
+                  {
+                    "node": 2
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0]
+                ]
+              },
+              {
+                "type": "Constant",
+                "pos": [960, 160],
+                "inputs": [],
+                "value": [0.05, 0.05, 0, 0],
+                "valueWidth": 4
+              },
+              {
+                "type": "Multiply",
+                "pos": [1190, 40],
+                "inputs": [
+                  {
+                    "node": 3
+                  },
+                  {
+                    "node": 4
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0],
+                  [1, 1, 1, 1]
+                ]
+              },
+              {
+                "type": "BaseSample",
+                "pos": [1420, 40],
+                "inputs": [
+                  {
+                    "node": 5,
+                    "width": 2
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0]
+                ]
+              },
+              {
+                "type": "QuadUV",
+                "pos": [960, 280],
+                "inputs": []
+              },
+              {
+                "type": "UVTransform",
+                "pos": [1190, 160],
+                "inputs": [
+                  {
+                    "node": 7
+                  }
+                ],
+                "tilingOffset": [1, 1, 0, 0],
+                "scroll": [0, 0, 0, 0]
+              },
+              {
+                "type": "TextureSample",
+                "pos": [1420, 160],
+                "inputs": [
+                  {
+                    "node": 8
+                  }
+                ],
+                "slot": 1
+              },
+              {
+                "type": "Multiply",
+                "pos": [1650, 40],
+                "inputs": [
+                  {
+                    "node": 6
+                  },
+                  {
+                    "node": 9,
+                    "swizzle": "x"
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0],
+                  [1, 1, 1, 1]
+                ]
+              },
+              {
+                "type": "Append",
+                "pos": [1880, 40],
+                "inputs": [
+                  {
+                    "node": 10
+                  },
+                  {
+                    "node": 6,
+                    "swizzle": "w"
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0],
+                  [1, 1, 1, 1]
+                ]
+              }
+            ]
+          },
+          "textureAlpha": "Straight",
+          "blend": "Additive",
+          "subImage": [6, 6],
+          "subUVBlend": true,
+          "facing": "FaceCameraPlane",
+          "alignment": "Unaligned",
+          "pivot": [0.5, 0.5],
+          "cameraOffset": 0,
+          "velocityStretch": 0,
+          "blendNear": 1,
+          "blendFar": 10,
+          "bindings": {
+            "Position": {
+              "default": [0, 0, 0]
+            },
+            "Color": {
+              "default": [1, 1, 1, 1]
+            },
+            "Size": {
+              "default": 0.1
+            },
+            "SubImageIndex": {
+              "default": 0
+            },
+            "SpriteRotation": {
+              "default": 0
+            },
+            "Velocity": {
+              "default": [0, 0, 0]
+            },
+            "SpriteFacing": {
+              "default": [0, 1, 0]
+            },
+            "SpriteAlignment": {
+              "default": [0, 1, 0]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Fire_New2",
+      "enabled": true,
+      "sortKey": 0,
+      "position": [0, 0, 1],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
+      "emitter": {
+        "format": "MyProject.Emitter",
+        "version": 1,
+        "name": "Fire_New2",
+        "capacity": 10000,
+        "backend": "Gpu",
+        "modules": [
+          {
+            "module": "SpawnRate",
+            "params": {
+              "Rate": 50
+            }
+          },
+          {
+            "module": "InitializeParticle",
+            "params": {
+              "Size": 0.1,
+              "Mass": 1,
+              "Lifetime": 1,
+              "Pos": {
+                "min": [0, 0, 0],
+                "max": [0, 0, 0],
+                "perComponent": true
+              },
+              "Color": [1, 0.475, 0.18, 1]
+            }
+          },
+          {
+            "module": "ParticleState",
+            "params": {
+              "KillOnLifetime": true
+            }
+          },
+          {
+            "module": "SubUVAnimation",
+            "params": {
+              "StartFrame": 0,
+              "EndFrame": 35,
+              "Loop": false,
+              "FramesPerSecond": 30
+            }
+          },
+          {
+            "module": "SphereLocation",
+            "params": {
+              "Radius": 0.01,
+              "SurfaceOnly": false
+            }
+          },
+          {
+            "module": "CurlNoiseForce",
+            "params": {
+              "Strength": 0.2,
+              "Frequency": 3,
+              "Offset": [0, 1, 0],
+              "Pan": [0, 0, 0]
+            }
+          },
+          {
+            "module": "AddVelocityInCone",
+            "params": {
+              "Speed": 0.5,
+              "ConeAngle": 15,
+              "ConeAxis": [0, 1, 0],
+              "InnerConeAngle": 0,
+              "SpeedFalloff": 0.5,
+              "Distribution": 1,
+              "LocalSpace": false
+            }
+          },
+          {
+            "module": "SolveForceAndVelocity",
+            "params": {
+              "AccelLimit": 100,
+              "SpeedLimit": 10
+            }
+          },
+          {
+            "module": "InitializeSprite",
+            "params": {
+              "SpriteSize": [0.15, 0.15],
+              "SpriteRotation": {
+                "min": 30,
+                "max": -30
+              }
+            }
+          },
+          {
+            "module": "ScaleColor",
+            "params": {
+              "ScaleRGB": {
+                "value": [1, 1, 1],
+                "curve": [
+                  {
+                    "time": 0,
+                    "value": [1.281, 1.205, 1]
+                  },
+                  {
+                    "time": 0.5,
+                    "value": [0.941, 0.562, 0.39]
+                  },
+                  {
+                    "time": 1,
+                    "value": [0.25, 0.06, 0]
+                  }
+                ],
+                "index": "Particles.NormalizedAge"
+              },
+              "ScaleAlpha": {
+                "value": 1,
+                "curve": [
+                  {
+                    "time": 0,
+                    "value": 1
+                  },
+                  {
+                    "time": 1,
+                    "value": 0
+                  }
+                ],
+                "index": "Particles.NormalizedAge"
+              }
+            }
+          }
+        ],
+        "sprite": {
+          "textures": [
+            {
+              "slot": "Base",
+              "path": "Assets/Textures/T_Fire_subUV.PNG",
+              "colorSpace": "sRGB"
+            },
+            {
+              "slot": "Tex0",
+              "path": "Assets/Textures/T_Fire_Tiled.PNG",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex1",
+              "path": "Assets/Textures/T_Fire_Tiled.PNG",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex2",
+              "path": "",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex3",
+              "path": "",
+              "colorSpace": "Linear"
+            }
+          ],
+          "materialParams": [
+            [1, 1, 0, 0],
+            [0, 0, 0, 0],
+            [0.05, 0.05, 0, 0],
+            [1, 1, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0]
+          ],
+          "materialLayers": [],
+          "materialGraph": {
+            "output": 11,
+            "nodes": [
+              {
+                "type": "QuadUV",
+                "pos": [270, 40],
+                "inputs": []
+              },
+              {
+                "type": "UVTransform",
+                "pos": [500, 40],
+                "inputs": [
+                  {
+                    "node": 0
+                  }
+                ],
+                "tilingOffset": [1, 1, 0, 0],
+                "scroll": [0, 0, 0, 0]
+              },
+              {
+                "type": "TextureSample",
+                "pos": [730, 40],
+                "inputs": [
+                  {
+                    "node": 1
+                  }
+                ],
+                "slot": 0
+              },
+              {
+                "type": "UnpackSigned",
+                "pos": [960, 40],
+                "inputs": [
+                  {
+                    "node": 2
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0]
+                ]
+              },
+              {
+                "type": "Constant",
+                "pos": [960, 160],
+                "inputs": [],
+                "value": [0.05, 0.05, 0, 0],
+                "valueWidth": 4
+              },
+              {
+                "type": "Multiply",
+                "pos": [1190, 40],
+                "inputs": [
+                  {
+                    "node": 3
+                  },
+                  {
+                    "node": 4
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0],
+                  [1, 1, 1, 1]
+                ]
+              },
+              {
+                "type": "BaseSample",
+                "pos": [1420, 40],
+                "inputs": [
+                  {
+                    "node": 5,
+                    "width": 2
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0]
+                ]
+              },
+              {
+                "type": "QuadUV",
+                "pos": [960, 280],
+                "inputs": []
+              },
+              {
+                "type": "UVTransform",
+                "pos": [1190, 160],
+                "inputs": [
+                  {
+                    "node": 7
+                  }
+                ],
+                "tilingOffset": [1, 1, 0, 0],
+                "scroll": [0, 0, 0, 0]
+              },
+              {
+                "type": "TextureSample",
+                "pos": [1420, 160],
+                "inputs": [
+                  {
+                    "node": 8
+                  }
+                ],
+                "slot": 1
+              },
+              {
+                "type": "Multiply",
+                "pos": [1650, 40],
+                "inputs": [
+                  {
+                    "node": 6
+                  },
+                  {
+                    "node": 9,
+                    "swizzle": "x"
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0],
+                  [1, 1, 1, 1]
+                ]
+              },
+              {
+                "type": "Append",
+                "pos": [1880, 40],
+                "inputs": [
+                  {
+                    "node": 10
+                  },
+                  {
+                    "node": 6,
+                    "swizzle": "w"
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0],
+                  [1, 1, 1, 1]
+                ]
+              }
+            ]
+          },
+          "textureAlpha": "Straight",
+          "blend": "Additive",
+          "subImage": [6, 6],
+          "subUVBlend": true,
+          "facing": "FaceCameraPlane",
+          "alignment": "Unaligned",
+          "pivot": [0.5, 0.5],
+          "cameraOffset": 0,
+          "velocityStretch": 0,
+          "blendNear": 1,
+          "blendFar": 10,
+          "bindings": {
+            "Position": {
+              "default": [0, 0, 0]
+            },
+            "Color": {
+              "default": [1, 1, 1, 1]
+            },
+            "Size": {
+              "default": 0.1
+            },
+            "SubImageIndex": {
+              "default": 0
+            },
+            "SpriteRotation": {
+              "default": 0
+            },
+            "Velocity": {
+              "default": [0, 0, 0]
+            },
+            "SpriteFacing": {
+              "default": [0, 1, 0]
+            },
+            "SpriteAlignment": {
+              "default": [0, 1, 0]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Fire_New2",
+      "enabled": true,
+      "sortKey": 0,
+      "position": [0, 0, 2],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
+      "emitter": {
+        "format": "MyProject.Emitter",
+        "version": 1,
+        "name": "Fire_New2",
+        "capacity": 10000,
+        "backend": "Gpu",
+        "modules": [
+          {
+            "module": "SpawnRate",
+            "params": {
+              "Rate": 50
+            }
+          },
+          {
+            "module": "InitializeParticle",
+            "params": {
+              "Size": 0.1,
+              "Mass": 1,
+              "Lifetime": 1,
+              "Pos": {
+                "min": [0, 0, 0],
+                "max": [0, 0, 0],
+                "perComponent": true
+              },
+              "Color": [1, 0.475, 0.18, 1]
+            }
+          },
+          {
+            "module": "ParticleState",
+            "params": {
+              "KillOnLifetime": true
+            }
+          },
+          {
+            "module": "SubUVAnimation",
+            "params": {
+              "StartFrame": 0,
+              "EndFrame": 35,
+              "Loop": false,
+              "FramesPerSecond": 30
+            }
+          },
+          {
+            "module": "SphereLocation",
+            "params": {
+              "Radius": 0.01,
+              "SurfaceOnly": false
+            }
+          },
+          {
+            "module": "CurlNoiseForce",
+            "params": {
+              "Strength": 0.2,
+              "Frequency": 3,
+              "Offset": [0, 1, 0],
+              "Pan": [0, 0, 0]
+            }
+          },
+          {
+            "module": "AddVelocityInCone",
+            "params": {
+              "Speed": 0.5,
+              "ConeAngle": 15,
+              "ConeAxis": [0, 1, 0],
+              "InnerConeAngle": 0,
+              "SpeedFalloff": 0.5,
+              "Distribution": 1,
+              "LocalSpace": false
+            }
+          },
+          {
+            "module": "SolveForceAndVelocity",
+            "params": {
+              "AccelLimit": 100,
+              "SpeedLimit": 10
+            }
+          },
+          {
+            "module": "InitializeSprite",
+            "params": {
+              "SpriteSize": [0.15, 0.15],
+              "SpriteRotation": {
+                "min": 30,
+                "max": -30
+              }
+            }
+          },
+          {
+            "module": "ScaleColor",
+            "params": {
+              "ScaleRGB": {
+                "value": [1, 1, 1],
+                "curve": [
+                  {
+                    "time": 0,
+                    "value": [1.281, 1.205, 1]
+                  },
+                  {
+                    "time": 0.5,
+                    "value": [0.941, 0.562, 0.39]
+                  },
+                  {
+                    "time": 1,
+                    "value": [0.25, 0.06, 0]
+                  }
+                ],
+                "index": "Particles.NormalizedAge"
+              },
+              "ScaleAlpha": {
+                "value": 1,
+                "curve": [
+                  {
+                    "time": 0,
+                    "value": 1
+                  },
+                  {
+                    "time": 1,
+                    "value": 0
+                  }
+                ],
+                "index": "Particles.NormalizedAge"
+              }
+            }
+          }
+        ],
+        "sprite": {
+          "textures": [
+            {
+              "slot": "Base",
+              "path": "Assets/Textures/T_Fire_subUV.PNG",
+              "colorSpace": "sRGB"
+            },
+            {
+              "slot": "Tex0",
+              "path": "Assets/Textures/T_Fire_Tiled.PNG",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex1",
+              "path": "Assets/Textures/T_Fire_Tiled.PNG",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex2",
+              "path": "",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex3",
+              "path": "",
+              "colorSpace": "Linear"
+            }
+          ],
+          "materialParams": [
+            [1, 1, 0, 0],
+            [0, 0, 0, 0],
+            [0.05, 0.05, 0, 0],
+            [1, 1, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0]
+          ],
+          "materialLayers": [],
+          "materialGraph": {
+            "output": 11,
+            "nodes": [
+              {
+                "type": "QuadUV",
+                "pos": [270, 40],
+                "inputs": []
+              },
+              {
+                "type": "UVTransform",
+                "pos": [500, 40],
+                "inputs": [
+                  {
+                    "node": 0
+                  }
+                ],
+                "tilingOffset": [1, 1, 0, 0],
+                "scroll": [0, 0, 0, 0]
+              },
+              {
+                "type": "TextureSample",
+                "pos": [730, 40],
+                "inputs": [
+                  {
+                    "node": 1
+                  }
+                ],
+                "slot": 0
+              },
+              {
+                "type": "UnpackSigned",
+                "pos": [960, 40],
+                "inputs": [
+                  {
+                    "node": 2
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0]
+                ]
+              },
+              {
+                "type": "Constant",
+                "pos": [960, 160],
+                "inputs": [],
+                "value": [0.05, 0.05, 0, 0],
+                "valueWidth": 4
+              },
+              {
+                "type": "Multiply",
+                "pos": [1190, 40],
+                "inputs": [
+                  {
+                    "node": 3
+                  },
+                  {
+                    "node": 4
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0],
+                  [1, 1, 1, 1]
+                ]
+              },
+              {
+                "type": "BaseSample",
+                "pos": [1420, 40],
+                "inputs": [
+                  {
+                    "node": 5,
+                    "width": 2
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0]
+                ]
+              },
+              {
+                "type": "QuadUV",
+                "pos": [960, 280],
+                "inputs": []
+              },
+              {
+                "type": "UVTransform",
+                "pos": [1190, 160],
+                "inputs": [
+                  {
+                    "node": 7
+                  }
+                ],
+                "tilingOffset": [1, 1, 0, 0],
+                "scroll": [0, 0, 0, 0]
+              },
+              {
+                "type": "TextureSample",
+                "pos": [1420, 160],
+                "inputs": [
+                  {
+                    "node": 8
+                  }
+                ],
+                "slot": 1
+              },
+              {
+                "type": "Multiply",
+                "pos": [1650, 40],
+                "inputs": [
+                  {
+                    "node": 6
+                  },
+                  {
+                    "node": 9,
+                    "swizzle": "x"
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0],
+                  [1, 1, 1, 1]
+                ]
+              },
+              {
+                "type": "Append",
+                "pos": [1880, 40],
+                "inputs": [
+                  {
+                    "node": 10
+                  },
+                  {
+                    "node": 6,
+                    "swizzle": "w"
+                  }
+                ],
+                "pinValues": [
+                  [0, 0, 0, 0],
+                  [1, 1, 1, 1]
+                ]
+              }
+            ]
+          },
+          "textureAlpha": "Straight",
+          "blend": "Additive",
+          "subImage": [6, 6],
+          "subUVBlend": true,
+          "facing": "FaceCameraPlane",
+          "alignment": "Unaligned",
+          "pivot": [0.5, 0.5],
+          "cameraOffset": 0,
+          "velocityStretch": 0,
+          "blendNear": 1,
+          "blendFar": 10,
+          "bindings": {
+            "Position": {
+              "default": [0, 0, 0]
+            },
+            "Color": {
+              "default": [1, 1, 1, 1]
+            },
+            "Size": {
+              "default": 0.1
+            },
+            "SubImageIndex": {
+              "default": 0
+            },
+            "SpriteRotation": {
+              "default": 0
+            },
+            "Velocity": {
+              "default": [0, 0, 0]
+            },
+            "SpriteFacing": {
+              "default": [0, 1, 0]
+            },
+            "SpriteAlignment": {
+              "default": [0, 1, 0]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Test",
+      "enabled": true,
+      "sortKey": 0,
+      "position": [0, 0, 3.5],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
+      "emitter": {
+        "format": "MyProject.Emitter",
+        "version": 1,
+        "name": "Test",
+        "capacity": 10000,
+        "backend": "Gpu",
+        "modules": [
+          {
+            "module": "SpawnRate",
+            "params": {
+              "Rate": 50
+            }
+          },
+          {
+            "module": "InitializeParticle",
+            "params": {
+              "Size": 0.1,
+              "Mass": 1,
+              "Lifetime": 4,
+              "Pos": {
+                "min": [0.3, 0.1, 0],
+                "max": [-0.3, -0.1, 0],
+                "perComponent": true
+              },
+              "Color": [1, 1, 1, 1]
+            }
+          },
+          {
+            "module": "SphereLocation",
+            "params": {
+              "Radius": 0.1,
+              "SurfaceOnly": true
+            }
+          },
+          {
+            "module": "ParticleState",
+            "params": {
+              "KillOnLifetime": true
+            }
+          },
+          {
+            "module": "GravityForce",
+            "params": {
+              "Gravity": [0, -4, 0]
+            }
+          },
+          {
+            "module": "AddVelocityInCone",
+            "params": {
+              "Speed": 4,
+              "ConeAngle": 30,
+              "ConeAxis": [0, 1, 0],
+              "InnerConeAngle": 0,
+              "SpeedFalloff": 0,
+              "Distribution": 1,
+              "LocalSpace": false
+            }
+          },
+          {
+            "module": "SolveForceAndVelocity",
+            "params": {
+              "AccelLimit": 100,
+              "SpeedLimit": 10
+            }
+          }
+        ],
+        "sprite": {
+          "textures": [
+            {
+              "slot": "Base",
+              "path": "Assets/Textures/T_FX_CMN_Dust_01.dds",
+              "colorSpace": "sRGB"
+            },
+            {
+              "slot": "Tex0",
+              "path": "",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex1",
+              "path": "",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex2",
+              "path": "",
+              "colorSpace": "Linear"
+            },
+            {
+              "slot": "Tex3",
+              "path": "",
+              "colorSpace": "Linear"
+            }
+          ],
+          "materialParams": [
+            [1, 1, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0]
+          ],
+          "materialLayers": [],
+          "textureAlpha": "FromLuminance",
+          "blend": "Additive",
+          "subImage": [1, 1],
+          "subUVBlend": false,
+          "facing": "FaceCameraPosition",
+          "alignment": "VelocityAligned",
+          "pivot": [0.5, 0.5],
+          "cameraOffset": 0,
+          "velocityStretch": 0,
+          "blendNear": 1,
+          "blendFar": 10,
+          "bindings": {
+            "Position": {
+              "default": [0, 0, 0]
+            },
+            "Color": {
+              "default": [1, 1, 1, 1]
+            },
+            "Size": {
+              "default": 0.1
+            },
+            "SubImageIndex": {
+              "default": 0
+            },
+            "SpriteRotation": {
+              "default": 0
+            },
+            "Velocity": {
+              "default": [0, 0, 0]
+            },
+            "SpriteFacing": {
+              "default": [0, 1, 0]
+            },
+            "SpriteAlignment": {
+              "default": [0, 1, 0]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

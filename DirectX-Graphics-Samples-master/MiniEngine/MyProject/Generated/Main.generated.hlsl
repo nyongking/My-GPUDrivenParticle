@@ -3,10 +3,14 @@
 //   modules:
 //     M0_SpawnRate                EmitterUpdate   
 //     M1_InitializeParticle       ParticleSpawn   
-//     M2_SphereLocation           ParticleSpawn   
-//     M3_ParticleState            ParticleUpdate  
-//     M4_SolveForceandVelocity    ParticleUpdate  
-//     M5_SubUVAnimation           ParticleUpdate  
+//     M2_ParticleState            ParticleUpdate  
+//     M3_SubUVAnimation           ParticleUpdate  
+//     M4_SphereLocation           ParticleSpawn   
+//     M5_CurlNoiseForce           ParticleUpdate  
+//     M6_AddVelocityInCone        ParticleSpawn   
+//     M7_SolveForceandVelocity    ParticleUpdate  
+//     M8_InitializeSprite         ParticleSpawn   
+//     M9_ScaleColor               ParticleUpdate  
 // =====================================================================
 
 #include "ModuleCommon.hlsli"
@@ -19,12 +23,15 @@
 // Particles.Color : RenderParticle.Color
 // Particles.Size : RenderParticle.Size
 // Particles.NormalizedAge : RenderParticle.NormalizedAge
-// Particles.Velocity : RenderParticle.Velocity
 // Particles.SubImageIndex : RenderParticle.SubImageIndex
+// Particles.Velocity : RenderParticle.Velocity
+// Particles.SpriteSize : RenderParticle.SpriteSize
+// Particles.SpriteRotation : RenderParticle.SpriteRotation
 static const uint OFS_Particles_Lifetime               = 0;   // float
 static const uint OFS_Particles_Age                    = 4;   // float
-static const uint OFS_Particles_Acceleration           = 8;   // float3
-// Particles.Mass : trimmed (nobody reads it) -> no offset, still in struct
+static const uint OFS_Particles_Mass                   = 8;   // float
+static const uint OFS_Particles_Acceleration           = 12;   // float3
+static const uint OFS_Particles_Initial_Color          = 24;   // float4
 
 static const uint OFS_Emitter_SpawnCount               = 0;   // uint
 static const uint OFS_Emitter_SpawnRemainder           = 4;   // float
@@ -41,15 +48,31 @@ cbuffer ModuleParams : register(b1)
     float3 M1_InitializeParticle_Pos_Min;          // 16
     float3 M1_InitializeParticle_Pos_Max;          // 32
     float4 M1_InitializeParticle_Color;            // 48
-    float  M2_SphereLocation_Radius;               // 64
-    uint   M2_SphereLocation_SurfaceOnly;          // 68
-    uint   M3_ParticleState_KillOnLifetime;        // 72
-    float  M4_SolveForceandVelocity_AccelLimit;    // 76
-    float  M4_SolveForceandVelocity_SpeedLimit;    // 80
-    float  M5_SubUVAnimation_StartFrame;           // 84
-    float  M5_SubUVAnimation_EndFrame;             // 88
-    uint   M5_SubUVAnimation_Loop;                 // 92
-    float  M5_SubUVAnimation_FramesPerSecond;      // 96
+    uint   M2_ParticleState_KillOnLifetime;        // 64
+    float  M3_SubUVAnimation_StartFrame;           // 68
+    float  M3_SubUVAnimation_EndFrame;             // 72
+    uint   M3_SubUVAnimation_Loop;                 // 76
+    float  M3_SubUVAnimation_FramesPerSecond;      // 80
+    float  M4_SphereLocation_Radius;               // 84
+    uint   M4_SphereLocation_SurfaceOnly;          // 88
+    float  M5_CurlNoiseForce_Strength;             // 92
+    float  M5_CurlNoiseForce_Frequency;            // 96
+    float3 M5_CurlNoiseForce_Offset;               // 100
+    float3 M5_CurlNoiseForce_Pan;                  // 112
+    float  M6_AddVelocityInCone_Speed;             // 124
+    float  M6_AddVelocityInCone_ConeAngle;         // 128
+    float3 M6_AddVelocityInCone_ConeAxis;          // 132
+    float  M6_AddVelocityInCone_InnerConeAngle;    // 144
+    float  M6_AddVelocityInCone_SpeedFalloff;      // 148
+    float  M6_AddVelocityInCone_Distribution;      // 152
+    uint   M6_AddVelocityInCone_LocalSpace;        // 156
+    float  M7_SolveForceandVelocity_AccelLimit;    // 160
+    float  M7_SolveForceandVelocity_SpeedLimit;    // 164
+    float2 M8_InitializeSprite_SpriteSize;         // 168
+    float  M8_InitializeSprite_SpriteRotation_Min; // 176
+    float  M8_InitializeSprite_SpriteRotation_Max; // 180
+    uint   M9_ScaleColor_ScaleRGB_Curve;           // 184
+    uint   M9_ScaleColor_ScaleAlpha_Curve;         // 188
 };
 
 // =====================================================================
@@ -62,11 +85,14 @@ struct Particle
     float  Size;
     float  Lifetime;
     float  Age;
-    float  Mass;   // trimmed
+    float  Mass;
     float  NormalizedAge;
-    float3 Velocity;
-    float3 Acceleration;
     float  SubImageIndex;
+    float3 Acceleration;
+    float3 Velocity;
+    float2 SpriteSize;
+    float  SpriteRotation;
+    float4 Initial_Color;
 };
 
 struct EmitterState
@@ -85,8 +111,10 @@ Particle FromRender(RenderParticle r)
     p.Color                = r.Color;
     p.Size                 = r.Size;
     p.NormalizedAge        = r.NormalizedAge;
-    p.Velocity             = r.Velocity;
     p.SubImageIndex        = r.SubImageIndex;
+    p.Velocity             = r.Velocity;
+    p.SpriteSize           = r.SpriteSize;
+    p.SpriteRotation       = r.SpriteRotation;
     return p;
 }
 
@@ -95,7 +123,9 @@ Particle LoadParticle(RWByteAddressBuffer b, RenderParticle r, uint i)
     Particle p = FromRender(r);
     p.Lifetime             = LoadF1(b, OFS_Particles_Lifetime, i);
     p.Age                  = LoadF1(b, OFS_Particles_Age, i);
+    p.Mass                 = LoadF1(b, OFS_Particles_Mass, i);
     p.Acceleration         = LoadF3(b, OFS_Particles_Acceleration, i);
+    p.Initial_Color        = LoadF4(b, OFS_Particles_Initial_Color, i);
     return p;
 }
 
@@ -105,12 +135,16 @@ void StoreParticle(RWByteAddressBuffer b, uint i, Particle p, RenderParticle r)
     r.Color                = p.Color;
     r.Size                 = p.Size;
     r.NormalizedAge        = p.NormalizedAge;
-    r.Velocity             = p.Velocity;
     r.SubImageIndex        = p.SubImageIndex;
+    r.Velocity             = p.Velocity;
+    r.SpriteSize           = p.SpriteSize;
+    r.SpriteRotation       = p.SpriteRotation;
     RenderOut[i] = r;
     StoreF1(b, OFS_Particles_Lifetime,               i, p.Lifetime);
     StoreF1(b, OFS_Particles_Age,                    i, p.Age);
+    StoreF1(b, OFS_Particles_Mass,                   i, p.Mass);
     StoreF3(b, OFS_Particles_Acceleration,           i, p.Acceleration);
+    StoreF4(b, OFS_Particles_Initial_Color,          i, p.Initial_Color);
 }
 
 EmitterState LoadEmitter()
@@ -140,7 +174,7 @@ void EmitterUpdate(inout EmitterState e)
         const uint	n = (uint)want;
         e.SpawnRemainder = want - (float)n;
         e.SpawnCount += n;
-#line 144 "Main.generated.hlsl"
+#line 178 "Main.generated.hlsl"
 #undef PARAM
     }
 }
@@ -158,14 +192,14 @@ void ParticleSpawn(inout Particle p, uint index)
         p.Size = PARAM(Size);
         p.Lifetime = PARAM(Lifetime);
         p.Age = 0.f;
-#line 162 "Main.generated.hlsl"
+#line 196 "Main.generated.hlsl"
 #undef PARAM
 #undef M1_InitializeParticle_Pos
     }
-    // ---- [M2] Sphere Location----
+    // ---- [M4] Sphere Location----
     {
-#define PARAM(n) M2_SphereLocation_##n
-#line 1 "M2_SphereLocation"
+#define PARAM(n) M4_SphereLocation_##n
+#line 1 "M4_SphereLocation"
         const float kTwoPi = 6.28318530f;
         const float z = Random01(index, 0) * 2.f - 1.f;
         const float phi = Random01(index, 1) * kTwoPi;
@@ -173,31 +207,95 @@ void ParticleSpawn(inout Particle p, uint index)
         const float dist = (PARAM(SurfaceOnly) != 0) ? PARAM(Radius) : 
         		PARAM(Radius) * pow(Random01(index, 2), 1.f / 3.f);
         p.Position += float3(r * cos(phi) * dist, r * sin(phi) * dist, z * dist);
-#line 177 "Main.generated.hlsl"
+#line 211 "Main.generated.hlsl"
 #undef PARAM
     }
-    // ---- [Initialcopy] none ----
+    // ---- [M6] Add Velocity In Cone----
+    {
+#define PARAM(n) M6_AddVelocityInCone_##n
+#line 1 "M6_AddVelocityInCone"
+        const float outerA = radians(clamp(PARAM(ConeAngle), 0.f, 180.f));
+        const float innerA = radians(clamp(PARAM(InnerConeAngle), 0.f, clamp(PARAM(ConeAngle), 0.f, 180.f)));
+        const float cosOuter = cos(outerA);
+        const float cosInner = cos(innerA);
+
+        const float u = pow(max(Random01(index, 3), 1e-6f), PARAM(Distribution));
+        const float cosT = clamp(lerp(cosInner, cosOuter, u), -1.f, 1.f);
+        const float sinT = sqrt(saturate(1.f - cosT * cosT));
+        const float phi = Random01(index, 4) * 6.28318530f;
+
+        const float axisFrac = (outerA > 0.f) ? acos(cosT) / outerA : 0.f;
+        const float speed = PARAM(Speed) * saturate(1.f - PARAM(SpeedFalloff) * axisFrac);
+
+        float3 n = normalize(PARAM(ConeAxis));
+        if (PARAM(LocalSpace) != 0)
+            n = normalize(mul(float4(n, 0.f), OwnerLocalToWorld).xyz);
+
+        const float3 helper = (abs(n.y) < 0.999f) ? float3(0.f, 1.f, 0.f) : float3(1.f, 0.f, 0.f);
+        const float3 tAxis = normalize(cross(helper, n));
+        const float3 bAxis = cross(n, tAxis);
+
+        const float3 dir = tAxis * (sinT * cos(phi)) + bAxis * (sinT * sin(phi)) + n * cosT;
+        p.Velocity += dir * speed;
+#line 241 "Main.generated.hlsl"
+#undef PARAM
+    }
+    // ---- [M8] Initialize Sprite----
+    {
+#define M8_InitializeSprite_SpriteRotation (M8_InitializeSprite_SpriteRotation_Min + (M8_InitializeSprite_SpriteRotation_Max - M8_InitializeSprite_SpriteRotation_Min) * Random01(index, 67588))
+#define PARAM(n) M8_InitializeSprite_##n
+#line 1 "M8_InitializeSprite"
+        p.SpriteSize = PARAM(SpriteSize);
+        p.SpriteRotation = PARAM(SpriteRotation);
+#line 251 "Main.generated.hlsl"
+#undef PARAM
+#undef M8_InitializeSprite_SpriteRotation
+    }
+    // ---- [Initial copy] (engine) ----
+    p.Initial_Color = p.Color;
 }
 
 void ParticleUpdate(inout Particle p, uint index, inout bool alive)
 {
     // ---- [Previouscopy] none ----
-    // ---- [M3] Particle State----
+    // ---- [M2] Particle State----
     {
-#define PARAM(n) M3_ParticleState_##n
-#line 1 "M3_ParticleState"
+#define PARAM(n) M2_ParticleState_##n
+#line 1 "M2_ParticleState"
         p.Age += DeltaTime;
         const float t = (p.Lifetime > 0.f) ? p.Age / p.Lifetime : 1.f;
         p.NormalizedAge = min(t, 1.f);
         if (PARAM(KillOnLifetime) != 0 && t >= 1.f)
         	KILL();
-#line 195 "Main.generated.hlsl"
+#line 271 "Main.generated.hlsl"
 #undef PARAM
     }
-    // ---- [M4] Solve Force and Velocity----
+    // ---- [M3] SubUV Animation----
     {
-#define PARAM(n) M4_SolveForceandVelocity_##n
-#line 1 "M4_SolveForceandVelocity"
+#define PARAM(n) M3_SubUVAnimation_##n
+#line 1 "M3_SubUVAnimation"
+        const float count = max(PARAM(EndFrame) - PARAM(StartFrame) + 1.f, 1.f);
+        float t;
+        if (PARAM(Loop) != 0)
+        	t = frac(p.Age * PARAM(FramesPerSecond) / count) * count;
+        else
+        	t = min(p.NormalizedAge * count, count - 1.f);
+        p.SubImageIndex = PARAM(StartFrame) + t;
+#line 285 "Main.generated.hlsl"
+#undef PARAM
+    }
+    // ---- [M5] Curl Noise Force----
+    {
+#define PARAM(n) M5_CurlNoiseForce_##n
+#line 1 "M5_CurlNoiseForce"
+        p.Acceleration += CurlNoise(p.Position * PARAM(Frequency) + PARAM(Offset) + PARAM(Pan) * EmitterAge) * (PARAM(Strength) / p.Mass);
+#line 293 "Main.generated.hlsl"
+#undef PARAM
+    }
+    // ---- [M7] Solve Force and Velocity----
+    {
+#define PARAM(n) M7_SolveForceandVelocity_##n
+#line 1 "M7_SolveForceandVelocity"
         float3 accel = p.Acceleration;
         const float aLen = length(accel);
         if (PARAM(AccelLimit) > 0.f && aLen > PARAM(AccelLimit))
@@ -211,22 +309,20 @@ void ParticleUpdate(inout Particle p, uint index, inout bool alive)
 
         p.Position += p.Velocity * DeltaTime;
         p.Acceleration = float3(0.f, 0.f, 0.f);
-#line 215 "Main.generated.hlsl"
+#line 313 "Main.generated.hlsl"
 #undef PARAM
     }
-    // ---- [M5] SubUV Animation----
+    // ---- [M9] Scale Color----
     {
-#define PARAM(n) M5_SubUVAnimation_##n
-#line 1 "M5_SubUVAnimation"
-        const float count = max(PARAM(EndFrame) - PARAM(StartFrame) + 1.f, 1.f);
-        float t;
-        if (PARAM(Loop) != 0)
-        	t = frac(p.Age * PARAM(FramesPerSecond) / count) * count;
-        else
-        	t = min(p.NormalizedAge * count, count - 1.f);
-        p.SubImageIndex = PARAM(StartFrame) + t;
-#line 229 "Main.generated.hlsl"
+#define M9_ScaleColor_ScaleRGB (SampleCurve(M9_ScaleColor_ScaleRGB_Curve, p.NormalizedAge).xyz)
+#define M9_ScaleColor_ScaleAlpha (SampleCurve(M9_ScaleColor_ScaleAlpha_Curve, p.NormalizedAge).x)
+#define PARAM(n) M9_ScaleColor_##n
+#line 1 "M9_ScaleColor"
+        p.Color = p.Initial_Color * float4(PARAM(ScaleRGB), PARAM(ScaleAlpha));
+#line 323 "Main.generated.hlsl"
 #undef PARAM
+#undef M9_ScaleColor_ScaleRGB
+#undef M9_ScaleColor_ScaleAlpha
     }
 }
 

@@ -87,7 +87,9 @@ void ParticleRenderer::Render(GraphicsContext& gfx)
 		// Additive 끼리는 순서가 결과에 영향이 없어서 정렬하지 않고 반투명 뒤에 그린다
 		m_TranslucentList.Render(gfx, true);
 		m_AdditiveList.Render(gfx, false);
+
 		m_ListActive = false;
 	}
+
 	m_EmitterList.Render(gfx);
 }

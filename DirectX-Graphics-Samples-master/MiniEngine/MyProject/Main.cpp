@@ -90,7 +90,7 @@ private:
 
     // ----------- 소유자 변환 (엔진 값 LocalToWorld / Velocity 확인)
     float           m_OwnerAngle = 0.f;         // 라디안
-    float           m_RotateSpeedDeg = 90.f;    // 초당 회전 (Box Location 방향이 돌아감)
+    float           m_RotateSpeedDeg = 0.f;    // 초당 회전 (Box Location 방향이 돌아감)
     float           m_OwnerTime = 0.f;
 
     bool            m_TimeStop = false;         // true = 시뮬레이션 정지 (카메라 / UI 는 계속)
@@ -159,8 +159,8 @@ void MyProject::Startup(void)
     m_Camera.SetEyeAtUp(Vector3(0.f, 3.f, -5.f), Vector3(0.f, 0.f, 0.f), Vector3(Math::kYUnitVector));
 
     auto NewCam = new FlyingFPSCamera(m_Camera, Vector3(Math::kYUnitVector));
-    NewCam->SetMoveSpeed(10.f);
-    NewCam->SetStrafeSpeed(10.f);
+    NewCam->SetMoveSpeed(2.f);
+    NewCam->SetStrafeSpeed(2.f);
     m_CameraController.reset(NewCam);
     m_FlyCam = NewCam;
 
@@ -288,31 +288,66 @@ void MyProject::RenderScene(void)
 
 void MyProject::InitializeEmitter()
 {
-    const std::vector<ModuleDesc> modules =
+    std::string error;
+    std::vector<std::string> warnings;
+    OwnerTransform local;
+
     {
-        // Emitter Update
-        SpawnRate(50.f),
+        EmitterAsset asset;
+        if (!LoadEmitterAsset(EmitterAssetPath("Fire_New2"), asset, error, warnings))
+            return;
 
-        // Particle Initialize
-        InitializeParticle(0.1f, 1.f, 1.f, RandomRange<float3>(float3{0.3f, 0.1f, 0.f}, float3{-0.3f, -0.1f, 0.f}, true), float4{1.f, 1.f, 1.f, 1.f}),
-        SphereLocation(0.1f, true),
-        //AddVelocityInCone(5.f, 45.f, float3{0.f, 1.f, 0.f}),
-
-        // Particle Update
-        ParticleState(true),
-        //GravityForce(float3{0.f, -10.f, 0.f}),
-        SolveForceAndVelocity(10.f, 100.f),
-        SubUVAnimation(0.f, 63.f)      // 수명 동안 0~63 프레임 (T_Smoke_SubUV = 8x8)
-    };
-
-    m_SelectedEmitter = m_System.AddEmitter("Emitter", modules, 10'000, EmitterBackend::Gpu);
-    if (m_SelectedEmitter < 0)
-    {
-        Utility::Print(m_System.LastError().c_str());
-        return;
+        local.position = { 0.f, 0.f, 0.f };
+        if (m_System.AddEmitter("Fire_New2", asset, local) < 0)
+            return;
     }
 
-    Utility::Print(DescribeUber(m_System.At(0).runtime->Uber()).c_str());
+    {
+        EmitterAsset asset;
+        if (!LoadEmitterAsset(EmitterAssetPath("Fire_New2"), asset, error, warnings))
+            return;
+       
+        local.position = { 0.f, 0.f, 1.f };
+        if (m_System.AddEmitter("Fire_New2", asset, local) < 0)
+            return;
+    }
+
+    {
+        EmitterAsset asset;
+        if (!LoadEmitterAsset(EmitterAssetPath("Fire_New2"), asset, error, warnings))
+            return;
+        local.position = { 0.f, 0.f, 2.f };
+        if (m_System.AddEmitter("Fire_New2", asset, local) < 0)
+            return;
+    }
+
+    m_SelectedEmitter = 0;
+
+    //const std::vector<ModuleDesc> modules =
+    //{
+    //    // Emitter Update
+    //    SpawnRate(50.f),
+
+    //    // Particle Initialize
+    //    InitializeParticle(0.1f, 1.f, 1.f, RandomRange<float3>(float3{0.3f, 0.1f, 0.f}, float3{-0.3f, -0.1f, 0.f}, true), float4{1.f, 1.f, 1.f, 1.f}),
+    //    SphereLocation(0.1f, true),
+    //    //AddVelocityInCone(5.f, 45.f, float3{0.f, 1.f, 0.f}),
+
+    //    // Particle Update
+    //    ParticleState(true),
+    //    //GravityForce(float3{0.f, -10.f, 0.f}),
+    //    SolveForceAndVelocity(10.f, 100.f),
+    //    SubUVAnimation(0.f, 63.f)      // 수명 동안 0~63 프레임 (T_Smoke_SubUV = 8x8)
+    //};
+
+    //m_SelectedEmitter = m_System.AddEmitter("Emitter", modules, 10'000, EmitterBackend::Gpu);
+    //if (m_SelectedEmitter < 0)
+    //{
+    //    Utility::Print(m_System.LastError().c_str());
+    //    return;
+    //}
+
+    //Utility::Print(DescribeUber(m_System.At(0).runtime->Uber()).c_str());
 }
 
 void MyProject::UpdateImGui(float deltaT)

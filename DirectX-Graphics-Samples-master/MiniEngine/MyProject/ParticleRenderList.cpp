@@ -344,6 +344,7 @@ void ParticleRenderList::Render(GraphicsContext& gfx, bool sorted)
 
 	if (m_Instrs.empty())
 		m_Instrs.push_back(MaterialInstr{});
+
 	gfx.SetDynamicSRV(kDrawMaterialParams, m_MaterialParams.size() * sizeof(float4), m_MaterialParams.data());
 	gfx.SetDynamicSRV(kDrawInstrs, m_Instrs.size() * sizeof(MaterialInstr), m_Instrs.data());
 
