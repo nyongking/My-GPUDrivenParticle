@@ -123,7 +123,8 @@ namespace
 	// 루트 시그니처 / PSO 는 모든 SpriteRenderer 가 같이 쓴다 (한 번만 만든다)
 	bool          s_PipelineReady = false;
 	RootSignature s_RootSig;
-	GraphicsPSO   s_PSO(L"Particle Sprite PSO");
+	SpritePSOSet  s_PSO;
+	SpriteTarget  s_Target = SpriteTarget::Scene;   // 지금 그리는 대상 (SpriteRenderer::SetTarget)
 
 	// GPU 정렬 키 생성용 (모든 SpriteRenderer 공용)
 	RootSignature s_SortKeyRootSig;
@@ -174,7 +175,7 @@ namespace
 	static_assert(sizeof(kPresetShaders) / sizeof(kPresetShaders[0]) == size_t(ParticleMaterial::Effect::Count),
 		"kPresetShaders 는 Effect 마다 한 줄 (순서도 같게)");
 
-	GraphicsPSO s_PresetPSO[size_t(ParticleMaterial::Effect::Count)];
+	SpritePSOSet s_PresetPSO[size_t(ParticleMaterial::Effect::Count)];
 
 	uint32_t	RoundUp4(uint32_t v) { return (v + 3u) & ~3u; } // 4단위로 끊는다.
 	float3		ToFloat3(const Math::Vector3& v) { return { float(v.GetX()), float(v.GetY()), float(v.GetZ()) }; }
@@ -204,26 +205,36 @@ namespace
 
 		s_RootSig.Finalize(L"Particle Sprite RootSig");
 
-		s_PSO.SetRootSignature(s_RootSig);
-		s_PSO.SetRasterizerState(RasterizerTwoSided);
+		GraphicsPSO& scenePSO = s_PSO.pso[size_t(SpriteTarget::Scene)];
+		scenePSO.SetRootSignature(s_RootSig);
+		scenePSO.SetRasterizerState(RasterizerTwoSided);
 
-		s_PSO.SetBlendState(BlendPreMultiplied);
+		scenePSO.SetBlendState(BlendPreMultiplied);
 
-		s_PSO.SetDepthStencilState(DepthStateReadOnly);
-		s_PSO.SetRenderTargetFormat(g_SceneColorBuffer.GetFormat(), g_SceneDepthBuffer.GetFormat());
+		scenePSO.SetDepthStencilState(DepthStateReadOnly);
+		scenePSO.SetRenderTargetFormat(g_SceneColorBuffer.GetFormat(), g_SceneDepthBuffer.GetFormat());
 
-		s_PSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
-		s_PSO.SetVertexShader(g_pParticleSpriteVS, sizeof(g_pParticleSpriteVS));
-		s_PSO.SetPixelShader(g_pParticleSpritePS, sizeof(g_pParticleSpritePS));
-		s_PSO.Finalize();
+		scenePSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
+		scenePSO.SetVertexShader(g_pParticleSpriteVS, sizeof(g_pParticleSpriteVS));
+		scenePSO.SetPixelShader(g_pParticleSpritePS, sizeof(g_pParticleSpritePS));
+		scenePSO.Finalize();
+
+		// 오프스크린: 렌더 타깃 포맷만 다르다 (블렌드 / 깊이 / 셰이더는 같다). 깊이는 씬 깊이 버퍼를 그대로 쓴다
+		GraphicsPSO& offscreenPSO = s_PSO.pso[size_t(SpriteTarget::Offscreen)];
+		offscreenPSO = scenePSO;
+		offscreenPSO.SetRenderTargetFormat(DXGI_FORMAT_R16G16B16A16_FLOAT, g_SceneDepthBuffer.GetFormat());
+		offscreenPSO.Finalize();
 
 		// Preset: 기본 PSO 와 같은 설정에 픽셀 셰이더만 효과별 것으로
 		for (size_t i = 0; i < size_t(ParticleMaterial::Effect::Count); ++i)
 		{
 			ASSERT(size_t(kPresetShaders[i].effect) == i, "kPresetShaders 순서가 Effect 와 다름");
-			s_PresetPSO[i] = s_PSO;
-			s_PresetPSO[i].SetPixelShader(kPresetShaders[i].ps, kPresetShaders[i].size);
-			s_PresetPSO[i].Finalize();
+			for (size_t t = 0; t < size_t(SpriteTarget::Count); ++t)
+			{
+				s_PresetPSO[i].pso[t] = s_PSO.pso[t];
+				s_PresetPSO[i].pso[t].SetPixelShader(kPresetShaders[i].ps, kPresetShaders[i].size);
+				s_PresetPSO[i].pso[t].Finalize();
+			}
 		}
 
 		// b0 = SortKeyConstants, t0 = 렌더 구조체, t1 = 개수 버퍼(DrawArgs), u0 = 정렬 목록
@@ -243,17 +254,29 @@ namespace
 	}
 }
 
-void SpriteRenderer::CreateMaterialPSO(GraphicsPSO& pso, const void* ps, size_t size)
+void SpriteRenderer::CreateMaterialPSO(SpritePSOSet& pso, const void* ps, size_t size)
 {
 	InitializePipeline();
 
-	// 루트 시그니처 / 블렌드 / 깊이 / VS 는 기본 PSO 그대로, 픽셀 셰이더만 바꾼다
-	pso = s_PSO;
-	pso.SetPixelShader(ps, size);
-	pso.Finalize();
+	for (size_t t = 0; t < size_t(SpriteTarget::Count); ++t)
+	{
+		pso.pso[t] = s_PSO.pso[t];
+		pso.pso[t].SetPixelShader(ps, size);
+		pso.pso[t].Finalize();
+	}
 }
 
-const GraphicsPSO& SpriteRenderer::PresetPSO(ParticleMaterial::Effect effect)
+void SpriteRenderer::SetTarget(SpriteTarget target)
+{
+	s_Target = (target < SpriteTarget::Count) ? target : SpriteTarget::Scene;
+}
+
+SpriteTarget SpriteRenderer::Target()
+{
+	return s_Target;
+}
+
+const SpritePSOSet& SpriteRenderer::PresetPSO(ParticleMaterial::Effect effect)
 {
 	InitializePipeline();
 	const size_t i = (effect < ParticleMaterial::Effect::Count) ? size_t(effect) : 0;
@@ -506,8 +529,8 @@ void SpriteRenderer::PrepareGPU(GraphicsContext& gfx, const Math::Camera& camera
 	if (!m_Ready || !emitter.Ready())
 		return;
 
-	gfx.TransitionResource(emitter.RenderBuffer(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	gfx.TransitionResource(emitter.RenderBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	gfx.TransitionResource(emitter.ParticleBuffer(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 	if (ShouldSort())
 		SortOnGpu(gfx, camera, emitter);
@@ -663,8 +686,9 @@ void SpriteRenderer::BindForDraw(GraphicsContext& gfx, const Math::Camera& camer
 	sc.defaultSpriteFacing = m_DefaultSpriteFacing;
 	sc.defaultSpriteAlignment = m_DefaultSpriteAlignment;
 
-	gfx.SetRootSignature(s_RootSig);
-	gfx.SetPipelineState(m_MaterialPSO ? *m_MaterialPSO : s_PSO);
+	const SpritePSOSet& psoSet = m_MaterialPSO ? *m_MaterialPSO : s_PSO;
+	gfx.SetPipelineState(psoSet.pso[size_t(s_Target)]);
+
 	gfx.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	gfx.SetDynamicConstantBufferView(kRootCBV, sizeof(sc), &sc);
 
