@@ -520,8 +520,8 @@ void SpriteRenderer::SortOnGpu(GraphicsContext& gfx, const Math::Camera& camera,
 	const D3D12_CPU_DESCRIPTOR_HANDLE srvs[2] = { emitter.RenderBuffer().GetSRV(), countBuffer.GetSRV() };
 	cc.SetDynamicDescriptors(kSortKeySRVs, 0, 2, srvs);
 	cc.SetDynamicDescriptor(kSortKeyUAV, 0, m_GpuSortBuffer.GetUAV());
-	// 개수를 CPU 가 모르므로 capacity 기준으로 띄우고, alive 를 넘는 스레드는 바로 끝난다
 
+	// 개수를 CPU 가 모르므로 capacity 기준으로 띄우고, alive 를 넘는 스레드는 바로 끝난다
 	{
 		ScopedTimer t(L"Make SortKey (Single)", gfx);
 		cc.Dispatch((m_Capacity + kSortKeyGroupSize - 1) / kSortKeyGroupSize, 1, 1);

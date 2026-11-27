@@ -76,9 +76,6 @@ private:
     void TickBenchmark();
     void DrawBenchmarkImGui();
 
-
-    bool m_ShowImGuiDemo = false;
-
     Camera m_Camera;
     std::unique_ptr<CameraController> m_CameraController;
 
@@ -88,10 +85,12 @@ private:
     int             m_SelectedEmitter = 0;
     float3          m_EmitterPos = { 0.f, 0.f, 0.f };
 
+
+
+
     // ----------- 소유자 변환 (엔진 값 LocalToWorld / Velocity 확인)
     float           m_OwnerAngle = 0.f;         // 라디안
     float           m_RotateSpeedDeg = 90.f;    // 초당 회전 (Box Location 방향이 돌아감)
-    bool            m_MoveOwner = false;        // 위아래로 움직이기 (Owner.Velocity 확인)
     float           m_OwnerTime = 0.f;
 
     bool            m_TimeStop = false;         // true = 시뮬레이션 정지 (카메라 / UI 는 계속)
@@ -218,10 +217,9 @@ void MyProject::Update(float deltaT)
     // 소유자: Y 축 회전 + (선택) 위아래 이동
     m_OwnerTime += ownerDt;
     m_OwnerAngle += m_RotateSpeedDeg * (3.14159265f / 180.f) * ownerDt;
-    const float bob = m_MoveOwner ? std::sin(m_OwnerTime * 2.f) : 0.f;   // 위아래 1m
 
     OwnerTransform owner;
-    owner.position = { m_EmitterPos.x, m_EmitterPos.y + bob, m_EmitterPos.z };
+    owner.position = { m_EmitterPos.x, m_EmitterPos.y, m_EmitterPos.z };
     owner.rotation = QuatFromAxisAngle(float3{ 0.f, 1.f, 0.f }, m_OwnerAngle);
 
     if (!m_TimeStop)
@@ -275,10 +273,12 @@ void MyProject::RenderScene(void)
     m_Floor.Draw(gfxContext);
 
     m_Renderer.Begin(gfxContext, m_Camera);
+
     if (m_UseTestScene)
         m_TestScene.Submit(gfxContext, m_Renderer);
     else
         m_System.Submit(gfxContext, m_Renderer);
+    
     m_Renderer.Render(gfxContext);
 
     // Finish
@@ -318,11 +318,6 @@ void MyProject::InitializeEmitter()
 void MyProject::UpdateImGui(float deltaT)
 {
     ImGui::SetNextWindowPos(ImVec2(10.f, 10.f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Debug");
-    ImGui::Text("%.2f ms (%.1f FPS)", deltaT * 1000.f, deltaT > 0.f ? 1.f / deltaT : 0.f);
-    ImGui::Text("Mode: %s  [F1 to toggle]", ImGuiLayer::IsCameraMode() ? "Camera" : "UI");
-    ImGui::Checkbox("Show ImGui Demo", &m_ShowImGuiDemo);
-    ImGui::End();
 
     ImGui::Begin("Particle");
 
@@ -336,7 +331,6 @@ void MyProject::UpdateImGui(float deltaT)
 
     ImGui::SeparatorText("Owner");
     ImGui::SliderFloat("Rotate (deg/s)", &m_RotateSpeedDeg, 0.f, 360.f);
-    ImGui::Checkbox("Move up/down (velocity)", &m_MoveOwner);
 
     {
         // 머티리얼(픽셀 셰이더) 방식. 전역 설정이라 일반 이미터 / Test scene 모두에 적용된다
@@ -422,10 +416,6 @@ void MyProject::UpdateImGui(float deltaT)
 
 
     ImGui::End();
-
-
-    if (m_ShowImGuiDemo)
-        ImGui::ShowDemoWindow(&m_ShowImGuiDemo);
 }
 
 void MyProject::UpdateMiddleDragLook()

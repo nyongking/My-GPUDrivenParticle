@@ -36,6 +36,9 @@ void EmitterRenderList::Render(GraphicsContext& gfx)
 	if (!m_Camera)
 		return;
 
+	// TODO : Scoped Timer 세팅
+
+
 	if (m_Sorted)
 	{
 		// stable: 키와 거리가 모두 같으면 Add 한 순서를 지킨다 -> 프레임마다 순서가 뒤바뀌지 않는다
@@ -46,9 +49,10 @@ void EmitterRenderList::Render(GraphicsContext& gfx)
 				return a.depth > b.depth;           // 먼 것부터
 			});
 	}
-
+	
 	for (const Item& item : m_Items)
 		item.runtime->Render(gfx, *m_Camera);
+
 
 	m_Items.clear();
 	m_Camera = nullptr;

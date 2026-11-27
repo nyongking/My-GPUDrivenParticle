@@ -1,13 +1,9 @@
 ﻿#pragma once
 // 파티클 전체의 렌더 방식 (전역 설정)
 //
-//   이미터를 가진 쪽 (EffectSystem, EmitterTestScene) 은 그리는 방식을 모른다. Add 로 이미터를 넘기기만 한다.
-//   어떤 방식으로 그릴지는 여기서 정한다 (Main 이 하나 갖고, UI 에서 고른다).
-//
-//     SharedList  : 공용 목록.  모든 이미터의 파티클을 한 목록에 모아 파티클 단위로 깊이 정렬, Draw 1번 (ParticleRenderList)
-//                   반투명 목록 (정렬) -> Additive 목록 (정렬 없음) 순서. 머티리얼은 VM 인터프리터
-//     EmitterList : 준 List.   이미터마다 자기 셰이더로 그리되 이미터 사이의 순서를 정한다 (EmitterRenderList)
-//                   정렬 키 -> 카메라 거리. 머티리얼은 Preset / Custom 셰이더
+//	   Shared List : 전체 Sprite를 모두 하나의 버퍼에서 모아서 렌더링 (Dispatch = 이미터 개수, Draw = 1번)
+//					 반투명 이미터 모아서 정렬 -> Draw -> Additive 전체 Draw / 머티리얼은 VM 방식
+//     EmitterList : Semi List. 이미터의 Position에 따라 정렬(CPU) -> 이미터 각자마다 Sort -> Draw를 거친다
 //     Sprite      : 이미터마다 자기 셰이더로, Add 한 순서 그대로 그린다 (이미터 사이의 순서를 정하지 않음)
 //
 //   프레임마다: Reserve (Tick 전) -> Begin -> Add x 이미터 수 -> Render
@@ -52,6 +48,7 @@ private:
 	// SharedList
 	ParticleRenderList m_TranslucentList;   // 반투명: 이미터 구분 없이 깊이 정렬
 	ParticleRenderList m_AdditiveList;      // Additive: 정렬 없이 반투명 다음에. 블렌드 모드가 실행 중에 바뀌므로 같은 크기
+
 	uint32_t           m_Reserved = 0;      // 두 목록의 크기 (파티클 수)
 	uint32_t           m_Submitted = 0;     // 이번 프레임에 목록에 넣은 이미터 capacity 의 합
 	bool               m_ListActive = false;

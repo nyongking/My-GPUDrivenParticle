@@ -39,6 +39,7 @@ void ParticleRenderer::Shutdown()
 {
 	if (m_Reserved == 0)
 		return;
+
 	Graphics::g_CommandManager.IdleGPU();
 	m_TranslucentList.Shutdown();
 	m_AdditiveList.Shutdown();
@@ -49,10 +50,12 @@ void ParticleRenderer::Begin(GraphicsContext& gfx, const Math::Camera& camera)
 {
 	m_Submitted = 0;
 	m_ListActive = (m_Mode == ParticleRenderMode::SharedList) && m_Reserved > 0;
+	
 	if (m_ListActive)
 	{
 		m_TranslucentList.SetCulling(m_Culling);
 		m_TranslucentList.Begin(gfx, camera);
+
 		m_AdditiveList.SetCulling(m_Culling);
 		m_AdditiveList.Begin(gfx, camera);
 	}
@@ -72,10 +75,9 @@ void ParticleRenderer::Add(GraphicsContext& gfx, EmitterRuntime* runtime, const 
 	{
 		m_Submitted += runtime->Capacity();
 		runtime->SubmitTo(gfx, runtime->IsAdditive() ? m_AdditiveList : m_TranslucentList);
-		return;
 	}
-
-	m_EmitterList.Add(runtime, worldPosition, sortKey);
+	else
+		m_EmitterList.Add(runtime, worldPosition, sortKey);
 }
 
 void ParticleRenderer::Render(GraphicsContext& gfx)

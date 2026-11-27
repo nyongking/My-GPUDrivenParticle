@@ -7,6 +7,7 @@
     {
       "name": "Smoke",
       "enabled": true,
+      "sortKey": 0,
       "position": [0, 0.45, 0],
       "rotation": [0, 0, 0, 1],
       "scale": [1, 1, 1],
@@ -223,48 +224,28 @@
           "blendFar": 10,
           "bindings": {
             "Position": {
-              "attribute": "Particles.Position",
               "default": [0, 0, 0]
             },
             "Color": {
-              "attribute": "Particles.Color",
               "default": [1, 1, 1, 1]
             },
             "Size": {
-              "attribute": "Particles.Size",
               "default": 0.1
             },
             "SubImageIndex": {
-              "attribute": "Particles.SubImageIndex",
               "default": 0
             },
-            "SpriteSize": {
-              "attribute": "Particles.SpriteSize",
-              "default": [0.2, 0.2]
-            },
             "SpriteRotation": {
-              "attribute": "Particles.SpriteRotation",
               "default": 0
             },
             "Velocity": {
-              "attribute": "Particles.Velocity",
               "default": [0, 0, 0]
             },
             "SpriteFacing": {
-              "attribute": "Particles.SpriteFacing",
               "default": [0, 1, 0]
             },
             "SpriteAlignment": {
-              "attribute": "Particles.SpriteAlignment",
               "default": [0, 1, 0]
-            },
-            "ParticleParam0": {
-              "attribute": "Particles.NormalizedAge",
-              "default": 0
-            },
-            "ParticleParam1": {
-              "attribute": "",
-              "default": 0
             }
           }
         }
@@ -273,6 +254,7 @@
     {
       "name": "Fire",
       "enabled": true,
+      "sortKey": 0,
       "position": [0, 0, 0],
       "rotation": [0, 0, 0, 1],
       "scale": [1, 1, 1],
@@ -467,48 +449,28 @@
           "blendFar": 10,
           "bindings": {
             "Position": {
-              "attribute": "Particles.Position",
               "default": [0, 0, 0]
             },
             "Color": {
-              "attribute": "Particles.Color",
               "default": [1, 1, 1, 1]
             },
             "Size": {
-              "attribute": "Particles.Size",
               "default": 0.1
             },
             "SubImageIndex": {
-              "attribute": "Particles.SubImageIndex",
               "default": 0
             },
-            "SpriteSize": {
-              "attribute": "Particles.SpriteSize",
-              "default": [0.2, 0.2]
-            },
             "SpriteRotation": {
-              "attribute": "Particles.SpriteRotation",
               "default": 0
             },
             "Velocity": {
-              "attribute": "Particles.Velocity",
               "default": [0, 0, 0]
             },
             "SpriteFacing": {
-              "attribute": "Particles.SpriteFacing",
               "default": [0, 1, 0]
             },
             "SpriteAlignment": {
-              "attribute": "Particles.SpriteAlignment",
               "default": [0, 1, 0]
-            },
-            "ParticleParam0": {
-              "attribute": "Particles.NormalizedAge",
-              "default": 0
-            },
-            "ParticleParam1": {
-              "attribute": "",
-              "default": 0
             }
           }
         }
@@ -517,6 +479,7 @@
     {
       "name": "Embers",
       "enabled": true,
+      "sortKey": 0,
       "position": [0, 0.1, 0],
       "rotation": [0, 0, 0, 1],
       "scale": [1, 1, 1],
@@ -692,48 +655,28 @@
           "blendFar": 10,
           "bindings": {
             "Position": {
-              "attribute": "Particles.Position",
               "default": [0, 0, 0]
             },
             "Color": {
-              "attribute": "Particles.Color",
               "default": [1, 1, 1, 1]
             },
             "Size": {
-              "attribute": "Particles.Size",
               "default": 0.1
             },
             "SubImageIndex": {
-              "attribute": "Particles.SubImageIndex",
               "default": 0
             },
-            "SpriteSize": {
-              "attribute": "Particles.SpriteSize",
-              "default": [0.2, 0.2]
-            },
             "SpriteRotation": {
-              "attribute": "Particles.SpriteRotation",
               "default": 0
             },
             "Velocity": {
-              "attribute": "Particles.Velocity",
               "default": [0, 0, 0]
             },
             "SpriteFacing": {
-              "attribute": "Particles.SpriteFacing",
               "default": [0, 1, 0]
             },
             "SpriteAlignment": {
-              "attribute": "Particles.SpriteAlignment",
               "default": [0, 1, 0]
-            },
-            "ParticleParam0": {
-              "attribute": "Particles.NormalizedAge",
-              "default": 0
-            },
-            "ParticleParam1": {
-              "attribute": "",
-              "default": 0
             }
           }
         }
